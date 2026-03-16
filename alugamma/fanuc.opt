@@ -1,0 +1,764 @@
+machine fanuc
+ 
+   define word /
+    address letter = "/"
+   end define
+ 
+   define word N
+    address letter = "N"
+   end define
+ 
+   define word G1
+    address letter = "G"
+   end define
+ 
+   define word G2
+    address letter = "G"
+   end define
+ 
+   define word G3
+    address letter = "G"
+   end define
+ 
+   define word G4
+    address letter = "G"
+   end define
+ 
+   define word G5
+    address letter = "G"
+   end define
+ 
+   define word G6
+    address letter = "G"
+   end define
+ 
+   define word G7
+    address letter = "G"
+   end define
+ 
+   define word X
+    address letter = "X"
+   end define
+ 
+   define word Y
+    address letter = "Y"
+   end define
+ 
+   define word Z
+    address letter = "Z"
+   end define
+ 
+   define word I
+    address letter = "I"
+   end define
+ 
+   define word J
+    address letter = "J"
+   end define
+ 
+   define word K
+    address letter = "K"
+   end define
+ 
+   define word R
+    address letter = "R"
+   end define
+ 
+   define word R2
+    address letter = "R"
+   end define
+ 
+   define word Q
+    address letter = "Q"
+   end define
+ 
+   define word A
+    address letter = "A"
+   end define
+ 
+   define word B
+    address letter = "B"
+   end define
+ 
+   define word C
+    address letter = "C"
+   end define
+ 
+   define word U
+    address letter = "U"
+   end define
+ 
+   define word V
+    address letter = "V"
+   end define
+ 
+   define word W
+    address letter = "W"
+   end define
+ 
+   define word Z2
+    address letter = "Z"
+   end define
+ 
+   define word F
+    address letter = "F"
+   end define
+ 
+   define word S
+    address letter = "S"
+   end define
+ 
+   define word T
+    address letter = "T"
+   end define
+ 
+   define word M1
+    address letter = "M"
+   end define
+ 
+   define word M2
+    address letter = "M"
+   end define
+ 
+   define word L
+    address letter = "L"
+   end define
+ 
+   define word P
+    address letter = "P"
+   end define
+ 
+   define word D
+    address letter = "D"
+   end define
+ 
+   define word E
+    address letter = "E"
+   end define
+ 
+   define word H
+    address letter = "H"
+   end define
+ 
+   define word O
+    address letter = "O"
+   end define
+ 
+   define word MS
+    address letter = "("
+   end define
+ 
+   define word EM
+    address letter = ")"
+   end define
+ 
+   define word OP
+    address letter = "/"
+   end define
+ 
+   define word ID
+    address letter = ":"
+   end define
+ 
+   define word Q1
+    address letter = "Q"
+   end define
+ 
+   define word null
+    address letter = ""
+   end define
+ 
+   define format ( / G6 S T M1 M2 L P D E H O )
+    address width              =   1
+    field width                =   2
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = none
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( N )
+    address width              =   1
+    field width                =   4
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = none
+    permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( G1 G2 G3 G4 G5 G7 )
+    address width              =   1
+    field width                =   2
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = none
+    not permanent
+    modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( X Y Z R B C )
+    address width              =   1
+    field width                =   8
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = if negative
+    not permanent
+    modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = false
+    decimal point              = true
+    decimal places             =   3
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = false
+    decimal point              = true
+    decimal places             =   4
+   end define
+ 
+   define format ( I J K )
+    address width              =   1
+    field width                =   8
+    exponent width             =   0
+    scale factor               =  -1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = if negative
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = false
+    decimal point              = true
+    decimal places             =   3
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = false
+    decimal point              = true
+    decimal places             =   4
+   end define
+ 
+   define format ( R2 Z2 Q1 )
+    address width              =   1
+    field width                =   8
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = if negative
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = false
+    decimal point              = true
+    decimal places             =   3
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = false
+    decimal point              = true
+    decimal places             =   4
+   end define
+ 
+   define format ( Q A U V W )
+    address width              =   1
+    field width                =   2
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = if negative
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( F )
+    address width              =   1
+    field width                =   2
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = if negative
+    not permanent
+    modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( MS EM OP )
+    address width              =   1
+    field width                =   0
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = none
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( ID )
+    address width              =   1
+    field width                =   4
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = none
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = true
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = true
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+   define format ( null )
+    address width              =   0
+    field width                =   0
+    exponent width             =   0
+    scale factor               =   1
+    scale divisor              =   1
+    tape position              =   0
+    print position             =   1
+    sign                       = none
+    not permanent
+    not modal
+   metric formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   imperial formats
+    leading zeros              = false
+    trailing zeros             = true
+    decimal point              = false
+    decimal places             =   0
+   end define
+ 
+# linked words
+   define format ( MS )
+     link to EM
+   end define
+ 
+ 
+    word order = (    OP   N    G1   G2   G3   G4   G5   )
+    word order = ( +  G6   G7   X    Y    Z    B    C    )
+    word order = ( +  I    J    K    R    D    S    T    )
+    word order = ( +  H    M1   M2   MS   msg  EM   Q    )
+    word order = ( +  Q1   Z2   R2   ID   F    )
+ 
+  define keys
+    blocknumber                       = N
+    preparatory function              = G1
+    aux function                      = M1
+    x feedrate                        not used
+    y feedrate                        not used
+    z feedrate                        not used
+    circle angle                      not used
+    x coordinate                      = X
+    y coordinate                      = Y
+    z coordinate                      = Z
+    key i                             = I
+    key j                             = J
+    key k                             = K
+    feedrate                          = F
+    feedrate per revolution           = F
+    spindle                           = S
+    tool number                       = T
+    cycle dwell                       not used
+    dwell                             = X
+    tool length                       = H
+    tool radius                       = D
+    drill peck depth                  = Q1
+    drill hole depth                  = Z2
+    clearplane                        = R2
+    message start                     = MS
+    message end                       = EM
+    opskip                            = OP
+    radius                            = R
+    program id                        = ID
+    azimuth axis                      = B
+    elevation axis                    = C
+    3rd rotation axis                 = null
+    leader                            not used
+    x vector                          not used
+    y vector                          not used
+    z vector                          not used
+    error                             not used
+  end define
+ 
+  define codes
+    rapid                             =  G1    0
+    linear                            =  G1    1
+    circle cw                         =  G1    2
+    circle ccw                        =  G1    3
+    dwell                             =  G6    4
+    xy plane                          =  G3   17
+    zy plane                          =  G3   19
+    xz plane                          =  G3   18
+    compensation off                  =  G2   40
+    compensation on left              =  G2   41
+    compensation on right             =  G2   42
+    imperial data                     =  G4   20
+    metric data                       =  G4   21
+    absolute data                     =  G5   90
+    incremental data                  =  G5   91
+    from                              =  G3   54
+    feedrate per minute               not used
+    feedrate per revolution           not used
+    spindle rpm                       not used
+    constant surface speed            not used
+    drill                             =  G4   81
+    break chip                        =  G4   82
+    deep drill                        =  G4   83
+    tap                               =  G4   84
+    bore 1                            =  G4   85
+    bore 2                            =  G4   86
+    bore 3                            =  G4   87
+    bore 4                            =  G4   88
+    bore 5                            =  G4   89
+    end of drill                      =  G4   80
+    macro start                       not used
+    macro end                         not used
+    macro call                        not used
+    cycle retract                     =  G6   99
+    tool length offset                =  G6   43
+    spline                            not used
+    stop                              =  M1    0
+    opt stop                          =  M1    1
+    spindle on cw                     =  M1    3
+    spindle on cc                     =  M1    4
+    spindle off                       =  M1    5
+    spin coolant on cw                =  M1   13
+    spin coolant on ccw               =  M1   14
+    spin coolant off                  =  M1    5
+    change tool                       =  M1    6
+    coolant on mist                   =  M1    7
+    coolant on                        =  M1    8
+    coolant on flood                  =  M1    8
+    coolant off                       =  M1    9
+    clamp on                          not used
+    clamp off                         not used
+    end of tape                       =  M1    2
+    end of prog                       =  M1   30
+    gear range 1                      not used
+    gear range 2                      not used
+    gear range 3                      not used
+    constant contour speed            not used
+    constant contour speed 2          not used
+    word drill                        not used
+    word break chip                   not used
+    word deep                         not used
+    word tap                          not used
+    word bore 1                       not used
+    word bore 2                       not used
+    word bore 3                       not used
+    word bore 4                       not used
+    word bore 5                       not used
+    azimuth clamp off                 not used
+    coolant on tap                    not used
+    rigid tap                         not used
+    helical drill                     not used
+    helical retract drill             not used
+    deep drill 2                      not used
+    azimuth clamp on                  not used
+    coolant on air                    not used
+    coolant on double                 not used
+    coolant on through                not used
+  end define
+ 
+  print header               = "Delcam Postprocessor"
+  machine name               = "Fanuc6m          version 1.2"
+  point                      = "."
+  zero                       = "0"
+  tape headers               =     1
+  integer   6                =     2
+  integer   7                =     1
+  integer  10                =     2
+  integer  11                =     1
+  integer  12                =     1
+  tool reset coordinates     =     2
+  cycle output               =     1
+  integer  20                =     1
+  block start                =    10
+  block increment            =    10
+  split move                 =     0
+  integer  26                =     1
+  program id start           =     1
+  integer  34                =     3
+  integer  35                =     1
+  integer  36                =     1
+  integer  37                =     2
+  rapid feed code            =     0
+  maximum block number       =     0
+  maximum tape blocks        =     0
+  minimum tape blocks        =     0
+  segment type               =     0
+  counter start              =     0
+  counter increment          =     0
+  tape split retract distance  =  -999
+  workplane angle convention  =     1
+  workplane z vector convention  =     0
+  multiaxis coordinate transform  = true
+  message output             = true
+  block order                = false
+  tlo output                 = true
+  tape split on tool change  = false
+  full circle                = true
+  incremental centre         = true
+  go home output             = false
+  use partid                 = true
+  use progid                 = true
+  spindle x motion           = false
+  spindle y motion           = false
+  spindle z motion           = true
+  spindle w motion           = false
+  spindle azimuth rotation   = false
+  spindle elevation rotation  = false
+  linearise multiaxis moves  = true
+  use hole top in cycles     = false
+  retract at angular limit   = false
+  unwind at tool change      = false
+  suppress xy arc            = false
+  suppress xz arc            = false
+  suppress yz arc            = false
+  transform workplane origin  = false
+  previous multax rapid style  = false
+  minimise multiaxis retractions  = false
+  contact point based feedrate  = false
+  multiaxis toollength used  = true
+  full rewind at limit       = false
+  use fiveaxis always        = false
+  workplane origin shift     = true
+  expand helical drilling cycles  = false
+  linearise first move       = true
+  output rapids in multiaxis  = false
+  use toolpath safe heights  = false
+  clear modal words for cycles  = true
+  use true safez in cycles   = false
+  tool change before linearised  = true
+  allow arcs in five axis    = false
+  relax singularity check allowed  = false
+  minimise retracts at toolchange  = false
+  knot vector type           = none
+  units                      = input
+  coordinates                = absolute
+  azimuth axis units         = degrees
+  azimuth axis direction     = positive
+  elevation axis units       = degrees
+  elevation axis direction   = positive
+  spline type                = none
+  workplane angles           = none
+  option file units          = none
+  retract and reconfigure style  = none
+  maximum feedrate           =  9999.0000
+  minimum feedrate           =     1.0000
+  rapid feedrate             =  9999.0000
+  maximum tape length        =     0.0000
+  plunge threshold angle     =     0.0000
+  maximum segment            =     0.0000
+  diameter                   =     1.0000
+  withdrawal amount          =    50.0000
+  arc radius limit           = 10000.0000
+  retraction threshhold angle  =   360.0000
+  arc minimum radius         =     0.0000
+ 
+  azimuth axis parameters    = (      0      0      0      0      0      0 )
+  azimuth centre             = (      0      0      0 )
+  elevation axis parameters  = (      0      0      0      0      0      0 )
+  elevation centre           = (      0      0      0 )
+  pcs origin                 = (      0      0      0      0      0      0 )
+  linear axis limits         = ( -99999 999999 -99999 999999 -99999 999999 )
+  rotary axis limits         = ( -99999 999999 -99999 999999    999      1 )
+  move safe angles           = (      0      0      0      0 )
+ 
+  define block tape start
+    "%"
+    ID ProgID
+    N   ; G2  91    ; G6  28    ; X   0     ; Y   0     ; Z   0
+    N   ; compensation off      ; G6  49    ; xy plane  ; G4  80
+    N   ; G5  90    ; G1   0    ; Z FromZ
+  end define
+ 
+  define block tape end
+    N   ; G6  28    ; G5  91    ; Z   0     ; Z =C
+    N   ; H   0     ; G6  49
+    N   ; G6  28    ; X   0     ; Y   0     ; X =C      ; Y =C
+    N   ; M1  30
+  end define
+ 
+  define block go home preamble
+  end define
+ 
+  define block tool change first
+    N   ; OP  ; change tool     ; T ToolNum
+    G3  54    ; G5  90    ; G3 =C     ; G5 =C     ;
+  end define
+ 
+  define block tool change
+    N   ; G5  91    ; G6  28    ; Z   0     ; Z =C
+    N   ; H   0     ; G6  49
+    N   ; G6  28    ; X   0     ; Y   0     ; X =C      ; Y =C
+    N   ; T ToolNumber    ; change tool
+    G5  90    ; G3  54    ; G5 =C     ; G3 =C     ;
+  end define
+ 
+  define block tool change clear
+  end define
+ 
+  define block go home z move
+  end define
+ 
+  define block go home xy move
+  end define
+ 
+  define block move from
+  end define
+ 
+  define block move circle
+    N   ; G1  ; G2  ; G3  ; X   ; Y   ; Z   ; I   ; J   ; K   ; F   ; D
+  end define
+ 
+  define block move linear
+  end define
+ 
+  define block move rapid
+    N   ; G1  ; G2  ; G3  ; G5  ; G6  ; X   ; Y   ; Z   ; T   ; H   ; S   ;
+    M1  ; M2
+  end define
+ 
+  define block move cycle
+    N   ; G4  ; G6  ; X   ; Y   ; Z2  ; R2  ; Q   ; Q1  ; F   ; M2
+  end define
+ 
+  define block move tap
+    N   ; G6  ; G4  ; X   ; Y   ; Z2  ; R2  ; F   ; M1  ; M2
+  end define
+ 
+  define block tape segment
+  end define
+ 
+  define block tape split start
+    "%"
+    ID ProgID
+  end define
+ 
+  define block tape split end
+    N   ; G1  28    ; G6  91    ; Z   0     ; Z =C
+    N   ; H   0     ; G6  49
+    N   ; G6  28    ; X   0     ; Y   0     ; X =C      ; Y =C
+    N   ; M1  30
+  end define
+ 
+  define block cycle start
+    N   ; S   ; M1
+    N   ; G3  ; G5  ; M2
+    F =C      ; G4 =C     ; Z2  ; R2  ; Q   ; Q1  ; G6  ;
+  end define
+ 
+  define block cycle end
+    N   ; G4  80
+  end define
+ 
+  define block tape split move
+  end define
+ 
+  define block move spline
+  end define
+ 
+  define block datum shift
+  end define
+ 
+  define block multiaxis transition
+  end define
+ 
+  define block special record
+  end define
+ 
+end

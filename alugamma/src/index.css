@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 27% 9%;
+    --foreground: 210 25% 94%;
+    --card: 220 24% 12%;
+    --card-foreground: 210 25% 94%;
+    --popover: 220 24% 12%;
+    --popover-foreground: 210 25% 94%;
+    --primary: 146 72% 50%;
+    --primary-foreground: 210 40% 8%;
+    --secondary: 215 28% 18%;
+    --secondary-foreground: 210 22% 90%;
+    --muted: 216 22% 16%;
+    --muted-foreground: 215 18% 68%;
+    --accent: 285 75% 58%;
+    --accent-foreground: 210 25% 96%;
+    --destructive: 0 72% 54%;
+    --destructive-foreground: 210 25% 96%;
+    --border: 217 21% 22%;
+    --input: 217 22% 18%;
+    --ring: 146 72% 50%;
+    --sheet-frez: 294 77% 55%;
+    --sheet-cut: 129 86% 59%;
+    --sheet-steel: 214 23% 14%;
+    --sheet-line: 216 17% 28%;
+    --radius: 1rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background font-body text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(39, 140, 110, 0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(182, 59, 199, 0.12), transparent 24%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%),
+      linear-gradient(135deg, rgba(10, 14, 23, 0.96), rgba(6, 8, 15, 1));
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+  }
+  .dark {
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer utilities {
+  .panel-grid {
+    background-image: theme("backgroundImage.grid");
+    background-size: 56px 56px;
+  }
+}
