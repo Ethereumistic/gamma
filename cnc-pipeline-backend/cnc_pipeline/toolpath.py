@@ -42,11 +42,8 @@ def generate_toolpath(
         coolant_on = is_first_contour
         moves.append(Move("plunge", x=None, y=None, z=depth, feed=plunge_feed, coolant_on=coolant_on))
 
-        is_last_contour = (i == len(contours) - 1)
-        
-        for pt_idx, pt in enumerate(contour.points[1:]):
-            is_last_cut = is_last_contour and (pt_idx == len(contour.points) - 2)
-            moves.append(Move("cut", x=pt.x, y=pt.y, z=None, feed=cut_feed, coolant_off=is_last_cut))
+        for pt in contour.points[1:]:
+            moves.append(Move("cut", x=pt.x, y=pt.y, z=None, feed=cut_feed))
 
         moves.append(Move("retract", x=None, y=None, z=Z_CLEARANCE, feed=None))
 

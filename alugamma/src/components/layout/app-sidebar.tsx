@@ -69,6 +69,11 @@ const navItems = [
     url: "/sheet-metal",
     icon: ScissorsLineDashed,
   },
+  {
+    title: "CNC Pipeline",
+    url: "/cnc-pipeline",
+    icon: LayoutDashboard,
+  },
 ];
 
 function isSameDay(d1: Date, d2: Date) {

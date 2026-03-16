@@ -185,35 +185,43 @@ class GCodeWriter:
                 if m.coolant_on:
                     parts.append("M8")
                     
-                # coolant off combined logic inside block moves? Wait
-                # The manual coolant off is appended on last move.
-                
                 if m.feed is not None and (cur_f is None or abs(m.feed - cur_f) > 0.0001):
                     parts.append(f"F{fmt_int(m.feed)}")
                     cur_f = m.feed
                 
                 line_str = "".join(parts)
                 
-                is_last_move = (m_idx == len(moves) - 1)
-                
-                if m.coolant_off and not is_final_toolpath:
-                    # In spec: "For non-final toolpaths: last line is NxxX{x}Y{y}M9"
-                    # We just append M9
-                    line_str += "M9"
-                    lines.append(line_str)
-                elif m.coolant_off and is_final_toolpath:
-                    lines.append(line_str)
-                    # For final toolpath, M9 goes on its own line after the last XY
-                    lines.append(f"{counter.next()}M9")
-                elif len(parts) > 1: # don't emit line if NO variable changed (except N)
+                if len(parts) > 1: # don't emit line if NO variable changed (except N)
                     lines.append(line_str)
                     
-            machine_x = cur_x
-            machine_y = cur_y
-            
             if not is_final_toolpath:
+                next_block = toolpath_blocks[index] # index is 1-based current, so it points to the NEXT block in 0-based indexing
+                next_moves = next_block[2]
+                next_x = next_moves[0].x if len(next_moves) > 0 else 0.0
+                next_y = next_moves[0].y if len(next_moves) > 0 else 0.0
+                
+                parts = [counter.next()]
+                added = False
+                if next_x is not None and (cur_x is None or abs(next_x - cur_x) > 0.0001):
+                    parts.append(f"X{fmt_coord(next_x)}")
+                    cur_x = next_x
+                    added = True
+                if next_y is not None and (cur_y is None or abs(next_y - cur_y) > 0.0001):
+                    parts.append(f"Y{fmt_coord(next_y)}")
+                    cur_y = next_y
+                    added = True
+                
+                if added:
+                    parts.append("M9")
+                    lines.append("".join(parts))
+                else:
+                    lines.append(f"{counter.next()}M9")
+                
+                machine_x = cur_x
+                machine_y = cur_y
                 counter.gap()
             else:
+                lines.append(f"{counter.next()}M9")
                 lines.append(f"{counter.next()}G91G28Z0")
                 lines.append(f"{counter.next()}G49H0")
                 lines.append(f"{counter.next()}G28X0Y0")

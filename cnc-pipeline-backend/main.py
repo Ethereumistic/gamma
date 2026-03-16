@@ -43,15 +43,18 @@ async def generate(file: UploadFile = File(...)):
         job_id = str(uuid.uuid4())
         _jobs[job_id] = result
         return {
-            "job_id":          job_id,
-            "filename":        file.filename,
-            "scenario":        result.scenario,
-            "layers_detected": result.layers_detected,
-            "tools_used":      result.tools_used,
-            "contour_count":   result.contour_count,
-            "lift_count":      result.lift_count,
-            "estimated_time":  result.estimated_time_seconds,
-            "warnings":        result.warnings,
+            "generate": {
+                "job_id":          job_id,
+                "filename":        file.filename,
+                "scenario":        result.scenario,
+                "layers_detected": result.layers_detected,
+                "tools_used":      result.tools_used,
+                "contour_count":   result.contour_count,
+                "lift_count":      result.lift_count,
+                "estimated_time":  result.estimated_time_seconds,
+                "warnings":        result.warnings,
+            },
+            "geometry": result.geometry_data
         }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

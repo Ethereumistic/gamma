@@ -14,6 +14,7 @@ class PipelineResult:
     warnings:          list[str]     # non-fatal issues found during generation
     nc_text:           str           # the complete generated NC program
     output_filename:   str           # e.g. "part_name.nc"
+    geometry_data:     dict          # ordered geometry segments for frontend rendering
 
 
 def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
@@ -42,6 +43,8 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
     # 3. For each layer in sequence: extract → join → sort → generate moves
     toolpath_blocks = []
     total_contours = 0
+    seq_index = 0
+    out_segments = []
 
     for layer_name, tool_num in toolpath_sequence:
         segments = reader.get_entities(layer_name)
@@ -57,6 +60,18 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
             ordered = sort_outer_to_inner(contours, bbox)
         else:
             ordered = sort_nearest_neighbour(contours)
+
+        for contour in ordered:
+            for i in range(len(contour.points) - 1):
+                p1 = contour.points[i]
+                p2 = contour.points[i+1]
+                out_segments.append({
+                    "x1": p1.x, "y1": p1.y,
+                    "x2": p2.x, "y2": p2.y,
+                    "layer": layer_name,
+                    "seq_index": seq_index
+                })
+                seq_index += 1
 
         moves = generate_toolpath(ordered, tool_num, layer_name)
         toolpath_blocks.append((tool_num, layer_name, moves))
@@ -82,6 +97,17 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
     avg_feed = 5500  # mm/min — rough estimate
     estimated_time = (total_length / avg_feed) * 60  # seconds
 
+    geometry_data = {
+        "segments": out_segments,
+        "layers": list(reader.layers),
+        "bbox": {
+            "min_x": bbox.min_x,
+            "min_y": bbox.min_y,
+            "max_x": bbox.max_x,
+            "max_y": bbox.max_y,
+        }
+    }
+
     return PipelineResult(
         scenario=scenario_name,
         layers_detected=list(reader.layers),
@@ -92,4 +118,5 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
         warnings=warnings,
         nc_text=nc_text,
         output_filename=f"{stem}.nc",
+        geometry_data=geometry_data,
     )
