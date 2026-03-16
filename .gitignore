@@ -173,6 +173,11 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# Python cache
+__pycache__/
+*.py[cod]
+venv/
+
 # yarn v2
 .yarn/cache
 .yarn/unplugged
