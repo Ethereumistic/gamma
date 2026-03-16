@@ -140,7 +140,8 @@ def detect_scenario(dxf_layers: set[str]) -> Scenario:
 
 ## 5. Tool Definitions
 
-These are fixed constants. They never change unless a new tool is introduced.
+These are fixed constants. They never change unless a new tool is introduced. The offsets are not really in use for the current CNC pipeline,
+they are important for the DXF drawing process, so you can actually ignore them here.
 
 ```python
 TOOLS = {
@@ -155,8 +156,8 @@ TOOLS = {
         "feed_cut":     5500,   # mm/min — cutting moves
         "feed_plunge":  550,    # mm/min — all Z plunge moves (confirmed from NC file)
         "layers": {
-            "CUT":   {"depth": -4.1,  "offset": 3.0},
-            "HOLES": {"depth": -4.11, "offset": 0.0},
+            "CUT":   {"depth": -4.1,  "offset": 3.0}, # the offset 3 mm is for CUT layer line to be offset from the actual original outline on 0 layer
+            "HOLES": {"depth": -4.11, "offset": 0.0}, 
         }
     },
     9: {
@@ -167,7 +168,7 @@ TOOLS = {
         "tip_radius":   0.0,
         "taper_angle":  47.5,
         "taper_height": 5.0,
-        "gauge_length": 29.0,   # NOTE: NC file shows 50.0 — verify which is correct
+        "gauge_length": 50.0,
         "flutes":       4,
         "spindle_rpm":  13000,
         "feed_cut":     5500,

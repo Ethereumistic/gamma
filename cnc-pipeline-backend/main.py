@@ -1,0 +1,87 @@
+# main.py
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+import tempfile, uuid, os, pathlib
+
+from cnc_pipeline.pipeline import run_pipeline, PipelineResult
+
+app = FastAPI(title="AluGamma CNC Pipeline", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:4173",   # Vite preview
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Simple in-memory job store keyed by UUID
+# Sufficient for single-operator local use
+_jobs: dict[str, PipelineResult] = {}
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": "1.0.0"}
+
+
+@app.post("/api/generate")
+async def generate(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".dxf"):
+        raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
+
+    contents = await file.read()
+    tmp = tempfile.NamedTemporaryFile(suffix=".dxf", delete=False, mode="wb")
+    tmp.write(contents)
+    tmp.close()
+
+    try:
+        result = run_pipeline(tmp.name, original_filename=file.filename)
+        job_id = str(uuid.uuid4())
+        _jobs[job_id] = result
+        return {
+            "job_id":          job_id,
+            "filename":        file.filename,
+            "scenario":        result.scenario,
+            "layers_detected": result.layers_detected,
+            "tools_used":      result.tools_used,
+            "contour_count":   result.contour_count,
+            "lift_count":      result.lift_count,
+            "estimated_time":  result.estimated_time_seconds,
+            "warnings":        result.warnings,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
+    finally:
+        os.unlink(tmp.name)
+
+
+@app.get("/api/preview/{job_id}")
+def preview(job_id: str):
+    if job_id not in _jobs:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+    return JSONResponse({"nc_text": _jobs[job_id].nc_text})
+
+
+@app.get("/api/download/{job_id}")
+def download(job_id: str):
+    if job_id not in _jobs:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+    result = _jobs[job_id]
+
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".nc", delete=False, mode="w", encoding="utf-8"
+    )
+    tmp.write(result.nc_text)
+    tmp.close()
+
+    return FileResponse(
+        path=tmp.name,
+        media_type="application/octet-stream",
+        filename=result.output_filename,
+    )
