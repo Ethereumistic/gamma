@@ -24,7 +24,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
     """
     from .dxf_reader import DXFReader
     from .scenario import detect_scenario
-    from .geometry import join_segments, sort_outer_to_inner, sort_nearest_neighbour, simplify_contour
+    from .geometry import join_segments, sort_outer_to_inner, sort_frez_outer_to_inner, sort_nearest_neighbour, simplify_contour
     from .toolpath import generate_toolpath
     from .gcode_writer import GCodeWriter
     from .validator import validate
@@ -58,7 +58,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
 
         # Sort order depends on layer type
         if layer_name in (LAYER_FREZ, LAYER_FREZ_135):
-            ordered = sort_outer_to_inner(contours, bbox)
+            ordered = sort_frez_outer_to_inner(contours, bbox)
         else:
             ordered = sort_nearest_neighbour(contours)
 

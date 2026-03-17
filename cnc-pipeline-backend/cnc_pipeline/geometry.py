@@ -115,6 +115,81 @@ def sort_outer_to_inner(contours: list[Contour], sheet_bbox: BBox) -> list[Conto
     ordered = sorted(contours, key=max_dist_to_centroid, reverse=True)
     return ordered
 
+def sort_frez_outer_to_inner(contours: list[Contour], stock_bbox: BBox) -> list[Contour]:
+    """
+    Sort FREZ/FREZ_135 contours from outermost (closest to sheet boundary)
+    to innermost (deepest into sheet interior).
+
+    Uses mean dist-to-boundary over all tessellated contour points.
+    This correctly handles long penetrating lines that min() would misclassify.
+
+    Travel efficiency is optimised via nearest-neighbour within a self-calibrating
+    5% score-range band. No hardcoded parameters.
+
+    Entry point is always the sheet corner nearest to the outermost contour,
+    NOT the tool's position from the previous toolpath.
+    """
+    if not contours:
+        return []
+
+    def tension_score(contour: Contour) -> float:
+        if not contour.points:
+            return 0.0
+        total = 0.0
+        for p in contour.points:
+            d = min(
+                p.x - stock_bbox.min_x,
+                stock_bbox.max_x - p.x,
+                p.y - stock_bbox.min_y,
+                stock_bbox.max_y - p.y,
+            )
+            total += d
+        return total / len(contour.points)
+
+    # Score every contour
+    scored = [(tension_score(c), c) for c in contours]
+    scored.sort(key=lambda x: x[0])
+
+    scores = [s for s, _ in scored]
+    sorted_contours = [c for _, c in scored]
+
+    # Self-calibrating band for NN travel optimisation
+    score_range = (max(scores) - min(scores)) if len(scores) > 1 else 0.0
+    band = score_range * 0.05
+
+    # Determine entry point: corner of stock bbox nearest to outermost contour
+    corners = [
+        Point(stock_bbox.min_x, stock_bbox.min_y),  # bottom-left
+        Point(stock_bbox.max_x, stock_bbox.min_y),  # bottom-right
+        Point(stock_bbox.min_x, stock_bbox.max_y),  # top-left
+        Point(stock_bbox.max_x, stock_bbox.max_y),  # top-right
+    ]
+    outermost_start = sorted_contours[0].points[0]
+    entry_point = min(corners, key=lambda corner: dist_sq(corner, outermost_start))
+
+    # NN traversal within score band — structural order preserved
+    result = []
+    remaining = list(range(len(sorted_contours)))
+    current_pos = entry_point
+
+    while remaining:
+        current_score = scores[remaining[0]]  # lowest score in remaining (structural anchor)
+
+        # Candidates: all remaining contours within band_tolerance of current structural front
+        candidates = [
+            i for i in remaining
+            if scores[i] <= current_score + band
+        ]
+
+        # Among candidates, pick nearest to current position
+        best = min(candidates, key=lambda i: dist_sq(current_pos, sorted_contours[i].points[0]))
+
+        result.append(sorted_contours[best])
+        current_pos = sorted_contours[best].points[-1]
+        remaining.remove(best)
+
+    return result
+
 def sort_nearest_neighbour(contours: list[Contour]) -> list[Contour]:
     if not contours:
         return []
