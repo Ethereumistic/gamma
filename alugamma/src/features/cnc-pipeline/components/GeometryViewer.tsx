@@ -92,7 +92,7 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
         : null
 
     return (
-        <div style={{ position: "relative", width: "100%", height: "100%" }}>
+        <div style={{ position: "relative", width: "100%", height: "100%", backgroundColor: "#000" }}>
 
             {/* ── Hover tooltip ── */}
             {hoveredSegment && (

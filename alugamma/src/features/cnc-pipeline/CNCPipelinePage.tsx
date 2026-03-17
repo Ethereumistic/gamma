@@ -54,7 +54,10 @@ export default function CNCPipelinePage() {
     setCurrentLineIndex,
     playbackSpeed,
     setPlaybackSpeed,
-  } = usePlayback(ncLines.length)
+  } = usePlayback(
+    ncLines.length, 
+    (state.status === "ready" || state.status === "done") ? state.generate.estimated_time : 30
+  )
 
   useEffect(() => {
     const el = document.getElementById("cnc-navbar-portal")
@@ -236,38 +239,36 @@ export default function CNCPipelinePage() {
         <div className="grid grid-cols-12 gap-6 h-full min-h-0">
 
           {/* LEFT COLUMN: NC Code Viewer */}
-          <div className="col-span-3 h-full min-h-0 flex flex-col gap-4">
+          <div className="col-span-3 h-full min-h-0">
             {state.status === "done" && (
-              <>
-                <div className="flex-1 min-h-0">
-                  <NCPreview
-                    ncText={state.ncText}
-                    jobId={state.jobId}
-                    currentLineIndex={currentLineIndex}
-                    onLineClick={setCurrentLineIndex}
-                  />
-                </div>
-                <PlaybackControls
-                  isPlaying={isPlaying}
-                  onTogglePlay={() => setIsPlaying(!isPlaying)}
-                  currentLine={currentLineIndex}
-                  totalLines={ncLines.length}
-                  onSeek={setCurrentLineIndex}
-                  speed={playbackSpeed}
-                  onSpeedChange={setPlaybackSpeed}
-                  layers={state.geometry.layers}
-                  visibleLayers={visible}
-                  onToggleLayer={handleLayerToggle}
-                />
-              </>
+              <NCPreview
+                ncText={state.ncText}
+                jobId={state.jobId}
+                currentLineIndex={currentLineIndex}
+                onLineClick={setCurrentLineIndex}
+              />
             )}
           </div>
 
           {/* RIGHT COLUMN: Geometry Viewer */}
           <div className="col-span-9 h-full min-h-0">
             <Card className="bg-transparent border-white/10 h-full flex flex-col shadow-none">
-              <CardHeader className="py-2.5 px-4 border-b border-white/5 flex flex-row items-center justify-between space-y-0 shrink-0">
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Geometry Preview</CardTitle>
+              <CardHeader className="py-1.5 px-4 border-b border-white/5 flex flex-row items-center gap-6 space-y-0 shrink-0">
+                <div className="flex-1">
+                  {state.status === "done" ? (
+                    <PlaybackControls
+                      isPlaying={isPlaying}
+                      onTogglePlay={() => setIsPlaying(!isPlaying)}
+                      currentLine={currentLineIndex}
+                      totalLines={ncLines.length}
+                      onSeek={setCurrentLineIndex}
+                      speed={playbackSpeed}
+                      onSpeedChange={setPlaybackSpeed}
+                    />
+                  ) : (
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Geometry Preview</span>
+                  )}
+                </div>
                 <LayerControls
                   layers={state.geometry.layers}
                   visible={visible}

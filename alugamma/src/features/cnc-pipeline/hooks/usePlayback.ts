@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-export function usePlayback(maxLines: number) {
+export function usePlayback(maxLines: number, estimatedTime: number) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1); 
@@ -16,9 +16,10 @@ export function usePlayback(maxLines: number) {
 
     const progress = time - lastUpdateRef.current;
     
-    // Adjust logic: increment line index based on speed.
-    // Let's say speed 1 = 10 lines per second.
-    const linesPerMs = (playbackSpeed * 10) / 1000;
+    // speed 1 = completes in estimatedTime seconds
+    // lines per ms = maxLines / (estimatedTime * 1000)
+    const baseLinesPerMs = maxLines / Math.max(0.1, estimatedTime * 1000);
+    const linesPerMs = baseLinesPerMs * playbackSpeed;
     const linesToAdvance = progress * linesPerMs;
 
     if (linesToAdvance >= 1) {
@@ -34,7 +35,7 @@ export function usePlayback(maxLines: number) {
     }
 
     requestRef.current = requestAnimationFrame(animate);
-  }, [maxLines, playbackSpeed]);
+  }, [maxLines, estimatedTime, playbackSpeed]);
 
   useEffect(() => {
     if (isPlaying) {
