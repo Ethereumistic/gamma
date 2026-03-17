@@ -1,18 +1,7 @@
 # cnc_pipeline/toolpath.py
-from dataclasses import dataclass
+from .models import Point, Contour, Move
 from typing import Literal
-from .geometry import Point, Contour
 from .config import TOOLS, Z_CLEARANCE, Z_APPROACH
-
-@dataclass
-class Move:
-    type: str # "rapid", "cut", "plunge", "retract"
-    x: float | None
-    y: float | None
-    z: float | None
-    feed: float | None
-    coolant_on: bool = False
-    coolant_off: bool = False
 
 def generate_toolpath(
     contours: list[Contour],

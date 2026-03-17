@@ -1,25 +1,7 @@
 # cnc_pipeline/dxf_reader.py
-from dataclasses import dataclass
+from .models import Point, Segment, BBox, Contour
 import ezdxf
 from ezdxf.path import make_path
-
-@dataclass
-class Point:
-    x: float
-    y: float
-
-@dataclass
-class Segment:
-    start: Point
-    end: Point
-    layer: str
-
-@dataclass
-class BBox:
-    min_x: float
-    min_y: float
-    max_x: float
-    max_y: float
 
 class DXFReader:
     def __init__(self, filepath: str):
@@ -33,8 +15,8 @@ class DXFReader:
             found_layers.add(e.dxf.layer)
         return found_layers
 
-    def get_entities(self, layer: str) -> list[Segment]:
-        segments = []
+    def get_contours(self, layer: str) -> list[Contour]:
+        contours = []
         chord_tolerance = 0.01
 
         for e in self.msp.query(f'*[layer=="{layer}"]'):
@@ -42,38 +24,49 @@ class DXFReader:
                 continue
             try:
                 path = make_path(e)
-                points = list(path.flattening(chord_tolerance))
-                if len(points) < 2:
+                points_raw = list(path.flattening(chord_tolerance))
+                if len(points_raw) < 2:
                     continue
-                for i in range(len(points) - 1):
-                    start = Point(points[i].x, points[i].y)
-                    end = Point(points[i+1].x, points[i+1].y)
-                    segments.append(Segment(start, end, layer))
+                
+                # Convert to our Point objects
+                points = [Point(p.x, p.y) for p in points_raw]
+                
+                # Check for closure (if start and end points are essentially identical)
+                is_closed = False
+                dist_sq = (points[0].x - points[-1].x)**2 + (points[0].y - points[-1].y)**2
+                if dist_sq <= 0.001:  # Microscopic tolerance for closure
+                    is_closed = True
+                    points.pop() # Remove the duplicate closing point 
+                    
+                contours.append(Contour(points, is_closed))
             except Exception:
                 pass
-        return segments
+        return contours
+
+
 
     def get_bounding_box(self) -> BBox:
         # 1. Try to get bounding box from SHEETS layer
-        sheets_segments = self.get_entities("SHEETS")
-        if sheets_segments:
-            min_x = min(min(s.start.x, s.end.x) for s in sheets_segments)
-            min_y = min(min(s.start.y, s.end.y) for s in sheets_segments)
-            max_x = max(max(s.start.x, s.end.x) for s in sheets_segments)
-            max_y = max(max(s.start.y, s.end.y) for s in sheets_segments)
+        sheets_contours = self.get_contours("SHEETS")
+        if sheets_contours:
+            min_x = min(min(p.x for p in c.points) for c in sheets_contours)
+            min_y = min(min(p.y for p in c.points) for c in sheets_contours)
+            max_x = max(max(p.x for p in c.points) for c in sheets_contours)
+            max_y = max(max(p.y for p in c.points) for c in sheets_contours)
             return BBox(min_x, min_y, max_x, max_y)
 
         # 2. Otherwise bbox of all geometry
-        all_segments = []
+        all_points = []
         for layer in self.layers:
-            all_segments.extend(self.get_entities(layer))
+            for contour in self.get_contours(layer):
+                all_points.extend(contour.points)
 
-        if not all_segments:
+        if not all_points:
             return BBox(0.0, 0.0, 0.0, 0.0)
 
-        min_x = min(min(s.start.x, s.end.x) for s in all_segments)
-        min_y = min(min(s.start.y, s.end.y) for s in all_segments)
-        max_x = max(max(s.start.x, s.end.x) for s in all_segments)
-        max_y = max(max(s.start.y, s.end.y) for s in all_segments)
+        min_x = min(p.x for p in all_points)
+        min_y = min(p.y for p in all_points)
+        max_x = max(p.x for p in all_points)
+        max_y = max(p.y for p in all_points)
         
         return BBox(min_x, min_y, max_x, max_y)

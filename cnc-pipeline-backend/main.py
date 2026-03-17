@@ -126,25 +126,23 @@ async def diagnose_layers(file: UploadFile = File(...)):
                 e.dxftype() for e in reader.msp.query(f'*[layer=="{layer}"]')
             ))
 
-            # Count extracted segments
-            segs = reader.get_entities(layer)
+            # Count extracted contours
+            contours = reader.get_contours(layer)
 
             sample = None
-            if segs:
-                s = segs[0]
+            if contours and contours[0].points:
+                p = contours[0].points[0]
                 sample = {
-                    "x1": round(s.start.x, 3),
-                    "y1": round(s.start.y, 3),
-                    "x2": round(s.end.x, 3),
-                    "y2": round(s.end.y, 3),
+                    "x": round(p.x, 3),
+                    "y": round(p.y, 3),
                 }
 
             report.append({
                 "layer":          layer,
                 "entity_count":   entity_count,
                 "entity_types":   entity_types,
-                "segment_count":  len(segs),
-                "sample_segment": sample,
+                "contour_count":  len(contours),
+                "sample_point":   sample,
             })
 
         return {"layers": report, "total_layers": len(report)}

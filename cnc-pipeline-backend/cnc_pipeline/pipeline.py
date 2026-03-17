@@ -24,7 +24,8 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
     """
     from .dxf_reader import DXFReader
     from .scenario import detect_scenario
-    from .geometry import join_segments, sort_outer_to_inner, sort_frez_outer_to_inner, sort_nearest_neighbour, simplify_contour
+    from .models import Point, BBox, Contour
+    from .geometry import sort_outer_to_inner, sort_frez_outer_to_inner, sort_nearest_neighbour, simplify_contour
     from .toolpath import generate_toolpath
     from .gcode_writer import GCodeWriter
     from .validator import validate
@@ -47,12 +48,11 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
     out_segments = []
 
     for layer_name, tool_num in toolpath_sequence:
-        segments = reader.get_entities(layer_name)
-        if not segments:
+        contours = reader.get_contours(layer_name)
+        if not contours:
             warnings.append(f"Layer {layer_name} has no geometry — skipping")
             continue
 
-        contours = join_segments(segments)
         contours = [simplify_contour(c) for c in contours]
         total_contours += len(contours)
 
@@ -95,15 +95,28 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
     cnc_layers = {layer_name for layer_name, _ in toolpath_sequence}
     ref_layers = [l for l in reader.layers if l not in cnc_layers]
     for ref_layer in ref_layers:
-        ref_segments = reader.get_entities(ref_layer)
-        for seg in ref_segments:
-            out_segments.append({
-                "x1": seg.start.x, "y1": seg.start.y,
-                "x2": seg.end.x,   "y2": seg.end.y,
-                "layer": ref_layer,
-                "seq_index": seq_index,
-            })
-            seq_index += 1
+        ref_contours = reader.get_contours(ref_layer)
+        for contour in ref_contours:
+            for i in range(len(contour.points) - 1):
+                p1 = contour.points[i]
+                p2 = contour.points[i+1]
+                out_segments.append({
+                    "x1": p1.x, "y1": p1.y,
+                    "x2": p2.x, "y2": p2.y,
+                    "layer": ref_layer,
+                    "seq_index": seq_index,
+                })
+                seq_index += 1
+            if contour.is_closed and len(contour.points) > 0:
+                p1 = contour.points[-1]
+                p2 = contour.points[0]
+                out_segments.append({
+                    "x1": p1.x, "y1": p1.y,
+                    "x2": p2.x, "y2": p2.y,
+                    "layer": ref_layer,
+                    "seq_index": seq_index,
+                })
+                seq_index += 1
 
     # 4. Write G-code
     stem = os.path.splitext(os.path.basename(original_filename or dxf_path))[0]

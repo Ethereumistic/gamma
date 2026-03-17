@@ -30,19 +30,24 @@ class TestDXFReader(unittest.TestCase):
         self.assertIn("HOLES", self.reader.layers)
         self.assertIn("FREZ", self.reader.layers)
 
-    def test_get_entities_line(self):
-        segments = self.reader.get_entities("CUT")
-        self.assertEqual(len(segments), 1)
-        self.assertAlmostEqual(segments[0].start.x, 0.0)
-        self.assertAlmostEqual(segments[0].end.x, 10.0)
+    def test_get_contours_line(self):
+        contours = self.reader.get_contours("CUT")
+        self.assertEqual(len(contours), 1)
+        self.assertAlmostEqual(contours[0].points[0].x, 0.0)
+        self.assertAlmostEqual(contours[0].points[-1].x, 10.0)
+        self.assertFalse(contours[0].is_closed)
 
-    def test_get_entities_polyline(self):
-        segments = self.reader.get_entities("FREZ")
-        self.assertEqual(len(segments), 2)  # Two line segments
+    def test_get_contours_polyline(self):
+        contours = self.reader.get_contours("FREZ")
+        self.assertEqual(len(contours), 1)
+        self.assertEqual(len(contours[0].points), 3)
+        self.assertFalse(contours[0].is_closed)
 
-    def test_get_entities_circle(self):
-        segments = self.reader.get_entities("HOLES")
-        self.assertGreater(len(segments), 10)  # Circle is discretized
+    def test_get_contours_circle(self):
+        contours = self.reader.get_contours("HOLES")
+        self.assertEqual(len(contours), 1)
+        self.assertTrue(contours[0].is_closed)
+        self.assertGreater(len(contours[0].points), 10)  # Circle is discretized
 
     def test_get_bounding_box(self):
         bbox = self.reader.get_bounding_box()

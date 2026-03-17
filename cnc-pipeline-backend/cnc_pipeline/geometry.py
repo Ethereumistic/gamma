@@ -1,11 +1,5 @@
 # cnc_pipeline/geometry.py
-from dataclasses import dataclass
-from .dxf_reader import Point, Segment, BBox
-
-@dataclass
-class Contour:
-    points: list[Point]
-    is_closed: bool
+from .models import Point, Segment, BBox, Contour
 
 def dist_sq(p1: Point, p2: Point) -> float:
     return (p1.x - p2.x)**2 + (p1.y - p2.y)**2
@@ -33,74 +27,6 @@ def simplify_contour(contour: Contour, tolerance: float = 0.05) -> Contour:
     simplified.append(points[-1])
     return Contour(simplified, contour.is_closed)
 
-def join_segments(segments: list[Segment], tolerance: float = 0.05) -> list[Contour]:
-    unvisited = set(range(len(segments)))
-    contours = []
-    tol_sq = tolerance**2
-    closure_tol_sq = 1.0
-    
-    while unvisited:
-        start_idx = unvisited.pop()
-        chain = [segments[start_idx].start, segments[start_idx].end]
-        
-        # Grow forward
-        while True:
-            best_idx = None
-            best_orient = None
-            
-            for idx in unvisited:
-                seg = segments[idx]
-                if dist_sq(chain[-1], seg.start) <= tol_sq:
-                    best_idx = idx
-                    best_orient = 1
-                    break
-                elif dist_sq(chain[-1], seg.end) <= tol_sq:
-                    best_idx = idx
-                    best_orient = -1
-                    break
-                    
-            if best_idx is not None:
-                unvisited.remove(best_idx)
-                if best_orient == 1:
-                    chain.append(segments[best_idx].end)
-                else:
-                    chain.append(segments[best_idx].start)
-            else:
-                break
-                
-        # Grow backward
-        while True:
-            best_idx = None
-            best_orient = None
-            
-            for idx in unvisited:
-                seg = segments[idx]
-                if dist_sq(chain[0], seg.end) <= tol_sq:
-                    best_idx = idx
-                    best_orient = 1
-                    break
-                elif dist_sq(chain[0], seg.start) <= tol_sq:
-                    best_idx = idx
-                    best_orient = -1
-                    break
-                    
-            if best_idx is not None:
-                unvisited.remove(best_idx)
-                if best_orient == 1:
-                    chain.insert(0, segments[best_idx].start)
-                else:
-                    chain.insert(0, segments[best_idx].end)
-            else:
-                break
-                
-        is_closed = False
-        if len(chain) > 2 and dist_sq(chain[0], chain[-1]) <= closure_tol_sq:
-            is_closed = True
-            chain.pop() # remove duplicate endpoint
-            
-        contours.append(Contour(chain, is_closed))
-        
-    return contours
 
 # ---------------------------------------------------------------------------
 # Module-level geometry helpers shared by multiple FREZ sorting algorithms
@@ -315,7 +241,6 @@ def sort_nearest_neighbour(contours: list[Contour]) -> list[Contour]:
     return ordered_contours
 
 
-# ---------------------------------------------------------------------------
 # FREZ Algorithm: ANCHOR  (v0.5)
 # Strategy: Vacuum anchor preservation.
 #   Priority 1 — outermost open flanges (perimeter lines, depth < threshold)
@@ -323,7 +248,7 @@ def sort_nearest_neighbour(contours: list[Contour]) -> list[Contour]:
 #   Priority 3 — internal open bridges (wall-to-wall dividers)
 #   Priority 4 — the single largest closed shape (the main vacuum anchor) — LAST
 # The threshold separating perimeter from interior is self-calibrating:
-#   50mm or 4% of the shorter sheet dimension, whichever is larger.
+#   50mm or 4% of the shorter PART dimension, whichever is larger.
 # ---------------------------------------------------------------------------
 def sort_frez_anchor(contours: list[Contour], stock_bbox: BBox) -> list[Contour]:
     """
@@ -341,12 +266,19 @@ def sort_frez_anchor(contours: list[Contour], stock_bbox: BBox) -> list[Contour]
     if not contours:
         return []
 
-    # Self-calibrating perimeter threshold
-    sheet_short = min(
-        stock_bbox.max_x - stock_bbox.min_x,
-        stock_bbox.max_y - stock_bbox.min_y,
+    # 1. FIX: Calculate the bounding box of the ACTUAL PART, not the massive sheet!
+    part_min_x = min(min(p.x for p in c.points) for c in contours)
+    part_min_y = min(min(p.y for p in c.points) for c in contours)
+    part_max_x = max(max(p.x for p in c.points) for c in contours)
+    part_max_y = max(max(p.y for p in c.points) for c in contours)
+    part_bbox = BBox(part_min_x, part_min_y, part_max_x, part_max_y)
+
+    # 2. Self-calibrating perimeter threshold based on the PART size
+    part_short = min(
+        part_max_x - part_min_x,
+        part_max_y - part_min_y,
     )
-    perimeter_threshold = max(50.0, sheet_short * 0.04)
+    perimeter_threshold = max(50.0, part_short * 0.04)
 
     # ── Classify ──────────────────────────────────────────────────────────
     outermost_open: list[Contour] = []
@@ -357,7 +289,8 @@ def sort_frez_anchor(contours: list[Contour], stock_bbox: BBox) -> list[Contour]
         if c.is_closed:
             closed_loops.append(c)
         else:
-            depth = frez_tension_score(c, stock_bbox)
+            # 3. FIX: Use part_bbox here, NOT stock_bbox!
+            depth = frez_tension_score(c, part_bbox)
             if depth < perimeter_threshold:
                 outermost_open.append(c)
             else:
@@ -370,7 +303,7 @@ def sort_frez_anchor(contours: list[Contour], stock_bbox: BBox) -> list[Contour]
         largest_closed = [closed_loops.pop(anchor_idx)]
 
     # ── Sort each group ───────────────────────────────────────────────────
-    start = Point(stock_bbox.min_x, stock_bbox.min_y)  # BL corner entry
+    start = Point(part_min_x, part_min_y)  # BL corner of the PART
 
     # P1: perimeter flanges — NN from BL corner
     p1 = nn_sort_contours(outermost_open, start)

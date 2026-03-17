@@ -1,7 +1,7 @@
 # cnc_pipeline/validator.py
 from dataclasses import dataclass, field
 import re
-from .dxf_reader import BBox
+from .models import BBox
 
 @dataclass
 class ValidationResult:

@@ -2,8 +2,7 @@
 from dataclasses import dataclass
 import math
 from .config import TOOLS, STOCK_EXPANSION, LINE_NUM_START, LINE_NUM_INCREMENT, LINE_NUM_GAP
-from .dxf_reader import BBox
-from .toolpath import Move
+from .models import BBox, Move
 
 def fmt_coord(value: float) -> str:
     rounded = round(value, 3)

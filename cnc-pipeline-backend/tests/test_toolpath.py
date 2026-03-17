@@ -1,12 +1,11 @@
 # tests/test_toolpath.py
 import unittest
-from cnc_pipeline.dxf_reader import Point
-from cnc_pipeline.geometry import Contour
-from cnc_pipeline.toolpath import generate_toolpath, Move
+from cnc_pipeline.models import Point, Contour, Move
+from cnc_pipeline.toolpath import generate_toolpath
 
 class TestToolpath(unittest.TestCase):
     def test_single_contour(self):
-        c1 = Contour([Point(0,0), Point(10,0), Point(10,10), Point(0,10), Point(0,0)], is_closed=True)
+        c1 = Contour([Point(0,0), Point(10,0), Point(10,10), Point(0,10)], is_closed=True)
         
         # Tool 9, layer "FREZ"
         moves = generate_toolpath([c1], 9, "FREZ")
