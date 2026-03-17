@@ -15,7 +15,7 @@ app.add_middleware(
         "http://localhost:4173",   # Vite preview
         "https://cnc.alubeta.com", # CNC pipeline backend
         "https://alubeta.com",     #Frontend
-        "https://gamma-iota-five.vercel.app/", #Frontend Vercel
+        "https://gamma-iota-five.vercel.app", #Frontend Vercel
     ],
     allow_methods=["*"],
     allow_headers=["*"],
