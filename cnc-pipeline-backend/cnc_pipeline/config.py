@@ -35,7 +35,7 @@ TOOLS: dict[int, dict] = {
         "diameter":     13.0,
         "tip_radius":   0.0,
         "taper_angle":  47.5,
-        "taper_height": 5.0,
+        "taper_height": 3.15,
         "gauge_length": 50.0,   # confirmed from NC file comment block
         "flutes":       4,
         "spindle_rpm":  13000,
@@ -52,7 +52,7 @@ TOOLS: dict[int, dict] = {
         "diameter":     13.0,
         "tip_radius":   0.0,
         "taper_angle":  47.5,
-        "taper_height": 5.0,
+        "taper_height": 3.15,
         "gauge_length": 50.0,   # assumed same as T9 — verify with tool database
         "flutes":       4,
         "spindle_rpm":  13000,

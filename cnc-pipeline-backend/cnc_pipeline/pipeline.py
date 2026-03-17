@@ -24,7 +24,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
     """
     from .dxf_reader import DXFReader
     from .scenario import detect_scenario
-    from .geometry import join_segments, sort_outer_to_inner, sort_nearest_neighbour
+    from .geometry import join_segments, sort_outer_to_inner, sort_nearest_neighbour, simplify_contour
     from .toolpath import generate_toolpath
     from .gcode_writer import GCodeWriter
     from .validator import validate
@@ -53,6 +53,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
             continue
 
         contours = join_segments(segments)
+        contours = [simplify_contour(c) for c in contours]
         total_contours += len(contours)
 
         # Sort order depends on layer type
@@ -72,12 +73,37 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
                     "seq_index": seq_index
                 })
                 seq_index += 1
+            if contour.is_closed and len(contour.points) > 0:
+                p1 = contour.points[-1]
+                p2 = contour.points[0]
+                out_segments.append({
+                    "x1": p1.x, "y1": p1.y,
+                    "x2": p2.x, "y2": p2.y,
+                    "layer": layer_name,
+                    "seq_index": seq_index
+                })
+                seq_index += 1
 
         moves = generate_toolpath(ordered, tool_num, layer_name)
         toolpath_blocks.append((tool_num, layer_name, moves))
 
     if not toolpath_blocks:
         raise ValueError("No toolpath blocks generated — check DXF layer names")
+
+    # 3b. Append reference-only layers (SHEETS, "0", etc.) to geometry for
+    #     frontend visualisation ONLY — never touches toolpath_blocks or NC output.
+    cnc_layers = {layer_name for layer_name, _ in toolpath_sequence}
+    ref_layers = [l for l in reader.layers if l not in cnc_layers]
+    for ref_layer in ref_layers:
+        ref_segments = reader.get_entities(ref_layer)
+        for seg in ref_segments:
+            out_segments.append({
+                "x1": seg.start.x, "y1": seg.start.y,
+                "x2": seg.end.x,   "y2": seg.end.y,
+                "layer": ref_layer,
+                "seq_index": seq_index,
+            })
+            seq_index += 1
 
     # 4. Write G-code
     stem = os.path.splitext(os.path.basename(original_filename or dxf_path))[0]

@@ -1,109 +1,248 @@
 // src/features/cnc-pipeline/components/GeometryViewer.tsx
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
+import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch"
 import type { GeometryResponse } from "../types"
 import { LAYER_COLORS } from "./LayerControls"
 
 interface Props {
-  geometry:   GeometryResponse
-  visible:    Record<string, boolean>
+    geometry: GeometryResponse
+    visible: Record<string, boolean>
 }
 
-export function GeometryViewer({ geometry, visible }: Props) {
-  const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
+// Layers that participate in CNC toolpath generation.
+// All others are rendered as reference-only (dimmed) when toggled on.
+const CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
 
-  const { segments, bbox } = geometry
-  const { min_x, min_y, max_x, max_y } = bbox
-
-  const viewW = max_x - min_x
-  const viewH = max_y - min_y
-
-  // Padding around the geometry inside the SVG
-  const PAD = viewW * 0.03
-
-  const viewBox = `${min_x - PAD} ${min_y - PAD} ${viewW + PAD * 2} ${viewH + PAD * 2}`
-
-  const visibleSegments = useMemo(
-    () => segments.filter((s) => visible[s.layer] !== false),
-    [segments, visible]
-  )
-
-  const hoveredSegment = hoveredSeq !== null
-    ? segments.find((s) => s.seq_index === hoveredSeq)
-    : null
-
-  const nextSeq = hoveredSeq !== null ? hoveredSeq + 1 : null
-  const nextSegment = nextSeq !== null
-    ? segments.find((s) => s.seq_index === nextSeq)
-    : null
-
-  return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {/* Hover tooltip */}
-      {hoveredSegment && (
+// ─── Inner controls component (must live inside TransformWrapper) ─────────────
+function ZoomControls() {
+    const { zoomIn, zoomOut, resetTransform } = useControls()
+    const btnStyle: React.CSSProperties = {
+        background: "rgba(255,255,255,0.07)",
+        border: "1px solid rgba(255,255,255,0.15)",
+        color: "#e2e8f0",
+        width: 32,
+        height: 32,
+        borderRadius: 6,
+        cursor: "pointer",
+        fontSize: 16,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "background 0.15s",
+        fontFamily: "monospace",
+    }
+    return (
         <div
-          style={{
-            position: "absolute",
-            top: 8,
-            left: 8,
-            background: "rgba(0,0,0,0.8)",
-            color: "white",
-            padding: "4px 8px",
-            borderRadius: 4,
-            fontSize: 12,
-            pointerEvents: "none",
-            zIndex: 10,
-            border: "1px solid rgba(255,255,255,0.1)"
-          }}
+            style={{
+                position: "absolute",
+                bottom: 12,
+                right: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                zIndex: 20,
+            }}
         >
-          <div>Segment #{hoveredSeq! + 1} — layer: {hoveredSegment.layer}</div>
-          {nextSegment && <div>Next: #{nextSeq! + 1} — layer: {nextSegment.layer}</div>}
-          {!nextSegment && nextSeq !== null && <div>Next: end of program</div>}
-        </div>
-      )}
-
-      <svg
-        viewBox={viewBox}
-        style={{ width: "100%", height: "100%", display: "block", backgroundColor: "rgba(0,0,0,0.2)", borderRadius: "6px" }}
-      >
-        <g transform={`scale(1,-1) translate(0,${-(min_y + max_y)})`}>
-          {visibleSegments.map((seg) => {
-            const isHovered  = seg.seq_index === hoveredSeq
-            const isNext     = seg.seq_index === nextSeq
-            const color      = LAYER_COLORS[seg.layer] ?? "#ffffff"
-
-            return (
-              <line
-                key={seg.seq_index}
-                x1={seg.x1}
-                y1={seg.y1}
-                x2={seg.x2}
-                y2={seg.y2}
-                stroke={isHovered ? "#ffffff" : isNext ? "#facc15" : color}
-                strokeWidth={isHovered || isNext ? viewW * 0.005 : viewW * 0.002}
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHoveredSeq(seg.seq_index)}
-                onMouseLeave={() => setHoveredSeq(null)}
-              />
-            )
-          })}
-
-          {/* Sequence number label on hovered segment midpoint */}
-          {hoveredSegment && (
-            <text
-              x={(hoveredSegment.x1 + hoveredSegment.x2) / 2}
-              y={(hoveredSegment.y1 + hoveredSegment.y2) / 2}
-              fontSize={viewW * 0.012}
-              fill="white"
-              textAnchor="middle"
-              // flip the text back upright since we flipped the group
-              transform={`scale(1,-1) translate(0,${-(hoveredSegment.y1 + hoveredSegment.y2)})`}
+            <button style={btnStyle} onClick={() => zoomIn()} title="Zoom in">＋</button>
+            <button style={btnStyle} onClick={() => zoomOut()} title="Zoom out">－</button>
+            <button
+                style={{ ...btnStyle, fontSize: 13, letterSpacing: "-0.5px" }}
+                onClick={() => resetTransform()}
+                title="Reset / center view"
             >
-              #{hoveredSeq! + 1}
-            </text>
-          )}
-        </g>
-      </svg>
-    </div>
-  )
+                ⊙
+            </button>
+        </div>
+    )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+export function GeometryViewer({ geometry, visible }: Props) {
+    const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
+
+    const { segments, bbox } = geometry
+    const { min_x, min_y, max_x, max_y } = bbox
+
+    const viewW = max_x - min_x
+    const viewH = max_y - min_y
+    const PAD = viewW * 0.03
+
+    const viewBox = `${min_x - PAD} ${min_y - PAD} ${viewW + PAD * 2} ${viewH + PAD * 2}`
+
+    const visibleSegments = useMemo(
+        () => segments.filter((s) => (visible[s.layer] ?? true) !== false),
+        [segments, visible]
+    )
+
+    const hoveredSegment = hoveredSeq !== null
+        ? segments.find((s) => s.seq_index === hoveredSeq)
+        : null
+
+    const nextSeq = hoveredSeq !== null ? hoveredSeq + 1 : null
+    const nextSegment = nextSeq !== null
+        ? segments.find((s) => s.seq_index === nextSeq)
+        : null
+
+    return (
+        <div style={{ position: "relative", width: "100%", height: "100%" }}>
+
+            {/* ── Hover tooltip ── */}
+            {hoveredSegment && (
+                <div
+                    style={{
+                        position: "absolute",
+                        top: 8,
+                        left: 8,
+                        background: "rgba(0,0,0,0.85)",
+                        color: "white",
+                        padding: "5px 10px",
+                        borderRadius: 5,
+                        fontSize: 12,
+                        pointerEvents: "none",
+                        zIndex: 30,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        lineHeight: 1.6,
+                    }}
+                >
+                    <div>
+                        Segment #{hoveredSeq! + 1}
+                        {" — "}
+                        <span style={{ color: LAYER_COLORS[hoveredSegment.layer] ?? "#fff" }}>
+                            {hoveredSegment.layer}
+                        </span>
+                        {!CNC_LAYERS.has(hoveredSegment.layer) && (
+                            <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 11 }}>(ref only)</span>
+                        )}
+                    </div>
+                    {nextSegment && (
+                        <div style={{ color: "#94a3b8" }}>
+                            Next: #{nextSeq! + 1} —{" "}
+                            <span style={{ color: LAYER_COLORS[nextSegment.layer] ?? "#fff" }}>
+                                {nextSegment.layer}
+                            </span>
+                        </div>
+                    )}
+                    {!nextSegment && nextSeq !== null && (
+                        <div style={{ color: "#94a3b8" }}>Next: end of program</div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Zoom / pan wrapper ── */}
+            <TransformWrapper
+                initialScale={1}
+                minScale={0.1}
+                maxScale={40}
+                doubleClick={{ disabled: false }}
+                wheel={{ step: 0.08 }}
+                panning={{ velocityDisabled: true }}
+            >
+                {/* ZoomControls must be inside TransformWrapper to access context */}
+                <>
+                    <TransformComponent
+                        wrapperStyle={{ width: "100%", height: "100%" }}
+                        contentStyle={{ width: "100%", height: "100%" }}
+                    >
+                        <svg
+                            viewBox={viewBox}
+                            style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "block",
+                                backgroundColor: "rgba(0,0,0,0.2)",
+                                borderRadius: "6px",
+                            }}
+                        >
+                            <g transform={`scale(1,-1) translate(0,${-(min_y + max_y)})`}>
+
+                                {visibleSegments.map((seg) => {
+                                    const isHovered = seg.seq_index === hoveredSeq
+                                    const isNext = seg.seq_index === nextSeq
+                                    const isCncLayer = CNC_LAYERS.has(seg.layer)
+                                    const baseColor = LAYER_COLORS[seg.layer] ?? "#ffffff"
+
+                                    // Non-CNC layers: dimmed and dashed so they're clearly reference-only
+                                    const strokeColor = isHovered
+                                        ? "#ffffff"
+                                        : isNext
+                                            ? "#facc15"
+                                            : isCncLayer
+                                                ? baseColor
+                                                : baseColor + "55"   // 33% opacity hex suffix
+
+                                    const strokeW = isHovered || isNext
+                                        ? viewW * 0.005
+                                        : isCncLayer
+                                            ? viewW * 0.002
+                                            : viewW * 0.0015
+
+                                    return (
+                                        <line
+                                            key={seg.seq_index}
+                                            x1={seg.x1}
+                                            y1={seg.y1}
+                                            x2={seg.x2}
+                                            y2={seg.y2}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeW}
+                                            strokeDasharray={!isCncLayer && !isHovered ? `${viewW * 0.008} ${viewW * 0.005}` : undefined}
+                                            style={{ cursor: "pointer" }}
+                                            onMouseEnter={() => setHoveredSeq(seg.seq_index)}
+                                            onMouseLeave={() => setHoveredSeq(null)}
+                                        />
+                                    )
+                                })}
+
+                                {/* Sequence label on hovered segment midpoint */}
+                                {hoveredSegment && (
+                                    <text
+                                        x={(hoveredSegment.x1 + hoveredSegment.x2) / 2}
+                                        y={(hoveredSegment.y1 + hoveredSegment.y2) / 2}
+                                        fontSize={viewW * 0.012}
+                                        fill="white"
+                                        textAnchor="middle"
+                                        transform={`scale(1,-1) translate(0,${-(hoveredSegment.y1 + hoveredSegment.y2)})`}
+                                    >
+                                        #{hoveredSeq! + 1}
+                                    </text>
+                                )}
+                            </g>
+                        </svg>
+                    </TransformComponent>
+
+                    <ZoomControls />
+                </>
+            </TransformWrapper>
+
+            {/* ── Legend: reference-only indicator ── */}
+            <div
+                style={{
+                    position: "absolute",
+                    bottom: 12,
+                    left: 12,
+                    fontSize: 11,
+                    color: "#64748b",
+                    pointerEvents: "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 3,
+                    zIndex: 20,
+                }}
+            >
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <svg width="20" height="2">
+                        <line x1="0" y1="1" x2="20" y2="1" stroke="#ffffff" strokeWidth="1.5" />
+                    </svg>
+                    <span style={{ color: "#94a3b8" }}>CNC active</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <svg width="20" height="2">
+                        <line x1="0" y1="1" x2="20" y2="1" stroke="#ffffff55" strokeWidth="1.5" strokeDasharray="4 3" />
+                    </svg>
+                    <span>Reference only</span>
+                </div>
+            </div>
+        </div>
+    )
 }

@@ -10,10 +10,34 @@ class Contour:
 def dist_sq(p1: Point, p2: Point) -> float:
     return (p1.x - p2.x)**2 + (p1.y - p2.y)**2
 
+def is_collinear(p1: Point, p2: Point, p3: Point, tol: float = 0.01) -> bool:
+    v1_x = p3.x - p1.x
+    v1_y = p3.y - p1.y
+    length_sq = v1_x**2 + v1_y**2
+    if length_sq < 1e-9:
+        return dist_sq(p1, p2) <= tol**2
+        
+    cross = abs((p3.x - p1.x)*(p1.y - p2.y) - (p1.x - p2.x)*(p3.y - p1.y))
+    return cross / (length_sq**0.5) <= tol
+
+def simplify_contour(contour: Contour, tolerance: float = 0.05) -> Contour:
+    points = contour.points
+    if len(points) <= 2:
+        return contour
+        
+    simplified = [points[0]]
+    for i in range(1, len(points) - 1):
+        if not is_collinear(simplified[-1], points[i], points[i+1], tolerance):
+            simplified.append(points[i])
+            
+    simplified.append(points[-1])
+    return Contour(simplified, contour.is_closed)
+
 def join_segments(segments: list[Segment], tolerance: float = 0.05) -> list[Contour]:
     unvisited = set(range(len(segments)))
     contours = []
     tol_sq = tolerance**2
+    closure_tol_sq = 1.0
     
     while unvisited:
         start_idx = unvisited.pop()
@@ -70,7 +94,7 @@ def join_segments(segments: list[Segment], tolerance: float = 0.05) -> list[Cont
                 break
                 
         is_closed = False
-        if len(chain) > 2 and dist_sq(chain[0], chain[-1]) <= tol_sq:
+        if len(chain) > 2 and dist_sq(chain[0], chain[-1]) <= closure_tol_sq:
             is_closed = True
             chain.pop() # remove duplicate endpoint
             

@@ -88,3 +88,62 @@ def download(job_id: str):
         media_type="application/octet-stream",
         filename=result.output_filename,
     )
+
+
+@app.post("/api/diagnose-layers")
+async def diagnose_layers(file: UploadFile = File(...)):
+    """
+    Debug endpoint — upload a DXF and get a full report of every layer:
+    how many DXF entities are on it, how many segments get extracted,
+    and a sample of the first coordinate. Use this to verify reference
+    layers (SHEETS, 0) are actually present and readable in the file.
+    """
+    if not file.filename.lower().endswith(".dxf"):
+        raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
+
+    contents = await file.read()
+    tmp = tempfile.NamedTemporaryFile(suffix=".dxf", delete=False, mode="wb")
+    tmp.write(contents)
+    tmp.close()
+
+    try:
+        from cnc_pipeline.dxf_reader import DXFReader
+        import ezdxf
+
+        reader = DXFReader(tmp.name)
+        report = []
+
+        for layer in sorted(reader.layers):
+            # Count raw DXF entities on this layer
+            entity_count = sum(
+                1 for e in reader.msp.query(f'*[layer=="{layer}"]')
+            )
+            entity_types = list(set(
+                e.dxftype() for e in reader.msp.query(f'*[layer=="{layer}"]')
+            ))
+
+            # Count extracted segments
+            segs = reader.get_entities(layer)
+
+            sample = None
+            if segs:
+                s = segs[0]
+                sample = {
+                    "x1": round(s.start.x, 3),
+                    "y1": round(s.start.y, 3),
+                    "x2": round(s.end.x, 3),
+                    "y2": round(s.end.y, 3),
+                }
+
+            report.append({
+                "layer":          layer,
+                "entity_count":   entity_count,
+                "entity_types":   entity_types,
+                "segment_count":  len(segs),
+                "sample_segment": sample,
+            })
+
+        return {"layers": report, "total_layers": len(report)}
+
+    finally:
+        os.unlink(tmp.name)

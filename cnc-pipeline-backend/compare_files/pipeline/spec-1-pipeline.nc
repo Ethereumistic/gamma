@@ -1,0 +1,130 @@
+N40T9M6
+N50G54G90
+N60( Toolpath Name: 1)
+N70( Output:)
+N80( Units: MM)
+N90( Tool Coordinates: Tip)
+N100( Tool Number: 9)
+N110( Tool Id: trapec_105)
+N120( Coolant: Standard)
+N130( Gauge Length: 50,0)
+N140( Block:)
+N150( MIN X: -9,000)
+N160( MIN Y: -9,000)
+N170( MIN Z: -9,000)
+N180( MAX X: 1259,000)
+N190( MAX Y: 3209,000)
+N200( MAX Z: 9,000)
+N210( COORDINATE SYSTEM: Named Workplane)
+N220( Datum - Tool Tip:)
+N230(   X: 541,000)
+N240(   Y: 58,000)
+N250(   Z: 10,000)
+N260( Number of Flutes: 4)
+N270( Tool:   Tapered Tipped)
+N280( DIAMETER: 13,000)
+N290( TIP RADIUS: 0,000)
+N300( TAPER ANGLE: 47,500)
+N310( TAPER HEIGHT: 5,000)
+N320( Safety:)
+N330( Tool Cutting Moves: Gouges Not Checked)
+N340( Tool Leads: Safe No Gouges)
+N350( Tool Links: Gouges Not Checked)
+N360( Holder Cutting Moves: Collisions Not Checked)
+N370( Holder Leads: Collisions Not Checked)
+N380( Holder Links: Collisions Not Checked)
+N390( Toolpath: Curve Profile Machining)
+N400( STEPOVER: 5,000)
+N410( TOLERANCE:0,100)
+N420( THICKNESS:1,000)
+N430( Toolpath Stats:)
+N440( LENGTH: 7667,073)
+N450( TIME: 0/01/23)
+N460( LIFTS: 4)
+N470G43G0X541.Y58.Z5.S13000H9M3
+N490G1Z-3.M8F550
+N500X38.F5500
+N510G0Z10.
+N520X137.Y38.
+N530Z5.
+N540G1Z-3.F550
+N550Y1817.F5500
+N560G0Z10.
+N570X554.Y78.
+N580Z5.
+N590G1Z-3.F550
+N600Y1817.F5500
+N610G0Z10.
+N620X850.Y1797.
+N630Z5.
+N640G1Z-3.F550
+N650X38.F5500
+N660G0Z10.
+N670X137.Y1801.243M9
+N720T7M6
+N730G54G90
+N740( Toolpath Name: 2)
+N750( Output:)
+N760( Units: MM)
+N770( Tool Coordinates: Tip)
+N780( Tool Number: 7)
+N790( Tool Id: prav)
+N800( Coolant: Standard)
+N810( Gauge Length: 25,0)
+N820( Block:)
+N830( MIN X: -9,000)
+N840( MIN Y: -9,000)
+N850( MIN Z: -9,000)
+N860( MAX X: 1259,000)
+N870( MAX Y: 3209,000)
+N880( MAX Z: 9,000)
+N890( COORDINATE SYSTEM: Named Workplane)
+N900( Datum - Tool Tip:)
+N910(   X: 137,000)
+N920(   Y: 1801,243)
+N930(   Z: 10,000)
+N940( Number of Flutes: 1)
+N950( Tool:   End Mill)
+N960( DIAMETER: 6,000)
+N970( Safety:)
+N980( Tool Cutting Moves: Gouges Not Checked)
+N990( Tool Leads: Safe No Gouges)
+N1000( Tool Links: Gouges Not Checked)
+N1010( Holder Cutting Moves: Collisions Not Checked)
+N1020( Holder Leads: Collisions Not Checked)
+N1030( Holder Links: Collisions Not Checked)
+N1040( Toolpath: Curve Profile Machining)
+N1050( STEPOVER: 5,000)
+N1060( TOLERANCE:0,100)
+N1070( THICKNESS:1,000)
+N1080( Toolpath Stats:)
+N1090( LENGTH: 5234,396)
+N1100( TIME: 0/00/57)
+N1110( LIFTS: 1)
+N1120G43G0X137.Y1801.243Z5.S24000H7M3
+N1140G1Z-4.1M8F550
+N1150X155.757Y1820.F5500
+N1160X345.5
+N1170X535.243
+N1180X554.Y1801.243
+N1190X572.757Y1820.
+N1200X853.
+N1210Y90.148
+N1220X554.076Y75.
+N1230X544.
+N1240Y58.
+N1250Y43.757
+N1260X535.243Y35.
+N1270X345.5
+N1280X155.757
+N1290X137.Y53.757
+N1300X118.243Y35.
+N1310X35.
+N1320Y1820.
+N1330X118.243
+N1340G0Z10.
+N1350M9
+N1360G91G28Z0
+N1370G49H0
+N1380G28X0Y0
+N1390M30

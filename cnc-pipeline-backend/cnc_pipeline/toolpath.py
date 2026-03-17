@@ -45,6 +45,9 @@ def generate_toolpath(
         for pt in contour.points[1:]:
             moves.append(Move("cut", x=pt.x, y=pt.y, z=None, feed=cut_feed))
 
+        if contour.is_closed:
+            moves.append(Move("cut", x=start_pt.x, y=start_pt.y, z=None, feed=cut_feed))
+
         moves.append(Move("retract", x=None, y=None, z=Z_CLEARANCE, feed=None))
 
     return moves
