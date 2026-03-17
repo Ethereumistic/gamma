@@ -28,6 +28,63 @@ def simplify_contour(contour: Contour, tolerance: float = 0.05) -> Contour:
     return Contour(simplified, contour.is_closed)
 
 
+def contour_bbox(c: Contour) -> BBox:
+    if not c.points:
+        return BBox(0, 0, 0, 0)
+    return BBox(
+        min(p.x for p in c.points),
+        min(p.y for p in c.points),
+        max(p.x for p in c.points),
+        max(p.y for p in c.points)
+    )
+
+def bbox_contains(parent: BBox, child: BBox, tol: float = 2.0) -> bool:
+    """Returns True if the child bbox is completely inside the parent bbox."""
+    return (parent.min_x - tol <= child.min_x and
+            parent.max_x + tol >= child.max_x and
+            parent.min_y - tol <= child.min_y and
+            parent.max_y + tol >= child.max_y)
+
+def optimize_closed_start_and_direction(c: Contour, start_pos: Point) -> Contour:
+    """
+    Forces a closed contour into Clockwise (CW) direction and rotates its 
+    points to start at the point closest to start_pos.
+    """
+    if not c.points or len(c.points) < 3:
+        return c
+
+    # 1. Ensure CW direction
+    # Shoelace formula: sum( (x2-x1)*(y2+y1) ). Positive = CCW, Negative = CW.
+    # We must wrap around to the first point to close the area calculation properly.
+    area_sum = 0.0
+    n = len(c.points)
+    for i in range(n):
+        p1 = c.points[i]
+        p2 = c.points[(i + 1) % n]
+        area_sum += (p2.x - p1.x) * (p2.y + p1.y)
+    
+    points = list(c.points)
+    if area_sum > 0:
+        points.reverse()
+    
+    # 2. Rotate to start at closest point
+    # Since dxf_reader.py removes the duplicate closing point, 
+    # 'points' contains exactly the unique corners. Do NOT slice it.
+    best_idx = 0
+    min_d = dist_sq(start_pos, points[0])
+    
+    for i in range(1, len(points)):
+        d = dist_sq(start_pos, points[i])
+        if d < min_d:
+            min_d = d
+            best_idx = i
+            
+    # Rotate the array so the closest point is first
+    rotated = points[best_idx:] + points[:best_idx]
+    
+    # Return cleanly. Do NOT append rotated[0] here. 
+    # toolpath.py automatically adds the closing cut for is_closed==True.
+    return Contour(rotated, True)
 # ---------------------------------------------------------------------------
 # Module-level geometry helpers shared by multiple FREZ sorting algorithms
 # ---------------------------------------------------------------------------
@@ -251,88 +308,100 @@ def sort_nearest_neighbour(contours: list[Contour]) -> list[Contour]:
 #   50mm or 4% of the shorter PART dimension, whichever is larger.
 # ---------------------------------------------------------------------------
 def sort_frez_anchor(contours: list[Contour], stock_bbox: BBox) -> list[Contour]:
-    """
-    Anchor: vacuum-anchor-preservation algorithm (v0.5).
-
-    Cuts in this priority order:
-      1. Perimeter flanges (open, low max-depth) — preserve sheet rigidity first.
-      2. Small closed cutouts ascending by area — score inside-out per group.
-      3. Internal open bridge lines — relieve interior tension next.
-      4. Largest single closed shape (main vacuum anchor) — absolutely last.
-
-    All groups use nearest-neighbour travel optimisation.
-    Bidirectional handshake applied to the final merged sequence.
-    """
     if not contours:
         return []
 
-    # 1. FIX: Calculate the bounding box of the ACTUAL PART, not the massive sheet!
     part_min_x = min(min(p.x for p in c.points) for c in contours)
     part_min_y = min(min(p.y for p in c.points) for c in contours)
     part_max_x = max(max(p.x for p in c.points) for c in contours)
     part_max_y = max(max(p.y for p in c.points) for c in contours)
     part_bbox = BBox(part_min_x, part_min_y, part_max_x, part_max_y)
 
-    # 2. Self-calibrating perimeter threshold based on the PART size
-    part_short = min(
-        part_max_x - part_min_x,
-        part_max_y - part_min_y,
-    )
+    part_short = min(part_max_x - part_min_x, part_max_y - part_min_y)
     perimeter_threshold = max(50.0, part_short * 0.04)
 
     # ── Classify ──────────────────────────────────────────────────────────
-    outermost_open: list[Contour] = []
-    internal_open:  list[Contour] = []
-    closed_loops:   list[Contour] = []
+    outermost_flanges: list[Contour] = []
+    internal_candidates: list[Contour] = []
 
+    # 1. Separate flanges from everything internal
     for c in contours:
-        if c.is_closed:
-            closed_loops.append(c)
+        if not c.is_closed and frez_tension_score(c, part_bbox) < perimeter_threshold:
+            outermost_flanges.append(c)
         else:
-            # 3. FIX: Use part_bbox here, NOT stock_bbox!
-            depth = frez_tension_score(c, part_bbox)
-            if depth < perimeter_threshold:
-                outermost_open.append(c)
-            else:
-                internal_open.append(c)
+            internal_candidates.append(c)
 
-    # ── Priority 4 pre-calc: identify and pop the largest vacuum anchor ───
-    largest_closed: list[Contour] = []
-    if closed_loops:
-        anchor_idx = max(range(len(closed_loops)), key=lambda i: contour_bbox_area(closed_loops[i]))
-        largest_closed = [closed_loops.pop(anchor_idx)]
+    # 2. Separate Major Shapes (Rectangles/Brackets) from Inner Lines
+    major_shapes: list[Contour] = []
+    inner_lines: list[Contour] = []
+    
+    # Pre-calculate bounding boxes for efficiency
+    candidate_bboxes = [contour_bbox(c) for c in internal_candidates]
 
-    # ── Sort each group ───────────────────────────────────────────────────
-    start = Point(part_min_x, part_min_y)  # BL corner of the PART
+    for i, c in enumerate(internal_candidates):
+        child_bbox = candidate_bboxes[i]
+        is_child = False
+        
+        # Check if this contour is inside any OTHER internal contour
+        for j, potential_parent in enumerate(internal_candidates):
+            if i == j:
+                continue
+            parent_bbox = candidate_bboxes[j]
+            
+            # If our bbox is fully inside another bbox, we are an inner line
+            if bbox_contains(parent_bbox, child_bbox):
+                is_child = True
+                break
+                
+        if is_child:
+            inner_lines.append(c)
+        else:
+            major_shapes.append(c)
 
-    # P1: perimeter flanges — NN from BL corner
-    p1 = nn_sort_contours(outermost_open, start)
-    cur = p1[-1].points[-1] if p1 else start
-
-    # P2: remaining closed loops, smallest first, then NN within each size tier
-    closed_loops.sort(key=contour_bbox_area)
-    p2 = nn_sort_contours(closed_loops, cur)
-    cur = p2[-1].points[-1] if p2 else cur
-
-    # P3: internal open bridges — NN from current position
-    p3 = nn_sort_contours(internal_open, cur)
-    cur = p3[-1].points[-1] if p3 else cur
-
-    # P4: largest anchor — always appended last, no NN needed
-    p4 = largest_closed
-
-    # ── Merge and apply bidirectional handshake ────────────────────────────
-    merged = p1 + p2 + p3 + p4
-    result: list[Contour] = []
+    # ── Sort Sequence ─────────────────────────────────────────────────────
+    start = Point(part_min_x, part_min_y)
     current_pos = start
+    result: list[Contour] = []
 
-    for c in merged:
-        d_fwd = dist_sq(current_pos, c.points[0])
-        d_rev = dist_sq(current_pos, c.points[-1])
-        if d_rev < d_fwd:
-            c = Contour(list(reversed(c.points)), c.is_closed)
-        result.append(c)
-        current_pos = c.points[-1]
+    # Priority 1: Perimeter Flanges
+    if outermost_flanges:
+        p1 = nn_sort_contours(outermost_flanges, current_pos)
+        for c in p1:
+            d_fwd = dist_sq(current_pos, c.points[0])
+            d_rev = dist_sq(current_pos, c.points[-1])
+            if d_rev < d_fwd:
+                c = Contour(list(reversed(c.points)), False)
+            result.append(c)
+            current_pos = c.points[-1]
+
+    # Priority 2: Major Internal Shapes (Rectangles AND Brackets)
+    if major_shapes:
+        p2 = nn_sort_contours(major_shapes, current_pos)
+        for c in p2:
+            if c.is_closed:
+                # If it's a closed rectangle, force CW and start at closest corner
+                c_opt = optimize_closed_start_and_direction(c, current_pos)
+                result.append(c_opt)
+                current_pos = c_opt.points[0]
+            else:
+                # If it's an open bracket, just flip it to start at the closest end
+                d_fwd = dist_sq(current_pos, c.points[0])
+                d_rev = dist_sq(current_pos, c.points[-1])
+                if d_rev < d_fwd:
+                    c = Contour(list(reversed(c.points)), False)
+                result.append(c)
+                current_pos = c.points[-1]
+
+    # Priority 3: Inner Lines (Lines inside Rectangles/Brackets)
+    if inner_lines:
+        p3 = nn_sort_contours(inner_lines, current_pos)
+        for c in p3:
+            d_fwd = dist_sq(current_pos, c.points[0])
+            d_rev = dist_sq(current_pos, c.points[-1])
+            if d_rev < d_fwd:
+                c = Contour(list(reversed(c.points)), False)
+            result.append(c)
+            current_pos = c.points[-1]
 
     return result
 
