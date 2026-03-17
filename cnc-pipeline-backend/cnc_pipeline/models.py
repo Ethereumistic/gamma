@@ -26,10 +26,11 @@ class Contour:
 
 @dataclass
 class Move:
-    type: str # "rapid", "cut", "plunge", "retract"
+    type: str  # "rapid", "cut", "plunge", "retract"
     x: float | None
     y: float | None
     z: float | None
     feed: float | None
     coolant_on: bool = False
     coolant_off: bool = False
+    seq_index: int | None = None

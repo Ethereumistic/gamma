@@ -15,6 +15,7 @@ class PipelineResult:
     nc_text:           str           # the complete generated NC program
     output_filename:   str           # e.g. "part_name.nc"
     geometry_data:     dict          # ordered geometry segments for frontend rendering
+    line_to_segment_map: dict[int, int] = field(default_factory=dict)
 
 
 def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "raptor") -> PipelineResult:
@@ -62,6 +63,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
         else:
             ordered = sort_nearest_neighbour(contours)
 
+        start_idx = seq_index
         for contour in ordered:
             for i in range(len(contour.points) - 1):
                 p1 = contour.points[i]
@@ -84,7 +86,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
                 })
                 seq_index += 1
 
-        moves = generate_toolpath(ordered, tool_num, layer_name)
+        moves, _ = generate_toolpath(ordered, tool_num, layer_name, start_seq_index=start_idx)
         toolpath_blocks.append((tool_num, layer_name, moves))
 
     if not toolpath_blocks:
@@ -121,7 +123,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
     # 4. Write G-code
     stem = os.path.splitext(os.path.basename(original_filename or dxf_path))[0]
     writer = GCodeWriter(program_name=stem)
-    nc_text = writer.write(toolpath_blocks, bbox)
+    nc_text, line_to_segment_map = writer.write(toolpath_blocks, bbox)
 
     # 5. Validate
     validation = validate(nc_text, [t for t, _, _ in toolpath_blocks], bbox)
@@ -158,4 +160,5 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "r
         nc_text=nc_text,
         output_filename=f"{stem}-{algorithm}.nc",
         geometry_data=geometry_data,
+        line_to_segment_map=line_to_segment_map,
     )

@@ -8,6 +8,8 @@ import { LAYER_COLORS } from "./LayerControls"
 interface Props {
     geometry: GeometryResponse
     visible: Record<string, boolean>
+    currentLineIndex?: number
+    lineToSegmentMap?: Record<number, number>
 }
 
 // Layers that participate in CNC toolpath generation.
@@ -58,7 +60,7 @@ function ZoomControls() {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function GeometryViewer({ geometry, visible }: Props) {
+export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegmentMap }: Props) {
     const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
 
     const { segments, bbox } = geometry
@@ -69,6 +71,11 @@ export function GeometryViewer({ geometry, visible }: Props) {
     const PAD = viewW * 0.03
 
     const viewBox = `${min_x - PAD} ${min_y - PAD} ${viewW + PAD * 2} ${viewH + PAD * 2}`
+
+    const activeSeqIndex = useMemo(() => {
+        if (currentLineIndex === undefined || !lineToSegmentMap) return null
+        return lineToSegmentMap[currentLineIndex] ?? null
+    }, [currentLineIndex, lineToSegmentMap])
 
     const visibleSegments = useMemo(
         () => segments.filter((s) => (visible[s.layer] ?? true) !== false),
@@ -137,6 +144,7 @@ export function GeometryViewer({ geometry, visible }: Props) {
                 doubleClick={{ disabled: false }}
                 wheel={{ step: 0.08 }}
                 panning={{ velocityDisabled: true }}
+                limitToBounds={false}
             >
                 {/* ZoomControls must be inside TransformWrapper to access context */}
                 <>
@@ -150,7 +158,7 @@ export function GeometryViewer({ geometry, visible }: Props) {
                                 width: "100%",
                                 height: "100%",
                                 display: "block",
-                                backgroundColor: "rgba(0,0,0,0.2)",
+                                backgroundColor: "#000000",
                                 borderRadius: "6px",
                             }}
                         >
@@ -158,38 +166,48 @@ export function GeometryViewer({ geometry, visible }: Props) {
 
                                 {visibleSegments.map((seg) => {
                                     const isHovered = seg.seq_index === hoveredSeq
-                                    const isNext = seg.seq_index === nextSeq
+                                    const isActive = activeSeqIndex !== null && seg.seq_index === activeSeqIndex
+                                    const isPast = activeSeqIndex !== null && seg.seq_index < activeSeqIndex
                                     const isCncLayer = CNC_LAYERS.has(seg.layer)
                                     const baseColor = LAYER_COLORS[seg.layer] ?? "#ffffff"
 
-                                    // Non-CNC layers: dimmed and dashed so they're clearly reference-only
-                                    const strokeColor = isHovered
-                                        ? "#ffffff"
-                                        : isNext
-                                            ? "#facc15"
-                                            : isCncLayer
-                                                ? baseColor
-                                                : baseColor + "55"   // 33% opacity hex suffix
+                                    // 1. Determine Stroke Color
+                                    let strokeColor = baseColor
+                                    if (isHovered) {
+                                        strokeColor = "#ffffff"
+                                    } else if (isActive) {
+                                        strokeColor = "#ffffff" // Or bright yellow/green
+                                    } else if (!isCncLayer) {
+                                        strokeColor = baseColor + "55"
+                                    } else if (isPast) {
+                                        strokeColor = baseColor // Solid color for cut pieces
+                                    } else if (activeSeqIndex !== null) {
+                                        strokeColor = baseColor + "44" // Dimmed for future
+                                    }
 
-                                    const strokeW = isHovered || isNext
-                                        ? viewW * 0.005
-                                        : isCncLayer
-                                            ? viewW * 0.002
-                                            : viewW * 0.0015
+                                    // 2. Determine Stroke Width
+                                    let strokeW = viewW * 0.002
+                                    if (isHovered || isActive) {
+                                        strokeW = viewW * 0.008
+                                    } else if (!isCncLayer) {
+                                        strokeW = viewW * 0.0015
+                                    } else if (isPast) {
+                                        strokeW = viewW * 0.003
+                                    }
 
                                     return (
                                         <line
-                                            key={seg.seq_index}
-                                            x1={seg.x1}
-                                            y1={seg.y1}
-                                            x2={seg.x2}
-                                            y2={seg.y2}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeW}
-                                            strokeDasharray={!isCncLayer && !isHovered ? `${viewW * 0.008} ${viewW * 0.005}` : undefined}
-                                            style={{ cursor: "pointer" }}
-                                            onMouseEnter={() => setHoveredSeq(seg.seq_index)}
-                                            onMouseLeave={() => setHoveredSeq(null)}
+                                          key={seg.seq_index}
+                                          x1={seg.x1}
+                                          y1={seg.y1}
+                                          x2={seg.x2}
+                                          y2={seg.y2}
+                                          stroke={strokeColor}
+                                          strokeWidth={strokeW}
+                                          strokeDasharray={!isCncLayer && !isHovered ? `${viewW * 0.008} ${viewW * 0.005}` : undefined}
+                                          style={{ cursor: "pointer", transition: "stroke 0.1s, stroke-width 0.1s" }}
+                                          onMouseEnter={() => setHoveredSeq(seg.seq_index)}
+                                          onMouseLeave={() => setHoveredSeq(null)}
                                         />
                                     )
                                 })}
@@ -206,6 +224,17 @@ export function GeometryViewer({ geometry, visible }: Props) {
                                     >
                                         #{hoveredSeq! + 1}
                                     </text>
+                                )}
+
+                                {/* Active segment indicator (Optional: Moving dot or similar) */}
+                                {activeSeqIndex !== null && (
+                                    <circle
+                                        cx={segments.find(s => s.seq_index === activeSeqIndex)?.x2}
+                                        cy={segments.find(s => s.seq_index === activeSeqIndex)?.y2}
+                                        r={viewW * 0.008}
+                                        fill="#fbbf24"
+                                        className="animate-pulse"
+                                    />
                                 )}
                             </g>
                         </svg>

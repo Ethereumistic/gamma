@@ -6,10 +6,11 @@ from .config import TOOLS, Z_CLEARANCE, Z_APPROACH
 def generate_toolpath(
     contours: list[Contour],
     tool_num: int,
-    layer_name: str
-) -> list[Move]:
+    layer_name: str,
+    start_seq_index: int = 0
+) -> tuple[list[Move], int]:
     if not contours:
-        return []
+        return [], start_seq_index
 
     tool = TOOLS[tool_num]
     plunge_feed = tool["feed_plunge"]
@@ -17,6 +18,7 @@ def generate_toolpath(
     depth = tool["layers"][layer_name]["depth"]
 
     moves = []
+    current_seq_index = start_seq_index
 
     for i, contour in enumerate(contours):
         is_first_contour = (i == 0)
@@ -32,11 +34,13 @@ def generate_toolpath(
         moves.append(Move("plunge", x=None, y=None, z=depth, feed=plunge_feed, coolant_on=coolant_on))
 
         for pt in contour.points[1:]:
-            moves.append(Move("cut", x=pt.x, y=pt.y, z=None, feed=cut_feed))
+            moves.append(Move("cut", x=pt.x, y=pt.y, z=None, feed=cut_feed, seq_index=current_seq_index))
+            current_seq_index += 1
 
         if contour.is_closed:
-            moves.append(Move("cut", x=start_pt.x, y=start_pt.y, z=None, feed=cut_feed))
+            moves.append(Move("cut", x=start_pt.x, y=start_pt.y, z=None, feed=cut_feed, seq_index=current_seq_index))
+            current_seq_index += 1
 
         moves.append(Move("retract", x=None, y=None, z=Z_CLEARANCE, feed=None))
 
-    return moves
+    return moves, current_seq_index

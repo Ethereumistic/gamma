@@ -57,6 +57,7 @@ async def generate(file: UploadFile = File(...), algorithm: str = "raptor"):
                 "estimated_time":  result.estimated_time_seconds,
                 "warnings":        result.warnings,
                 "algorithm":       algorithm,
+                "line_to_segment_map": result.line_to_segment_map,
             },
             "geometry": result.geometry_data
         }

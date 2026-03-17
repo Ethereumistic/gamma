@@ -41,9 +41,10 @@ class GCodeWriter:
         self.program_name = program_name
         self.total_path_length = 0.0
 
-    def write(self, toolpath_blocks: list[tuple[int, str, list[Move]]], bbox: BBox) -> str:
+    def write(self, toolpath_blocks: list[tuple[int, str, list[Move]]], bbox: BBox) -> tuple[str, dict[int, int]]:
         counter = LineCounter()
         lines = []
+        line_to_segment_map = {}
         
         # We need to maintain state across all blocks since first rapid uses previous toolpath's last position
         machine_x = None
@@ -191,7 +192,10 @@ class GCodeWriter:
                 line_str = "".join(parts)
                 
                 if len(parts) > 1: # don't emit line if NO variable changed (except N)
+                    current_line_idx = len(lines)
                     lines.append(line_str)
+                    if m.seq_index is not None:
+                        line_to_segment_map[current_line_idx] = m.seq_index
                     
             if not is_final_toolpath:
                 next_block = toolpath_blocks[index] # index is 1-based current, so it points to the NEXT block in 0-based indexing
@@ -226,4 +230,4 @@ class GCodeWriter:
                 lines.append(f"{counter.next()}G28X0Y0")
                 lines.append(f"{counter.next()}M30")
                 
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines) + "\n", line_to_segment_map

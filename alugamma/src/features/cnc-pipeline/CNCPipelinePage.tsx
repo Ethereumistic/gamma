@@ -12,7 +12,9 @@ import { DXFDropZone } from "./components/DXFDropZone"
 import { LayerControls, LAYER_COLORS } from "./components/LayerControls"
 import { GeometryViewer } from "./components/GeometryViewer"
 import { NCPreview } from "./components/NCPreview"
+import { PlaybackControls } from "./components/PlaybackControls"
 import { useGenerate } from "./hooks/useGenerate"
+import { usePlayback } from "./hooks/usePlayback"
 
 const SCENARIO_LABELS: Record<string, string> = {
   most_common: "FREZ → CUT",
@@ -43,6 +45,16 @@ export default function CNCPipelinePage() {
 
   // Portal tracking for sending elements to the app-navbar safely
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
+
+  const ncLines = state.status === "done" ? state.ncText.split("\n") : []
+  const {
+    isPlaying,
+    setIsPlaying,
+    currentLineIndex,
+    setCurrentLineIndex,
+    playbackSpeed,
+    setPlaybackSpeed,
+  } = usePlayback(ncLines.length)
 
   useEffect(() => {
     const el = document.getElementById("cnc-navbar-portal")
@@ -224,12 +236,30 @@ export default function CNCPipelinePage() {
         <div className="grid grid-cols-12 gap-6 h-full min-h-0">
 
           {/* LEFT COLUMN: NC Code Viewer */}
-          <div className="col-span-3 h-full min-h-0">
+          <div className="col-span-3 h-full min-h-0 flex flex-col gap-4">
             {state.status === "done" && (
-              <NCPreview
-                ncText={state.ncText}
-                jobId={state.jobId}
-              />
+              <>
+                <div className="flex-1 min-h-0">
+                  <NCPreview
+                    ncText={state.ncText}
+                    jobId={state.jobId}
+                    currentLineIndex={currentLineIndex}
+                    onLineClick={setCurrentLineIndex}
+                  />
+                </div>
+                <PlaybackControls
+                  isPlaying={isPlaying}
+                  onTogglePlay={() => setIsPlaying(!isPlaying)}
+                  currentLine={currentLineIndex}
+                  totalLines={ncLines.length}
+                  onSeek={setCurrentLineIndex}
+                  speed={playbackSpeed}
+                  onSpeedChange={setPlaybackSpeed}
+                  layers={state.geometry.layers}
+                  visibleLayers={visible}
+                  onToggleLayer={handleLayerToggle}
+                />
+              </>
             )}
           </div>
 
@@ -248,6 +278,8 @@ export default function CNCPipelinePage() {
                 <GeometryViewer
                   geometry={state.geometry}
                   visible={visible}
+                  currentLineIndex={state.status === "done" ? currentLineIndex : undefined}
+                  lineToSegmentMap={state.status === "done" ? state.generate.line_to_segment_map : undefined}
                 />
               </CardContent>
             </Card>

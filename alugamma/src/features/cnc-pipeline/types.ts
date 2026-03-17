@@ -18,6 +18,7 @@ export interface GenerateResponse {
   estimated_time:   number      // seconds
   warnings:         string[]
   algorithm:        string      // "raptor" | "anchor" | ...
+  line_to_segment_map: Record<number, number>
 }
 
 export interface PreviewResponse {
