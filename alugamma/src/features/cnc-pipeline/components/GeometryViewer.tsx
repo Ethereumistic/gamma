@@ -1,23 +1,39 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch"
 import { GeometryResponse, Segment } from "../types"
 import { LAYER_COLORS } from "./LayerControls"
 import { motion } from "motion/react"
 
+// ─── Physics constants (mirrored from usePlayback) ────────────────────────────
+const CUT_SPEED_MM_PER_S = 5500 / 60    // 91.667 mm/s
+const RAPID_SPEED_MM_PER_S = 18000 / 60   // 300 mm/s
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface RapidSegment {
+    id: string
+    x1: number; y1: number
+    x2: number; y2: number
+    fromSeq: number   // seq_index of the cut that ends here (-1 = machine home)
+    toSeq: number     // seq_index of the cut that starts here
+}
+
 interface Props {
     geometry: GeometryResponse
     visible: Record<string, boolean>
+    showRapids?: boolean
     currentLineIndex?: number
     lineToSegmentMap?: Record<number, number>
     segmentToLineMap?: Record<number, number>
     onSeek?: (line: number) => void
     playbackSpeed?: number
+    ncLines?: string[]
+    isPlaying?: boolean
 }
 
 // Layers that participate in CNC toolpath generation.
 const CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
 
-// ─── Inner controls component (must live inside TransformWrapper) ─────────────
+// ─── Inner zoom-controls component (must live inside TransformWrapper) ────────
 function ZoomControls() {
     const { zoomIn, zoomOut, resetTransform } = useControls()
     const btnStyle: React.CSSProperties = {
@@ -61,7 +77,18 @@ function ZoomControls() {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegmentMap, segmentToLineMap, onSeek, playbackSpeed = 1 }: Props) {
+export function GeometryViewer({
+    geometry,
+    visible,
+    showRapids = true,
+    currentLineIndex,
+    lineToSegmentMap,
+    segmentToLineMap,
+    onSeek,
+    playbackSpeed = 1,
+    ncLines,
+    isPlaying = false,
+}: Props) {
     const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
 
     const { segments, bbox } = geometry
@@ -73,55 +100,160 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
 
     const viewBox = `${min_x - PAD} ${min_y - PAD} ${viewW + PAD * 2} ${viewH + PAD * 2}`
 
+    // ── Active seq index from the current G-code line ─────────────────────────
     const activeSeqIndex = useMemo(() => {
         if (currentLineIndex === undefined || !lineToSegmentMap) return null
         return lineToSegmentMap[currentLineIndex] ?? null
     }, [currentLineIndex, lineToSegmentMap])
 
+    // ── lastKnownSeqRef: only advances forward, never snaps back to null ───────
+    // This is the key to eliminating geometry flicker: all highlight logic uses
+    // this stable value instead of the raw activeSeqIndex.
+    const lastKnownSeqRef = useRef<number | null>(null)
+    if (activeSeqIndex !== null) lastKnownSeqRef.current = activeSeqIndex
+    const stableActiveSeq = activeSeqIndex ?? lastKnownSeqRef.current
+
+    // ── Visible segments (layer visibility filter) ────────────────────────────
     const visibleSegments = useMemo(
         () => segments.filter((s) => (visible[s.layer] ?? true) !== false),
         [segments, visible]
     )
 
-    // Persistent Info Logic
-    const displaySeq = hoveredSeq !== null ? hoveredSeq : activeSeqIndex
+    // ── Derive rapid segments from ALL segments (not filtered) ────────────────
+    // Rapids connect the end of one cut to the start of the next regardless of
+    // layer visibility, so we use the full segments array sorted by seq_index.
+    const rapidSegments = useMemo((): RapidSegment[] => {
+        const rapids: RapidSegment[] = []
+        const sorted = [...segments].sort((a, b) => a.seq_index - b.seq_index)
+
+        if (sorted.length === 0) return rapids
+
+        // Initial rapid: machine home (0,0) → first cut start
+        if (Math.hypot(sorted[0].x1, sorted[0].y1) > 0.001) {
+            rapids.push({
+                id: "rapid-home",
+                x1: 0, y1: 0,
+                x2: sorted[0].x1, y2: sorted[0].y1,
+                fromSeq: -1,
+                toSeq: sorted[0].seq_index,
+            })
+        }
+
+        for (let i = 0; i < sorted.length - 1; i++) {
+            const curr = sorted[i]
+            const next = sorted[i + 1]
+            if (Math.hypot(next.x1 - curr.x2, next.y1 - curr.y2) > 0.001) {
+                rapids.push({
+                    id: `rapid-${curr.seq_index}-${next.seq_index}`,
+                    x1: curr.x2, y1: curr.y2,
+                    x2: next.x1, y2: next.y1,
+                    fromSeq: curr.seq_index,
+                    toSeq: next.seq_index,
+                })
+            }
+        }
+        return rapids
+    }, [segments])
+
+    // ── Which rapid is currently in-flight? ───────────────────────────────────
+    // A rapid is active when activeSeqIndex is null (we're between cuts) and the
+    // last known seq index matches the rapid's fromSeq.
+    const activeRapid = useMemo((): RapidSegment | null => {
+        if (activeSeqIndex !== null) return null
+        const refSeq = lastKnownSeqRef.current
+        if (refSeq === null) {
+            // We haven't hit any segment yet — check for the home rapid
+            const homeRapid = rapidSegments.find(r => r.fromSeq === -1)
+            return homeRapid ?? null
+        }
+        return rapidSegments.find(r => r.fromSeq === refSeq) ?? null
+    }, [activeSeqIndex, rapidSegments])
+
+    // ── Active / next cut segment ─────────────────────────────────────────────
+    const activeSegment = activeSeqIndex !== null
+        ? segments.find(s => s.seq_index === activeSeqIndex) ?? null
+        : null
+
+    // ── Info card: what to show when hovering or during playback ─────────────
+    // Use stableActiveSeq so the card doesn't flicker during rapids/headers
+    const displaySeq = hoveredSeq !== null ? hoveredSeq : stableActiveSeq
     const displaySegment = displaySeq !== null
-        ? segments.find((s) => s.seq_index === displaySeq)
+        ? segments.find((s) => s.seq_index === displaySeq) ?? null
         : null
 
     const nextSeq = displaySeq !== null ? displaySeq + 1 : null
     const nextSegment = nextSeq !== null
-        ? segments.find((s) => s.seq_index === nextSeq)
+        ? segments.find((s) => s.seq_index === nextSeq) ?? null
         : null
+
+    // ── Classify the current raw G-code line for the card header ─────────────
+    const currentRawLine = ncLines?.[currentLineIndex ?? 0] ?? ""
+    const lineType = useMemo((): "cutting" | "rapid" | "tool-change" | "header" | "dwell" => {
+        if (!currentRawLine) return "header"
+        const l = currentRawLine.trim().toUpperCase()
+        if (l.startsWith("T") || l.includes("M6") || l.includes("M06")) return "tool-change"
+        if (l.startsWith("G0 ") || l.startsWith("G00 ") || l === "G0" || l === "G00") return "rapid"
+        if (l.startsWith("G1 ") || l.startsWith("G01 ") || l === "G1" || l === "G01") return "cutting"
+        if (l.startsWith("G4") || l.startsWith("G04")) return "dwell"
+        return "header"
+    }, [currentRawLine])
+
+    // ── Card is shown once playback has started, or when hovering ─────────────
+    const hasStarted = (currentLineIndex ?? 0) > 0 || isPlaying
+
+    // ── Dot animation target ──────────────────────────────────────────────────
+    // Always resolves to a valid position; never causes the dot to unmount.
+    const dotTarget = useMemo(() => {
+        if (activeSegment) {
+            const len = Math.hypot(
+                activeSegment.x2 - activeSegment.x1,
+                activeSegment.y2 - activeSegment.y1
+            )
+            return {
+                x: activeSegment.x2,
+                y: activeSegment.y2,
+                duration: Math.max(0.016, len / (CUT_SPEED_MM_PER_S * playbackSpeed)),
+                isRapid: false,
+            }
+        }
+        if (activeRapid) {
+            const len = Math.hypot(
+                activeRapid.x2 - activeRapid.x1,
+                activeRapid.y2 - activeRapid.y1
+            )
+            return {
+                x: activeRapid.x2,
+                y: activeRapid.y2,
+                duration: Math.max(0.016, len / (RAPID_SPEED_MM_PER_S * playbackSpeed)),
+                isRapid: true,
+            }
+        }
+        return null
+    }, [activeSegment, activeRapid, playbackSpeed])
 
     const handleSegmentClick = (seq: number) => {
         if (segmentToLineMap && onSeek) {
             const line = segmentToLineMap[seq]
-            if (line !== undefined) {
-                onSeek(line)
-            }
+            if (line !== undefined) onSeek(line)
         }
     }
 
-    // Machining Dot Logic
-    const activeSegment = activeSeqIndex !== null 
-        ? segments.find(s => s.seq_index === activeSeqIndex) 
-        : null
-
-    const getSegmentLength = (seg: { x1: number; y1: number; x2: number; y2: number }) => {
-        return Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1)
-    }
-
-    const BASE_SPEED_MM_PER_SEC = 150
-    const dynamicDuration = activeSegment 
-        ? getSegmentLength(activeSegment) / (BASE_SPEED_MM_PER_SEC * playbackSpeed)
-        : 0
+    // ── Card label ────────────────────────────────────────────────────────────
+    const cardLabel = hoveredSeq !== null
+        ? "Inspecting"
+        : activeRapid
+            ? "Rapid Move"
+            : lineType === "cutting" ? "Machining"
+                : lineType === "tool-change" ? "Tool Change"
+                    : lineType === "dwell" ? "Dwell"
+                        : stableActiveSeq !== null ? "Machining"
+                            : "Program"
 
     return (
         <div style={{ position: "relative", width: "100%", height: "100%", backgroundColor: "#000" }}>
 
-            {/* ── Info tooltip ── */}
-            {displaySegment && (
+            {/* ── Info card — always visible once started ── */}
+            {(hasStarted || hoveredSeq !== null) && (
                 <div
                     style={{
                         position: "absolute",
@@ -136,27 +268,45 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                         zIndex: 30,
                         border: "1px solid rgba(255,255,255,0.12)",
                         lineHeight: 1.6,
+                        minWidth: 160,
                     }}
                 >
                     <div className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
-                        {hoveredSeq !== null ? "Inspecting" : "Machining"}
+                        {cardLabel}
                     </div>
-                    <div>
-                        Segment #{displaySeq! + 1}
-                        {" — "}
-                        <span style={{ color: LAYER_COLORS[displaySegment.layer] ?? "#fff" }}>
-                            {displaySegment.layer}
-                        </span>
-                        {!CNC_LAYERS.has(displaySegment.layer) && (
-                            <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 11 }}>(ref only)</span>
-                        )}
-                    </div>
-                    {nextSegment && (
-                        <div style={{ color: "#94a3b8" }}>
-                            Next: #{nextSeq! + 1} —{" "}
-                            <span style={{ color: LAYER_COLORS[nextSegment.layer] ?? "#fff" }}>
-                                {nextSegment.layer}
-                            </span>
+
+                    {displaySegment ? (
+                        <>
+                            <div>
+                                Segment #{displaySeq! + 1}
+                                {" — "}
+                                <span style={{ color: LAYER_COLORS[displaySegment.layer] ?? "#fff" }}>
+                                    {displaySegment.layer}
+                                </span>
+                                {!CNC_LAYERS.has(displaySegment.layer) && (
+                                    <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 11 }}>(ref only)</span>
+                                )}
+                            </div>
+                            {nextSegment && (
+                                <div style={{ color: "#94a3b8" }}>
+                                    Next: #{nextSeq! + 1} —{" "}
+                                    <span style={{ color: LAYER_COLORS[nextSegment.layer] ?? "#fff" }}>
+                                        {nextSegment.layer}
+                                    </span>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        /* Fallback: show the raw G-code line so card never goes blank */
+                        <div style={{ color: "#94a3b8", fontFamily: "monospace", fontSize: 11 }}>
+                            {currentRawLine ? currentRawLine.trim().slice(0, 52) : "—"}
+                        </div>
+                    )}
+
+                    {/* Rapid destination coordinates */}
+                    {activeRapid && hoveredSeq === null && (
+                        <div style={{ color: "#ef4444", fontSize: 11, marginTop: 2 }}>
+                            → ({activeRapid.x2.toFixed(2)}, {activeRapid.y2.toFixed(2)})
                         </div>
                     )}
                 </div>
@@ -189,10 +339,30 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                         >
                             <g transform={`scale(1,-1) translate(0,${-(min_y + max_y)})`}>
 
+                                {/* ── Rapid move lines (rendered beneath cut lines) ── */}
+                                {showRapids && rapidSegments.map((r) => {
+                                    const isActiveRapid = activeRapid?.id === r.id
+                                    return (
+                                        <line
+                                            key={r.id}
+                                            x1={r.x1} y1={r.y1}
+                                            x2={r.x2} y2={r.y2}
+                                            stroke="#ef4444"
+                                            strokeWidth={isActiveRapid ? viewW * 0.005 : viewW * 0.0012}
+                                            strokeDasharray={`${viewW * 0.007} ${viewW * 0.004}`}
+                                            opacity={isActiveRapid ? 0.85 : 0.3}
+                                            style={{ pointerEvents: "none" }}
+                                        />
+                                    )
+                                })}
+
+                                {/* ── Cut segments ── */}
                                 {visibleSegments.map((seg) => {
                                     const isHovered = seg.seq_index === hoveredSeq
-                                    const isActive = activeSeqIndex !== null && seg.seq_index === activeSeqIndex
-                                    const isPast = activeSeqIndex !== null && seg.seq_index < activeSeqIndex
+                                    // Use stableActiveSeq so highlighting never flickers
+                                    // when the playhead is on a non-geometry line
+                                    const isActive = stableActiveSeq !== null && seg.seq_index === stableActiveSeq
+                                    const isPast = stableActiveSeq !== null && seg.seq_index < stableActiveSeq
                                     const isCncLayer = CNC_LAYERS.has(seg.layer)
                                     const baseColor = LAYER_COLORS[seg.layer] ?? "#ffffff"
 
@@ -205,7 +375,7 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                                         strokeColor = baseColor + "55"
                                     } else if (isPast) {
                                         strokeColor = baseColor
-                                    } else if (activeSeqIndex !== null) {
+                                    } else if (stableActiveSeq !== null) {
                                         strokeColor = baseColor + "44"
                                     }
 
@@ -220,22 +390,21 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
 
                                     return (
                                         <line
-                                          key={seg.seq_index}
-                                          x1={seg.x1}
-                                          y1={seg.y1}
-                                          x2={seg.x2}
-                                          y2={seg.y2}
-                                          stroke={strokeColor}
-                                          strokeWidth={strokeW}
-                                          strokeDasharray={!isCncLayer && !isHovered ? `${viewW * 0.008} ${viewW * 0.005}` : undefined}
-                                          style={{ cursor: "pointer", transition: "stroke 0.1s, stroke-width 0.1s" }}
-                                          onMouseEnter={() => setHoveredSeq(seg.seq_index)}
-                                          onMouseLeave={() => setHoveredSeq(null)}
-                                          onClick={() => handleSegmentClick(seg.seq_index)}
+                                            key={seg.seq_index}
+                                            x1={seg.x1} y1={seg.y1}
+                                            x2={seg.x2} y2={seg.y2}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeW}
+                                            strokeDasharray={!isCncLayer && !isHovered ? `${viewW * 0.008} ${viewW * 0.005}` : undefined}
+                                            style={{ cursor: "pointer", transition: "stroke 0.1s, stroke-width 0.1s" }}
+                                            onMouseEnter={() => setHoveredSeq(seg.seq_index)}
+                                            onMouseLeave={() => setHoveredSeq(null)}
+                                            onClick={() => handleSegmentClick(seg.seq_index)}
                                         />
                                     )
                                 })}
 
+                                {/* ── Hovered segment label ── */}
                                 {hoveredSeq !== null && displaySegment && (
                                     <text
                                         x={(displaySegment.x1 + displaySegment.x2) / 2}
@@ -249,20 +418,22 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                                     </text>
                                 )}
 
-                                {activeSegment && (
+                                {/* ── Tool dot — rendered unconditionally once started ── */}
+                                {/* key is stable so Framer Motion never remounts/resets */}
+                                {hasStarted && dotTarget && (
                                     <motion.circle
-                                        key="cutting-head-dot"
-                                        initial={{ cx: activeSegment.x1, cy: activeSegment.y1 }}
-                                        animate={{ cx: activeSegment.x2, cy: activeSegment.y2 }}
-                                        transition={{ 
-                                            duration: Math.max(0.05, dynamicDuration),
-                                            ease: "linear" 
+                                        key="tool-dot"
+                                        animate={{ cx: dotTarget.x, cy: dotTarget.y }}
+                                        transition={{
+                                            duration: dotTarget.duration,
+                                            ease: "linear",
                                         }}
                                         r={viewW * 0.008}
-                                        fill="#fbbf24"
-                                        style={{ pointerEvents: "none", zIndex: 50 }}
+                                        fill={dotTarget.isRapid ? "#f87171" : "#fbbf24"}
+                                        style={{ pointerEvents: "none" }}
                                     />
                                 )}
+
                             </g>
                         </svg>
                     </TransformComponent>
