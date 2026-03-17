@@ -17,6 +17,7 @@ export interface GenerateResponse {
   lift_count:       number
   estimated_time:   number      // seconds
   warnings:         string[]
+  algorithm:        string      // "raptor" | "anchor" | ...
 }
 
 export interface PreviewResponse {

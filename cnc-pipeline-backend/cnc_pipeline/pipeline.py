@@ -17,7 +17,7 @@ class PipelineResult:
     geometry_data:     dict          # ordered geometry segments for frontend rendering
 
 
-def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
+def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "raptor") -> PipelineResult:
     """
     Full pipeline: DXF file → PipelineResult containing NC text.
     Raises ValueError for unrecoverable errors (missing CUT layer, etc.).
@@ -58,7 +58,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
 
         # Sort order depends on layer type
         if layer_name in (LAYER_FREZ, LAYER_FREZ_135):
-            ordered = sort_frez_outer_to_inner(contours, bbox)
+            ordered = sort_frez_outer_to_inner(contours, bbox, algorithm)
         else:
             ordered = sort_nearest_neighbour(contours)
 
@@ -143,6 +143,6 @@ def run_pipeline(dxf_path: str, original_filename: str = "") -> PipelineResult:
         estimated_time_seconds=estimated_time,
         warnings=warnings,
         nc_text=nc_text,
-        output_filename=f"{stem}.nc",
+        output_filename=f"{stem}-{algorithm}.nc",
         geometry_data=geometry_data,
     )

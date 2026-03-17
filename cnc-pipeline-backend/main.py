@@ -32,7 +32,7 @@ def health():
 
 
 @app.post("/api/generate")
-async def generate(file: UploadFile = File(...)):
+async def generate(file: UploadFile = File(...), algorithm: str = "raptor"):
     if not file.filename.lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
 
@@ -42,7 +42,7 @@ async def generate(file: UploadFile = File(...)):
     tmp.close()
 
     try:
-        result = run_pipeline(tmp.name, original_filename=file.filename)
+        result = run_pipeline(tmp.name, original_filename=file.filename, algorithm=algorithm)
         job_id = str(uuid.uuid4())
         _jobs[job_id] = result
         return {
@@ -56,6 +56,7 @@ async def generate(file: UploadFile = File(...)):
                 "lift_count":      result.lift_count,
                 "estimated_time":  result.estimated_time_seconds,
                 "warnings":        result.warnings,
+                "algorithm":       algorithm,
             },
             "geometry": result.geometry_data
         }

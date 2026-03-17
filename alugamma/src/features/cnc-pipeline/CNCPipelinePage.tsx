@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RefreshCw } from "lucide-react"
 
 import { BackendStatus } from "./components/BackendStatus"
@@ -21,6 +22,11 @@ const SCENARIO_LABELS: Record<string, string> = {
   cut_only: "CUT only",
 }
 
+const ALGORITHMS: { value: string; label: string; desc: string }[] = [
+  { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
+  { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
+]
+
 const formatTime = (sec: number) => {
   if (sec >= 60) return `${(sec / 60).toFixed(1)}m`
   return `${Math.round(sec)}s`
@@ -29,6 +35,9 @@ const formatTime = (sec: number) => {
 export default function CNCPipelinePage() {
   const { state, upload, generateNC, reset } = useGenerate()
 
+  // Chosen algorithm — persists across uploads on the same page session
+  const [algorithm, setAlgorithm] = useState("raptor")
+
   // Layer visibility — default all visible, updated when geometry loads
   const [visible, setVisible] = useState<Record<string, boolean>>({})
 
@@ -36,8 +45,6 @@ export default function CNCPipelinePage() {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
-    // We attach a mutation observer to reliably locate the navbar portal target
-    // in case it mounts slightly after the page component evaluates.
     const el = document.getElementById("cnc-navbar-portal")
     if (el) {
       setPortalNode(el)
@@ -58,10 +65,9 @@ export default function CNCPipelinePage() {
     setVisible((prev) => ({ ...prev, [layer]: value }))
   }
 
-  // When geometry first loads, initialise all layers as visible
   const handleFile = async (file: File) => {
-    setVisible({})  // reset visibility on new file
-    await upload(file)
+    setVisible({})
+    await upload(file, algorithm)
   }
 
   // Initialise visibility when geometry becomes available
@@ -74,6 +80,11 @@ export default function CNCPipelinePage() {
     setVisible(init)
   }
 
+  // Determine which algo label to show in the "done" state
+  const activeAlgoLabel = ALGORITHMS.find(
+    (a) => a.value === ((state.status === "ready" || state.status === "done") ? state.generate.algorithm : algorithm)
+  )?.label ?? algorithm
+
   return (
     <div className="p-6 h-[calc(100vh-4rem)] flex flex-col text-slate-200">
 
@@ -82,11 +93,51 @@ export default function CNCPipelinePage() {
         <div className="flex items-center gap-3 w-full text-xs">
           <BackendStatus />
 
+          {/* Algorithm selector — always visible in the navbar when on CNC page */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Algorithm
+            </span>
+            <Select
+              value={algorithm}
+              onValueChange={(val) => {
+                setAlgorithm(val)
+                // If the user changes algo after a job is done, we don't auto-reset —
+                // they need to drop a new file. The select label stays updated.
+              }}
+              disabled={state.status === "uploading" || state.status === "generating"}
+            >
+              <SelectTrigger
+                id="cnc-algo-select"
+                className="h-7 w-[130px] bg-black/20 border-white/10 text-xs font-medium hover:bg-white/5 focus:ring-1 focus:ring-emerald-500"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ALGORITHMS.map((a) => (
+                  <SelectItem key={a.value} value={a.value}>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{a.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {(state.status === "ready" || state.status === "done") ? (
             <>
+              <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
+
               {/* Filename */}
-              <span className="font-semibold text-slate-200 tracking-wide ml-1 truncate max-w-[200px]">
+              <span className="font-semibold text-slate-200 tracking-wide truncate max-w-[200px]">
                 {state.generate.filename}
+              </span>
+              <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
+
+              {/* Algorithm badge */}
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-500/20 whitespace-nowrap shrink-0">
+                {activeAlgoLabel}
               </span>
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
 

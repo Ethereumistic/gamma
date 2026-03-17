@@ -7,10 +7,10 @@ import type { PageState, GenerateResponse, GeometryResponse } from "../types"
 export function useGenerate() {
   const [state, setState] = useState<PageState>({ status: "idle" })
 
-  const upload = useCallback(async (file: File) => {
+  const upload = useCallback(async (file: File, algorithm: string = "raptor") => {
     setState({ status: "uploading" })
     try {
-      const { generate, geometry } = await uploadDXF(file)
+      const { generate, geometry } = await uploadDXF(file, algorithm)
       setState({ status: "ready", jobId: generate.job_id, generate, geometry })
     } catch (e: any) {
       setState({ status: "error", message: e.message })
