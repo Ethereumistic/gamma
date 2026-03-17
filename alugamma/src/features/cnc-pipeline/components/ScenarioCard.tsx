@@ -6,10 +6,10 @@ import type { GenerateResponse } from "../types"
 
 const SCENARIO_LABELS: Record<string, string> = {
   most_common: "FREZ → CUT",
-  common:      "HOLES → FREZ → CUT",
-  rare:        "FREZ → FREZ_135 → CUT",
-  very_rare:   "HOLES → FREZ → FREZ_135 → CUT",
-  cut_only:    "CUT only",
+  common: "HOLES → FREZ → CUT",
+  rare: "FREZ → FREZ_135 → CUT",
+  very_rare: "HOLES → FREZ → FREZ_135 → CUT",
+  cut_only: "CUT only",
 }
 
 interface Props {
@@ -18,25 +18,27 @@ interface Props {
 
 export function ScenarioCard({ data }: Props) {
   return (
-    <Card className="bg-transparent border-white/10">
-      <CardHeader>
-        <CardTitle>Analysis — {data.filename}</CardTitle>
+    <Card className="bg-transparent border-white/10 shrink-0 shadow-none">
+      <CardHeader className="py-2.5 px-4 border-b border-white/5">
+        <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+          Analysis — {data.filename}
+        </CardTitle>
       </CardHeader>
-      <CardContent>
-        <p className="text-slate-300"><strong>Scenario:</strong> {SCENARIO_LABELS[data.scenario] ?? data.scenario}</p>
-        <p className="text-slate-300"><strong>Layers detected:</strong> {data.layers_detected.join(", ")}</p>
-        <p className="text-slate-300"><strong>Tools:</strong> T{data.tools_used.join(" → T")}</p>
-        <p className="text-slate-300"><strong>Contours:</strong> {data.contour_count}</p>
-        <p className="text-slate-300"><strong>Lifts:</strong> {data.lift_count}</p>
-        <p className="text-slate-300"><strong>Est. time:</strong> {Math.round(data.estimated_time)}s</p>
+      <CardContent className="p-4 flex flex-col gap-2.5 text-xs">
+        <div className="flex justify-between items-center"><span className="text-slate-500">Scenario</span> <span className="text-slate-200 font-medium">{SCENARIO_LABELS[data.scenario] ?? data.scenario}</span></div>
+        <div className="flex justify-between items-center"><span className="text-slate-500">Layers</span> <span className="text-slate-200 font-medium">{data.layers_detected.join(", ")}</span></div>
+        <div className="flex justify-between items-center"><span className="text-slate-500">Tools</span> <span className="text-slate-200 font-medium font-mono text-[11px]">T{data.tools_used.join(" → T")}</span></div>
+        <div className="flex justify-between items-center"><span className="text-slate-500">Contours</span> <span className="text-slate-200 font-medium">{data.contour_count}</span></div>
+        <div className="flex justify-between items-center"><span className="text-slate-500">Lifts</span> <span className="text-slate-200 font-medium">{data.lift_count}</span></div>
+        <div className="flex justify-between items-center"><span className="text-slate-500">Est. time</span> <span className="text-slate-200 font-medium">{Math.round(data.estimated_time)}s</span></div>
+
         {data.warnings.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2"><strong>Warnings:</strong></p>
-            <ul className="flex flex-col gap-2">
-              {data.warnings.map((w, i) => (
-                <li key={i}><Badge variant="destructive">{w}</Badge></li>
-              ))}
-            </ul>
+          <div className="mt-2 flex flex-col gap-1.5 border-t border-white/5 pt-3">
+            {data.warnings.map((w, i) => (
+              <Badge key={i} variant="destructive" className="text-[9px] uppercase tracking-wide leading-tight py-0.5 px-1.5 block text-center">
+                {w}
+              </Badge>
+            ))}
           </div>
         )}
       </CardContent>

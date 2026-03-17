@@ -47,6 +47,7 @@ export function AppNavbar() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isSheetMetal = location.pathname.startsWith("/sheet-metal");
+  const isCncPipeline = location.pathname.startsWith("/cnc-pipeline");
   const isHome = location.pathname === "/";
   const isOrganizations = location.pathname === "/organization";
   const isProjects = location.pathname === "/project";
@@ -113,6 +114,11 @@ export function AppNavbar() {
         </div>
       )}
 
+      {/* Target for CNCPipelinePage Portal Actions */}
+      {isCncPipeline && (
+        <div id="cnc-navbar-portal" className="flex flex-1 items-center justify-between gap-4 overflow-x-auto" />
+      )}
+
       {projectDetailMatch && (
         <div className="flex flex-1 items-center justify-between gap-4">
           <div className="flex items-center gap-4 mt-0.5">
@@ -160,8 +166,6 @@ export function AppNavbar() {
 
       {isSheetMetal && (
         <div className="flex flex-1 items-center gap-4 overflow-x-auto">
-
-
           <div className="min-w-[240px] max-w-[340px] flex-1 items-center gap-2 md:flex">
             <span className="hidden text-[10px] font-semibold uppercase tracking-wider text-muted-foreground md:block">Design</span>
             <Input
