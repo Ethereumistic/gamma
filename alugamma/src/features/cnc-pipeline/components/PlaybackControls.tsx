@@ -8,9 +8,8 @@ interface PlaybackControlsProps {
   currentLine: number
   totalLines: number
   onSeek: (line: number) => void
-  speed: number
-  onSpeedChange: (speed: number) => void
   totalDuration?: number  // seconds at speed=1, from usePlayback
+  currentSimTime?: number // live playback simulation time
 }
 
 function formatDuration(seconds: number): string {
@@ -26,9 +25,8 @@ export function PlaybackControls({
   currentLine,
   totalLines,
   onSeek,
-  speed,
-  onSpeedChange,
   totalDuration,
+  currentSimTime,
 }: PlaybackControlsProps) {
   return (
     <div className="flex items-center gap-4 w-full h-full">
@@ -87,9 +85,8 @@ export function PlaybackControls({
       {/* ── Timeline ── */}
       <div className="flex-1 flex items-center gap-4 min-w-0">
         <div className="shrink-0 font-mono text-[10px] text-muted-foreground text-right w-auto whitespace-nowrap">
-          {totalDuration !== undefined
-            ? /* show real time: current / total */
-            `${formatDuration(totalDuration * (currentLine / Math.max(1, totalLines - 1)) / speed)} / ${formatDuration(totalDuration / speed)}`
+          {totalDuration !== undefined && currentSimTime !== undefined
+            ? `${formatDuration(currentSimTime)} / ${formatDuration(totalDuration)}`
             : `${currentLine} / ${Math.max(0, totalLines - 1)}`
           }
         </div>
@@ -100,20 +97,6 @@ export function PlaybackControls({
           onValueChange={(val) => onSeek(val[0])}
           className="flex-1 py-1"
         />
-      </div>
-
-      {/* ── Speed ── */}
-      <div className="flex items-center gap-3 shrink-0 pl-4 border-l border-white/10">
-        <span className="text-[10px] uppercase font-bold text-muted-foreground/60">Speed</span>
-        <Slider
-          value={[speed]}
-          min={1}
-          max={100}
-          step={1}
-          onValueChange={(val) => onSpeedChange(val[0])}
-          className="w-24"
-        />
-        <span className="text-[10px] font-mono text-emerald-400 tabular-nums w-8">{speed}x</span>
       </div>
 
     </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RefreshCw } from "lucide-react"
 
@@ -41,6 +42,18 @@ export default function CNCPipelinePage() {
   const [visible, setVisible] = useState<Record<string, boolean>>({})
   const [showRapids, setShowRapids] = useState(true)
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
+  
+  const [traceMode, setTraceMode] = useState<Record<string, boolean>>({
+    HOLES: false,
+    FREZ: false,
+    FREZ_135: false,
+    CUT: false,
+    RAPIDS: false,
+  })
+
+  const handleTraceModeToggle = (layer: string) => {
+    setTraceMode(prev => ({ ...prev, [layer]: !prev[layer] }))
+  }
 
   // ── NC lines — only available in "done" state ─────────────────────────────
   const ncLines = useMemo(
@@ -64,10 +77,14 @@ export default function CNCPipelinePage() {
     currentLineIndex,
     setCurrentLineIndex,
     seekToLine,
+    seekTrigger,
     playbackSpeed,
     setPlaybackSpeed,
+    rapidPlaybackSpeed,
+    setRapidPlaybackSpeed,
     totalDuration,
-  } = usePlayback(ncLines.length, segments, lineToSegmentMap)
+    currentSimTime,
+  } = usePlayback(ncLines, segments, lineToSegmentMap)
 
   // ── Reverse map: seq_index → first G-code line number ────────────────────
   const segmentToLineMap = useMemo(() => {
@@ -187,7 +204,14 @@ export default function CNCPipelinePage() {
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
               <span className="text-slate-400 whitespace-nowrap">Lifts: <span className="text-slate-200 font-medium ml-1">{state.generate.lift_count}</span></span>
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
-              <span className="text-slate-400 whitespace-nowrap">Time: <span className="text-slate-200 font-medium ml-1">{formatTime(state.generate.estimated_time)}</span></span>
+              <span className="text-slate-400 whitespace-nowrap">
+                Time:{" "}
+                <span className="text-slate-200 font-medium ml-1">
+                  {state.status === "done" && totalDuration > 0
+                    ? formatTime(totalDuration)
+                    : formatTime(state.generate.estimated_time)}
+                </span>
+              </span>
 
               <div className="ml-auto flex items-center gap-2 pl-4">
                 <Button variant="ghost" size="sm" className="h-8 px-3 text-xs hover:bg-white/5 flex gap-1.5" onClick={reset}>
@@ -258,36 +282,59 @@ export default function CNCPipelinePage() {
           {/* RIGHT: Geometry Viewer */}
           <div className="col-span-9 h-full min-h-0">
             <Card className="bg-transparent border-white/10 h-full flex flex-col shadow-none">
-              <CardHeader className="py-1.5 px-4 border-b border-white/5 flex flex-row items-center gap-6 space-y-0 shrink-0">
-                <div className="flex-1">
-                  {state.status === "done" ? (
-                    <PlaybackControls
-                      isPlaying={isPlaying}
-                      onTogglePlay={() => setIsPlaying(!isPlaying)}
-                      currentLine={currentLineIndex}
-                      totalLines={ncLines.length}
-                      onSeek={seekToLine}
-                      speed={playbackSpeed}
-                      onSpeedChange={setPlaybackSpeed}
-                      totalDuration={totalDuration}
-                    />
-                  ) : (
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Geometry Preview
-                    </span>
+              <CardHeader className="py-2 px-4 border-b border-white/5 flex flex-row items-center gap-6 justify-between shrink-0 h-14 space-y-0">
+                <div className="flex items-center gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-2">
+                    Preview
+                  </span>
+                  
+                  {state.status === "done" && (
+                    <>
+                      <div className="flex items-center gap-3 border-l border-white/10 pl-4 shrink-0">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground/60 w-12">Cut Spd</span>
+                        <Slider
+                          value={[playbackSpeed]}
+                          min={0.5} max={10} step={0.1}
+                          onValueChange={(val) => setPlaybackSpeed(val[0])}
+                          className="w-20"
+                        />
+                        <span className="text-[10px] font-mono text-emerald-400 tabular-nums w-8">
+                          {playbackSpeed.toFixed(1)}x
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 border-l border-white/10 pl-4 shrink-0">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground/60 text-red-400 w-16">Rapid Spd</span>
+                        <Slider
+                          value={[rapidPlaybackSpeed]}
+                          min={0.5} max={10} step={0.1}
+                          onValueChange={(val) => setRapidPlaybackSpeed(val[0])}
+                          className="w-20"
+                        />
+                        <span className="text-[10px] font-mono text-red-400 tabular-nums w-8">
+                          {rapidPlaybackSpeed.toFixed(1)}x
+                        </span>
+                      </div>
+                    </>
                   )}
                 </div>
-                <LayerControls
-                  layers={state.geometry.layers}
-                  visible={visible}
-                  onChange={handleLayerToggle}
-                  geometrySegments={state.geometry.segments}
-                  segmentToLineMap={segmentToLineMap}
-                  onSeek={seekToLine}
-                  showRapids={showRapids}
-                  onToggleRapids={setShowRapids}
-                />
-              </CardHeader>
+
+                <div className="flex items-center min-w-0 flex-1 justify-end">
+                  <div className="overflow-x-auto no-scrollbar py-1">
+                  <LayerControls
+                    layers={state.geometry.layers}
+                    visible={visible}
+                    onChange={handleLayerToggle}
+                    geometrySegments={state.geometry.segments}
+                    segmentToLineMap={segmentToLineMap}
+                    onSeek={seekToLine}
+                    showRapids={showRapids}
+                    onToggleRapids={setShowRapids}
+                    traceMode={traceMode}
+                    onTraceModeToggle={handleTraceModeToggle}
+                  />
+                </div>
+              </div>
+            </CardHeader>
               <CardContent className="flex-1 p-0 relative overflow-hidden min-h-0">
                 <GeometryViewer
                   geometry={state.geometry}
@@ -298,10 +345,26 @@ export default function CNCPipelinePage() {
                   segmentToLineMap={segmentToLineMap}
                   onSeek={seekToLine}
                   playbackSpeed={playbackSpeed}
+                  rapidSpeedMultiplier={rapidPlaybackSpeed}
+                  seekTrigger={seekTrigger}
                   ncLines={state.status === "done" ? ncLines : undefined}
                   isPlaying={isPlaying}
+                  traceMode={traceMode}
                 />
               </CardContent>
+              {state.status === "done" && (
+                <div className="h-12 border-t border-white/5 px-4 flex items-center shrink-0 bg-black/20">
+                  <PlaybackControls
+                    isPlaying={isPlaying}
+                    onTogglePlay={() => setIsPlaying(!isPlaying)}
+                    currentLine={currentLineIndex}
+                    totalLines={ncLines.length}
+                    onSeek={seekToLine}
+                    totalDuration={totalDuration}
+                    currentSimTime={currentSimTime}
+                  />
+                </div>
+              )}
             </Card>
           </div>
 

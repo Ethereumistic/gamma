@@ -26,8 +26,11 @@ interface Props {
     segmentToLineMap?: Record<number, number>
     onSeek?: (line: number) => void
     playbackSpeed?: number
+    rapidSpeedMultiplier?: number
+    seekTrigger?: number
     ncLines?: string[]
     isPlaying?: boolean
+    traceMode?: Record<string, boolean>
 }
 
 // Layers that participate in CNC toolpath generation.
@@ -86,8 +89,11 @@ export function GeometryViewer({
     segmentToLineMap,
     onSeek,
     playbackSpeed = 1,
+    rapidSpeedMultiplier = 1,
+    seekTrigger = 0,
     ncLines,
     isPlaying = false,
+    traceMode,
 }: Props) {
     const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
 
@@ -110,7 +116,12 @@ export function GeometryViewer({
     // This is the key to eliminating geometry flicker: all highlight logic uses
     // this stable value instead of the raw activeSeqIndex.
     const lastKnownSeqRef = useRef<number | null>(null)
-    if (activeSeqIndex !== null) lastKnownSeqRef.current = activeSeqIndex
+    if (activeSeqIndex !== null) {
+        const seg = segments.find(s => s.seq_index === activeSeqIndex)
+        if (seg && CNC_LAYERS.has(seg.layer)) {
+            lastKnownSeqRef.current = activeSeqIndex
+        }
+    }
     const stableActiveSeq = activeSeqIndex ?? lastKnownSeqRef.current
 
     // ── Visible segments (layer visibility filter) ────────────────────────────
@@ -119,12 +130,14 @@ export function GeometryViewer({
         [segments, visible]
     )
 
-    // ── Derive rapid segments from ALL segments (not filtered) ────────────────
+    // ── Derive rapid segments from CNC segments only ─────────────────────────
     // Rapids connect the end of one cut to the start of the next regardless of
-    // layer visibility, so we use the full segments array sorted by seq_index.
+    // layer visibility, so we use the CNC segments ONLY sorted by seq_index.
     const rapidSegments = useMemo((): RapidSegment[] => {
         const rapids: RapidSegment[] = []
-        const sorted = [...segments].sort((a, b) => a.seq_index - b.seq_index)
+        const sorted = [...segments]
+            .filter(s => CNC_LAYERS.has(s.layer))
+            .sort((a, b) => a.seq_index - b.seq_index)
 
         if (sorted.length === 0) return rapids
 
@@ -171,7 +184,7 @@ export function GeometryViewer({
 
     // ── Active / next cut segment ─────────────────────────────────────────────
     const activeSegment = activeSeqIndex !== null
-        ? segments.find(s => s.seq_index === activeSeqIndex) ?? null
+        ? segments.find(s => s.seq_index === activeSeqIndex && CNC_LAYERS.has(s.layer)) ?? null
         : null
 
     // ── Info card: what to show when hovering or during playback ─────────────
@@ -203,33 +216,58 @@ export function GeometryViewer({
 
     // ── Dot animation target ──────────────────────────────────────────────────
     // Always resolves to a valid position; never causes the dot to unmount.
+    const committedDotRef = useRef<{ x: number; y: number; duration: number; isRapid: boolean } | null>(null)
+    const lastCommittedSeqRef = useRef<number | null>(null)
+    const lastCommittedRapidIdRef = useRef<string | null>(null)
+
     const dotTarget = useMemo(() => {
+        // Priority 1: a cut segment is actively mapped to current line
         if (activeSegment) {
-            const len = Math.hypot(
-                activeSegment.x2 - activeSegment.x1,
-                activeSegment.y2 - activeSegment.y1
-            )
-            return {
-                x: activeSegment.x2,
-                y: activeSegment.y2,
-                duration: Math.max(0.016, len / (CUT_SPEED_MM_PER_S * playbackSpeed)),
-                isRapid: false,
+            // Only update if this is a new segment (avoid resetting mid-animation)
+            if (lastCommittedSeqRef.current !== activeSegment.seq_index) {
+                lastCommittedSeqRef.current = activeSegment.seq_index
+                lastCommittedRapidIdRef.current = null
+                const len = Math.hypot(activeSegment.x2 - activeSegment.x1, activeSegment.y2 - activeSegment.y1)
+                committedDotRef.current = {
+                    x: activeSegment.x2,
+                    y: activeSegment.y2,
+                    duration: Math.max(0.016, len / (CUT_SPEED_MM_PER_S * playbackSpeed)),
+                    isRapid: false,
+                }
             }
+            return committedDotRef.current
         }
+
+        // Priority 2: we're on a rapid move (activeSeqIndex is null, activeRapid found)
         if (activeRapid) {
-            const len = Math.hypot(
-                activeRapid.x2 - activeRapid.x1,
-                activeRapid.y2 - activeRapid.y1
-            )
-            return {
-                x: activeRapid.x2,
-                y: activeRapid.y2,
-                duration: Math.max(0.016, len / (RAPID_SPEED_MM_PER_S * playbackSpeed)),
-                isRapid: true,
+            // Only commit the rapid if we've already committed (and presumably finished)
+            // the cut that precedes it — i.e. lastCommittedSeqRef === activeRapid.fromSeq
+            const prerequisiteMet =
+                activeRapid.fromSeq === -1 ||                              // home rapid, always OK
+                lastCommittedSeqRef.current === activeRapid.fromSeq        // previous cut was committed
+
+            if (prerequisiteMet && lastCommittedRapidIdRef.current !== activeRapid.id) {
+                lastCommittedRapidIdRef.current = activeRapid.id
+                const len = Math.hypot(activeRapid.x2 - activeRapid.x1, activeRapid.y2 - activeRapid.y1)
+                committedDotRef.current = {
+                    x: activeRapid.x2,
+                    y: activeRapid.y2,
+                    duration: Math.max(0.016, len / (RAPID_SPEED_MM_PER_S * rapidSpeedMultiplier)),
+                    isRapid: true,
+                }
             }
+            return committedDotRef.current
         }
+
+        // Priority 3: hold last committed position
+        return committedDotRef.current
+    }, [activeSegment, activeRapid, playbackSpeed, rapidSpeedMultiplier])
+
+    const initialDot = useMemo(() => {
+        if (activeSegment) return { cx: activeSegment.x1, cy: activeSegment.y1 }
+        if (activeRapid) return { cx: activeRapid.x1, cy: activeRapid.y1 }
         return null
-    }, [activeSegment, activeRapid, playbackSpeed])
+    }, [seekTrigger]) // Only update initial position when seeking occurs
 
     const handleSegmentClick = (seq: number) => {
         if (segmentToLineMap && onSeek) {
@@ -342,6 +380,15 @@ export function GeometryViewer({
                                 {/* ── Rapid move lines (rendered beneath cut lines) ── */}
                                 {showRapids && rapidSegments.map((r) => {
                                     const isActiveRapid = activeRapid?.id === r.id
+
+                                    // Trace mode for rapids: only show rapids that have already been traversed
+                                    const rapidTraceModeOn = traceMode?.["RAPIDS"] ?? false
+                                    if (rapidTraceModeOn) {
+                                        // A rapid is "past" if its toSeq <= stableActiveSeq (the tool has started the next cut)
+                                        const isPastRapid = stableActiveSeq !== null && r.toSeq <= stableActiveSeq
+                                        if (!isPastRapid && !isActiveRapid) return null
+                                    }
+
                                     return (
                                         <line
                                             key={r.id}
@@ -358,6 +405,10 @@ export function GeometryViewer({
 
                                 {/* ── Cut segments ── */}
                                 {visibleSegments.map((seg) => {
+                                    const isTracedLayer   = traceMode?.[seg.layer] ?? false
+                                    const isTracedVisible = !isTracedLayer || (stableActiveSeq !== null && seg.seq_index <= stableActiveSeq)
+                                    if (!isTracedVisible) return null
+
                                     const isHovered = seg.seq_index === hoveredSeq
                                     // Use stableActiveSeq so highlighting never flickers
                                     // when the playhead is on a non-geometry line
@@ -419,10 +470,11 @@ export function GeometryViewer({
                                 )}
 
                                 {/* ── Tool dot — rendered unconditionally once started ── */}
-                                {/* key is stable so Framer Motion never remounts/resets */}
+                                {/* key is stable but resets on seek so Framer Motion remounts/snaps */}
                                 {hasStarted && dotTarget && (
                                     <motion.circle
-                                        key="tool-dot"
+                                        key={`tool-dot-${seekTrigger}`}
+                                        initial={initialDot ? { cx: initialDot.cx, cy: initialDot.cy } : false}
                                         animate={{ cx: dotTarget.x, cy: dotTarget.y }}
                                         transition={{
                                             duration: dotTarget.duration,

@@ -23,6 +23,8 @@ interface Props {
   onSeek?: (line: number) => void
   showRapids?: boolean
   onToggleRapids?: (val: boolean) => void
+  traceMode?: Record<string, boolean>
+  onTraceModeToggle?: (layer: string) => void
 }
 
 export function LayerControls({
@@ -34,6 +36,8 @@ export function LayerControls({
   onSeek,
   showRapids = true,
   onToggleRapids,
+  traceMode,
+  onTraceModeToggle,
 }: Props) {
   const cncLayers = layers.filter((l) => CNC_LAYERS.has(l))
   const refLayers = layers.filter((l) => !CNC_LAYERS.has(l))
@@ -94,6 +98,20 @@ export function LayerControls({
             <Target className="h-2.5 w-2.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
           </button>
         )}
+        {!isRef && onTraceModeToggle && (
+          <button
+            onClick={() => onTraceModeToggle(layer)}
+            className={`p-0.5 hover:bg-white/10 rounded group transition-colors ${
+              traceMode?.[layer] ? "text-amber-400" : ""
+            }`}
+            title={traceMode?.[layer] ? `Disable trace mode for ${layer}` : `Enable trace mode for ${layer}`}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-colors ${traceMode?.[layer] ? "stroke-amber-400" : "stroke-slate-500 group-hover:stroke-amber-300"}`}>
+              <line x1="1" y1="5" x2="9" y2="5" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="9" cy="5" r="1.5" fill="currentColor" className={traceMode?.[layer] ? "fill-amber-400" : "fill-slate-500 group-hover:fill-amber-300"} />
+            </svg>
+          </button>
+        )}
       </div>
     )
   }
@@ -137,6 +155,20 @@ export function LayerControls({
               <span className="ml-1 text-[9px] lowercase italic text-slate-600">G0</span>
             </span>
           </button>
+          {onTraceModeToggle && (
+            <button
+              onClick={() => onTraceModeToggle("RAPIDS")}
+              className={`p-0.5 hover:bg-white/10 rounded group transition-colors ${
+                traceMode?.["RAPIDS"] ? "text-amber-400" : ""
+              }`}
+              title={traceMode?.["RAPIDS"] ? "Disable trace for rapids" : "Enable trace for rapids"}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-colors ${traceMode?.["RAPIDS"] ? "stroke-amber-400" : "stroke-slate-500 group-hover:stroke-amber-300"}`}>
+                <line x1="1" y1="5" x2="9" y2="5" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="9" cy="5" r="1.5" fill="currentColor" className={traceMode?.["RAPIDS"] ? "fill-amber-400" : "fill-slate-500 group-hover:fill-amber-300"} />
+              </svg>
+            </button>
+          )}
         </>
       )}
     </div>
