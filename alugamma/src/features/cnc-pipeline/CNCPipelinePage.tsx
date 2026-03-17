@@ -1,6 +1,6 @@
 // src/features/cnc-pipeline/CNCPipelinePage.tsx
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -58,6 +58,19 @@ export default function CNCPipelinePage() {
     ncLines.length, 
     (state.status === "ready" || state.status === "done") ? state.generate.estimated_time : 30
   )
+
+  const segmentToLineMap = useMemo(() => {
+    if (state.status !== "done" || !state.generate.line_to_segment_map) return {}
+    const map: Record<number, number> = {}
+    Object.entries(state.generate.line_to_segment_map).forEach(([lineStr, seqStr]) => {
+      const seq = Number(seqStr)
+      const line = Number(lineStr)
+      if (map[seq] === undefined || line < map[seq]) {
+        map[seq] = line
+      }
+    })
+    return map
+  }, [state])
 
   useEffect(() => {
     const el = document.getElementById("cnc-navbar-portal")
@@ -273,6 +286,9 @@ export default function CNCPipelinePage() {
                   layers={state.geometry.layers}
                   visible={visible}
                   onChange={handleLayerToggle}
+                  geometrySegments={state.geometry.segments}
+                  segmentToLineMap={segmentToLineMap}
+                  onSeek={setCurrentLineIndex}
                 />
               </CardHeader>
               <CardContent className="flex-1 p-0 relative overflow-hidden min-h-0">
@@ -281,6 +297,9 @@ export default function CNCPipelinePage() {
                   visible={visible}
                   currentLineIndex={state.status === "done" ? currentLineIndex : undefined}
                   lineToSegmentMap={state.status === "done" ? state.generate.line_to_segment_map : undefined}
+                  segmentToLineMap={segmentToLineMap}
+                  onSeek={setCurrentLineIndex}
+                  playbackSpeed={playbackSpeed}
                 />
               </CardContent>
             </Card>

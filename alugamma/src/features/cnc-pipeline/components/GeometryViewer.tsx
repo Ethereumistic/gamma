@@ -1,19 +1,20 @@
-// src/features/cnc-pipeline/components/GeometryViewer.tsx
-
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo } from "react"
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch"
-import type { GeometryResponse } from "../types"
+import { GeometryResponse, Segment } from "../types"
 import { LAYER_COLORS } from "./LayerControls"
+import { motion } from "motion/react"
 
 interface Props {
     geometry: GeometryResponse
     visible: Record<string, boolean>
     currentLineIndex?: number
     lineToSegmentMap?: Record<number, number>
+    segmentToLineMap?: Record<number, number>
+    onSeek?: (line: number) => void
+    playbackSpeed?: number
 }
 
 // Layers that participate in CNC toolpath generation.
-// All others are rendered as reference-only (dimmed) when toggled on.
 const CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
 
 // ─── Inner controls component (must live inside TransformWrapper) ─────────────
@@ -60,7 +61,7 @@ function ZoomControls() {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegmentMap }: Props) {
+export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegmentMap, segmentToLineMap, onSeek, playbackSpeed = 1 }: Props) {
     const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
 
     const { segments, bbox } = geometry
@@ -82,20 +83,45 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
         [segments, visible]
     )
 
-    const hoveredSegment = hoveredSeq !== null
-        ? segments.find((s) => s.seq_index === hoveredSeq)
+    // Persistent Info Logic
+    const displaySeq = hoveredSeq !== null ? hoveredSeq : activeSeqIndex
+    const displaySegment = displaySeq !== null
+        ? segments.find((s) => s.seq_index === displaySeq)
         : null
 
-    const nextSeq = hoveredSeq !== null ? hoveredSeq + 1 : null
+    const nextSeq = displaySeq !== null ? displaySeq + 1 : null
     const nextSegment = nextSeq !== null
         ? segments.find((s) => s.seq_index === nextSeq)
         : null
 
+    const handleSegmentClick = (seq: number) => {
+        if (segmentToLineMap && onSeek) {
+            const line = segmentToLineMap[seq]
+            if (line !== undefined) {
+                onSeek(line)
+            }
+        }
+    }
+
+    // Machining Dot Logic
+    const activeSegment = activeSeqIndex !== null 
+        ? segments.find(s => s.seq_index === activeSeqIndex) 
+        : null
+
+    const getSegmentLength = (seg: { x1: number; y1: number; x2: number; y2: number }) => {
+        return Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1)
+    }
+
+    const BASE_SPEED_MM_PER_SEC = 150
+    const dynamicDuration = activeSegment 
+        ? getSegmentLength(activeSegment) / (BASE_SPEED_MM_PER_SEC * playbackSpeed)
+        : 0
+
     return (
         <div style={{ position: "relative", width: "100%", height: "100%", backgroundColor: "#000" }}>
 
-            {/* ── Hover tooltip ── */}
-            {hoveredSegment && (
+            {/* ── Info tooltip ── */}
+            {displaySegment && (
                 <div
                     style={{
                         position: "absolute",
@@ -112,13 +138,16 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                         lineHeight: 1.6,
                     }}
                 >
+                    <div className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
+                        {hoveredSeq !== null ? "Inspecting" : "Machining"}
+                    </div>
                     <div>
-                        Segment #{hoveredSeq! + 1}
+                        Segment #{displaySeq! + 1}
                         {" — "}
-                        <span style={{ color: LAYER_COLORS[hoveredSegment.layer] ?? "#fff" }}>
-                            {hoveredSegment.layer}
+                        <span style={{ color: LAYER_COLORS[displaySegment.layer] ?? "#fff" }}>
+                            {displaySegment.layer}
                         </span>
-                        {!CNC_LAYERS.has(hoveredSegment.layer) && (
+                        {!CNC_LAYERS.has(displaySegment.layer) && (
                             <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 11 }}>(ref only)</span>
                         )}
                     </div>
@@ -129,9 +158,6 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                                 {nextSegment.layer}
                             </span>
                         </div>
-                    )}
-                    {!nextSegment && nextSeq !== null && (
-                        <div style={{ color: "#94a3b8" }}>Next: end of program</div>
                     )}
                 </div>
             )}
@@ -146,7 +172,6 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                 panning={{ velocityDisabled: true }}
                 limitToBounds={false}
             >
-                {/* ZoomControls must be inside TransformWrapper to access context */}
                 <>
                     <TransformComponent
                         wrapperStyle={{ width: "100%", height: "100%" }}
@@ -171,21 +196,19 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                                     const isCncLayer = CNC_LAYERS.has(seg.layer)
                                     const baseColor = LAYER_COLORS[seg.layer] ?? "#ffffff"
 
-                                    // 1. Determine Stroke Color
                                     let strokeColor = baseColor
                                     if (isHovered) {
                                         strokeColor = "#ffffff"
                                     } else if (isActive) {
-                                        strokeColor = "#ffffff" // Or bright yellow/green
+                                        strokeColor = "#ffffff"
                                     } else if (!isCncLayer) {
                                         strokeColor = baseColor + "55"
                                     } else if (isPast) {
-                                        strokeColor = baseColor // Solid color for cut pieces
+                                        strokeColor = baseColor
                                     } else if (activeSeqIndex !== null) {
-                                        strokeColor = baseColor + "44" // Dimmed for future
+                                        strokeColor = baseColor + "44"
                                     }
 
-                                    // 2. Determine Stroke Width
                                     let strokeW = viewW * 0.002
                                     if (isHovered || isActive) {
                                         strokeW = viewW * 0.008
@@ -208,32 +231,36 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                                           style={{ cursor: "pointer", transition: "stroke 0.1s, stroke-width 0.1s" }}
                                           onMouseEnter={() => setHoveredSeq(seg.seq_index)}
                                           onMouseLeave={() => setHoveredSeq(null)}
+                                          onClick={() => handleSegmentClick(seg.seq_index)}
                                         />
                                     )
                                 })}
 
-                                {/* Sequence label on hovered segment midpoint */}
-                                {hoveredSegment && (
+                                {hoveredSeq !== null && displaySegment && (
                                     <text
-                                        x={(hoveredSegment.x1 + hoveredSegment.x2) / 2}
-                                        y={(hoveredSegment.y1 + hoveredSegment.y2) / 2}
+                                        x={(displaySegment.x1 + displaySegment.x2) / 2}
+                                        y={(displaySegment.y1 + displaySegment.y2) / 2}
                                         fontSize={viewW * 0.012}
                                         fill="white"
                                         textAnchor="middle"
-                                        transform={`scale(1,-1) translate(0,${-(hoveredSegment.y1 + hoveredSegment.y2)})`}
+                                        transform={`scale(1,-1) translate(0,${-(displaySegment.y1 + displaySegment.y2)})`}
                                     >
-                                        #{hoveredSeq! + 1}
+                                        #{hoveredSeq + 1}
                                     </text>
                                 )}
 
-                                {/* Active segment indicator (Optional: Moving dot or similar) */}
-                                {activeSeqIndex !== null && (
-                                    <circle
-                                        cx={segments.find(s => s.seq_index === activeSeqIndex)?.x2}
-                                        cy={segments.find(s => s.seq_index === activeSeqIndex)?.y2}
+                                {activeSegment && (
+                                    <motion.circle
+                                        key="cutting-head-dot"
+                                        initial={{ cx: activeSegment.x1, cy: activeSegment.y1 }}
+                                        animate={{ cx: activeSegment.x2, cy: activeSegment.y2 }}
+                                        transition={{ 
+                                            duration: Math.max(0.05, dynamicDuration),
+                                            ease: "linear" 
+                                        }}
                                         r={viewW * 0.008}
                                         fill="#fbbf24"
-                                        className="animate-pulse"
+                                        style={{ pointerEvents: "none", zIndex: 50 }}
                                     />
                                 )}
                             </g>
@@ -243,35 +270,6 @@ export function GeometryViewer({ geometry, visible, currentLineIndex, lineToSegm
                     <ZoomControls />
                 </>
             </TransformWrapper>
-
-            {/* ── Legend: reference-only indicator ── */}
-            <div
-                style={{
-                    position: "absolute",
-                    bottom: 12,
-                    left: 12,
-                    fontSize: 11,
-                    color: "#64748b",
-                    pointerEvents: "none",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                    zIndex: 20,
-                }}
-            >
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <svg width="20" height="2">
-                        <line x1="0" y1="1" x2="20" y2="1" stroke="#ffffff" strokeWidth="1.5" />
-                    </svg>
-                    <span style={{ color: "#94a3b8" }}>CNC active</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <svg width="20" height="2">
-                        <line x1="0" y1="1" x2="20" y2="1" stroke="#ffffff55" strokeWidth="1.5" strokeDasharray="4 3" />
-                    </svg>
-                    <span>Reference only</span>
-                </div>
-            </div>
         </div>
     )
 }
