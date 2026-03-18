@@ -28,6 +28,7 @@ const SCENARIO_LABELS: Record<string, string> = {
 const ALGORITHMS: { value: string; label: string; desc: string }[] = [
   { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
   { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
+  { value: "oracle", label: "v1.0 Oracle", desc: "AI-powered optimal path selection" },
 ]
 
 const formatTime = (sec: number) => {
@@ -42,7 +43,7 @@ export default function CNCPipelinePage() {
   const [visible, setVisible] = useState<Record<string, boolean>>({})
   const [showRapids, setShowRapids] = useState(true)
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
-  
+
   const [traceMode, setTraceMode] = useState<Record<string, boolean>>({
     HOLES: false,
     FREZ: false,
@@ -287,7 +288,7 @@ export default function CNCPipelinePage() {
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-2">
                     Preview
                   </span>
-                  
+
                   {state.status === "done" && (
                     <>
                       <div className="flex items-center gap-3 border-l border-white/10 pl-4 shrink-0">
@@ -320,21 +321,21 @@ export default function CNCPipelinePage() {
 
                 <div className="flex items-center min-w-0 flex-1 justify-end">
                   <div className="overflow-x-auto no-scrollbar py-1">
-                  <LayerControls
-                    layers={state.geometry.layers}
-                    visible={visible}
-                    onChange={handleLayerToggle}
-                    geometrySegments={state.geometry.segments}
-                    segmentToLineMap={segmentToLineMap}
-                    onSeek={seekToLine}
-                    showRapids={showRapids}
-                    onToggleRapids={setShowRapids}
-                    traceMode={traceMode}
-                    onTraceModeToggle={handleTraceModeToggle}
-                  />
+                    <LayerControls
+                      layers={state.geometry.layers}
+                      visible={visible}
+                      onChange={handleLayerToggle}
+                      geometrySegments={state.geometry.segments}
+                      segmentToLineMap={segmentToLineMap}
+                      onSeek={seekToLine}
+                      showRapids={showRapids}
+                      onToggleRapids={setShowRapids}
+                      traceMode={traceMode}
+                      onTraceModeToggle={handleTraceModeToggle}
+                    />
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
+              </CardHeader>
               <CardContent className="flex-1 p-0 relative overflow-hidden min-h-0">
                 <GeometryViewer
                   geometry={state.geometry}
