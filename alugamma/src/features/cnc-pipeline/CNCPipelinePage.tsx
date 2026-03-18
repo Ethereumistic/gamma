@@ -30,6 +30,8 @@ const ALGORITHMS: { value: string; label: string; desc: string }[] = [
   { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
   { value: "oracle", label: "v1.0 Oracle", desc: "AI-powered optimal path selection" },
   { value: "shapely", label: "v0.1 Shapely", desc: "Shapely-powered optimal path selection" },
+  { value: "conman", label: "v1.0 ConMan", desc: "Shapely-powered optimal path selection 2" },
+  { value: "conman_v2", label: "v1.0 ConMan v2", desc: "Shapely-powered optimal path selection 3" },
 ]
 
 const formatTime = (sec: number) => {

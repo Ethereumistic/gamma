@@ -190,12 +190,16 @@ from .algo_raptor import sort_frez_raptor
 from .algo_anchor import sort_frez_anchor
 from .algo_oracle import sort_frez_oracle
 from .algo_shapely import sort_frez_shapely
+from .algo_conman import sort_frez_conman
+from .algo_conman_v2 import sort_frez_conman_v2
 
 FREZ_ALGORITHMS: dict[str, str] = {
     "raptor": "v0.4 Raptor",
     "anchor": "v0.5 Anchor",
     "oracle": "v1.0 Oracle",
     "shapely": "v1.0 Shapely Global Hull",
+    "conman": "v1.0 ConMan",
+    "conman_v2": "v1.0 ConMan v2",
 }
 
 def sort_frez_outer_to_inner(
@@ -212,6 +216,9 @@ def sort_frez_outer_to_inner(
         return sort_frez_oracle(contours, stock_bbox)
     if algorithm == "shapely":
         return sort_frez_shapely(contours, stock_bbox)
-        
+    if algorithm == "conman":
+        return sort_frez_conman(contours, stock_bbox)
+    if algorithm == "conman_v2":
+        return sort_frez_conman_v2(contours, stock_bbox)
     # Default fallback
     return sort_frez_raptor(contours, stock_bbox)
