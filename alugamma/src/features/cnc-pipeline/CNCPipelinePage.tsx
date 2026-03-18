@@ -29,6 +29,7 @@ const ALGORITHMS: { value: string; label: string; desc: string }[] = [
   { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
   { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
   { value: "oracle", label: "v1.0 Oracle", desc: "AI-powered optimal path selection" },
+  { value: "shapely", label: "v0.1 Shapely", desc: "Shapely-powered optimal path selection" },
 ]
 
 const formatTime = (sec: number) => {
