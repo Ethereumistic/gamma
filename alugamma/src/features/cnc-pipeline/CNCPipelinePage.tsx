@@ -32,6 +32,8 @@ const ALGORITHMS: { value: string; label: string; desc: string }[] = [
   { value: "shapely", label: "v0.1 Shapely", desc: "Shapely-powered optimal path selection" },
   { value: "conman", label: "v1.0 ConMan", desc: "Shapely-powered optimal path selection 2" },
   { value: "conman_v2", label: "v1.0 ConMan v2", desc: "Shapely-powered optimal path selection 3" },
+  { value: "juggler_gemini", label: "v1.0 Juggler Gemini", desc: "Shapely-powered optimal path selection 4" },
+  { value: "juggler_claude", label: "v1.0 Juggler Claude", desc: "Shapely-powered optimal path selection 5" },
 ]
 
 const formatTime = (sec: number) => {
