@@ -97,30 +97,35 @@ export default function CNCProgramViewerPage() {
     resetPlayback,
   } = usePlayback(currentNcLines, currentGeometry?.segments || [], currentLineToSegmentMap);
 
+  const [loadedProgramId, setLoadedProgramId] = useState<string | null>(null);
+
   // Sync edits from program
   useEffect(() => {
-    if (program) {
+    if (program && program._id !== loadedProgramId) {
+      setLoadedProgramId(program._id);
       setEditName(program.name);
       
-      // Only set initial state if we haven't already customized it
-      if (currentNcLines.length === 0) {
-        setSelectedAlgorithm(program.algorithm);
-        setCurrentNcLines(program.ncCode.split("\n"));
-        if (program.lineToSegmentMap) {
-          setCurrentLineToSegmentMap(
-            Object.fromEntries(
-              Object.entries(program.lineToSegmentMap).map(([k, v]) => [Number(k), v as number])
-            )
-          );
-        }
-        if (program.geometryData) {
-          // @ts-ignore
-          setCurrentGeometry(program.geometryData);
-        }
-        setCurrentEstimatedTime(program.estimatedTimeSeconds);
+      setSelectedAlgorithm(program.algorithm);
+      setCurrentNcLines(program.ncCode.split("\n"));
+      if (program.lineToSegmentMap) {
+        setCurrentLineToSegmentMap(
+          Object.fromEntries(
+            Object.entries(program.lineToSegmentMap).map(([k, v]) => [Number(k), v as number])
+          )
+        );
+      } else {
+        setCurrentLineToSegmentMap({});
       }
+      if (program.geometryData) {
+        // @ts-ignore
+        setCurrentGeometry(program.geometryData);
+      } else {
+        setCurrentGeometry(null);
+      }
+      setCurrentEstimatedTime(program.estimatedTimeSeconds);
+      setVisible({});
     }
-  }, [program, programId]);
+  }, [program, loadedProgramId]);
 
   // Layout logic
   useEffect(() => {
