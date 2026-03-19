@@ -1,12 +1,21 @@
 // src/features/cnc-pipeline/CNCPipelinePage.tsx
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, Settings2, Save } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { useMutation } from "convex/react"
+import { api } from "../../../convex/_generated/api"
+import { useWorkspace } from "@/features/workspace/context"
+import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 
 import { BackendStatus } from "./components/BackendStatus"
 import { DXFDropZone } from "./components/DXFDropZone"
@@ -42,9 +51,27 @@ const formatTime = (sec: number) => {
 }
 
 export default function CNCPipelinePage() {
+  const navigate = useNavigate()
+  const { selectedProjectId, selectedOrganizationId } = useWorkspace()
+  const saveNcProgram = useMutation(api.nc_programs.saveNcProgram)
+
   const { state, upload, generateNC, reset } = useGenerate()
 
-  const [algorithm, setAlgorithm] = useState("raptor")
+  const [algorithm, setAlgorithm] = useState(() => {
+    return localStorage.getItem("cnc_default_algorithm") || "raptor"
+  })
+
+  const [dxfDisplayName, setDxfDisplayName] = useState("Unknown")
+  const [ncSettings, setNcSettings] = useState(() => {
+    const defaultSettings = { algorithm: false, time: false, scenario: false, custom: false, customText: "" }
+    try {
+      const stored = localStorage.getItem("cnc_nc_settings")
+      return stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings
+    } catch {
+      return defaultSettings
+    }
+  })
+
   const [visible, setVisible] = useState<Record<string, boolean>>({})
   const [showRapids, setShowRapids] = useState(true)
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
@@ -57,6 +84,9 @@ export default function CNCPipelinePage() {
     RAPIDS: false,
   })
 
+  const lastDxfFileRef = useRef<File | null>(null)
+  const prevAlgorithmRef = useRef(algorithm)
+
   const handleTraceModeToggle = (layer: string) => {
     setTraceMode(prev => ({ ...prev, [layer]: !prev[layer] }))
   }
@@ -68,11 +98,11 @@ export default function CNCPipelinePage() {
   )
 
   // ── Segments and lineToSegmentMap — available in both "ready" and "done" ──
-  const segments = (state.status === "ready" || state.status === "done")
+  const segments = (state.status === "ready" || state.status === "done" || (state.status === "generating" && state.geometry))
     ? state.geometry.segments
     : []
 
-  const lineToSegmentMap = (state.status === "ready" || state.status === "done")
+  const lineToSegmentMap = (state.status === "ready" || state.status === "done" || (state.status === "generating" && state.geometry))
     ? state.generate.line_to_segment_map
     : {}
 
@@ -90,6 +120,7 @@ export default function CNCPipelinePage() {
     setRapidPlaybackSpeed,
     totalDuration,
     currentSimTime,
+    resetPlayback,
   } = usePlayback(ncLines, segments, lineToSegmentMap)
 
   // ── Reverse map: seq_index → first G-code line number ────────────────────
@@ -130,8 +161,84 @@ export default function CNCPipelinePage() {
 
   const handleFile = async (file: File) => {
     setVisible({})
+    lastDxfFileRef.current = file
+    setDxfDisplayName(file.name.replace(/\.dxf$/i, ""))
+    resetPlayback()
     await upload(file, algorithm)
   }
+
+  const assembledFilename = useMemo(() => {
+    if (state.status !== "done" && state.status !== "ready" && state.status !== "generating") return dxfDisplayName;
+    const gen = state.generate;
+    let parts = [dxfDisplayName]
+    if (ncSettings.scenario && gen) {
+      const activeScen = gen.scenario
+      const shortCodeMap: Record<string, string> = { most_common: "F-C", common: "H-F-C", rare: "F-F135-C", very_rare: "H-F-F135-C", cut_only: "C" }
+      if (shortCodeMap[activeScen]) parts.push(shortCodeMap[activeScen])
+    }
+    if (ncSettings.algorithm && gen) parts.push(gen.algorithm)
+    if (ncSettings.time && gen) {
+      const sec = Math.round(gen.estimated_time)
+      const m = Math.floor(sec / 60)
+      const s = sec % 60
+      parts.push(`${m.toString().padStart(2, "0")}-${s.toString().padStart(2, "0")}`)
+    }
+    if (ncSettings.custom && ncSettings.customText) parts.push(ncSettings.customText.replace(/[\\/:*?"<>|]/g, ""))
+    return parts.join("_")
+  }, [dxfDisplayName, ncSettings, state])
+
+  const [isSaving, setIsSaving] = useState(false)
+  const handleSave = async () => {
+    if (state.status !== "done" || !selectedProjectId || !selectedOrganizationId) return
+    setIsSaving(true)
+    try {
+      const id = await saveNcProgram({
+        projectId: selectedProjectId,
+        organizationId: selectedOrganizationId,
+        name: assembledFilename,
+        algorithm: state.generate.algorithm,
+        scenario: state.generate.scenario,
+        estimatedTimeSeconds: state.generate.estimated_time,
+        ncCode: state.ncText,
+        dxfSourceName: lastDxfFileRef.current?.name || "unknown.dxf",
+        geometryData: state.geometry ? {
+          segments: state.geometry.segments,
+          bbox: state.geometry.bbox,
+        } : undefined,
+        lineToSegmentMap: state.generate.line_to_segment_map || undefined,
+      })
+      toast.success("NC program saved", { description: assembledFilename + ".nc" })
+      navigate(`/cnc-pipeline/${id}`)
+    } catch (e: any) {
+      console.error(e)
+      toast.error("Failed to save NC program", { description: e.message })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const updateSettings = (partial: any) => {
+    setNcSettings((prev: any) => {
+      const next = { ...prev, ...partial }
+      localStorage.setItem("cnc_nc_settings", JSON.stringify(next))
+      return next
+    })
+  }
+
+  const updateDefaultAlgorithm = (val: string) => {
+    setAlgorithm(val)
+    localStorage.setItem("cnc_default_algorithm", val)
+  }
+
+  useEffect(() => {
+    if (prevAlgorithmRef.current !== algorithm) {
+      prevAlgorithmRef.current = algorithm
+      if ((state.status === "done" || state.status === "ready") && lastDxfFileRef.current) {
+        resetPlayback()
+        upload(lastDxfFileRef.current, algorithm)
+      }
+    }
+  }, [algorithm, state.status, upload, resetPlayback])
 
   // Initialise layer visibility when geometry loads
   if (
@@ -143,11 +250,11 @@ export default function CNCPipelinePage() {
     setVisible(init)
   }
 
-  const activeAlgoLabel = ALGORITHMS.find(
-    (a) => a.value === ((state.status === "ready" || state.status === "done")
-      ? state.generate.algorithm
-      : algorithm)
-  )?.label ?? algorithm
+  const currentAlgorithm = (state.status === "ready" || state.status === "done" || state.status === "generating")
+    ? state.generate.algorithm
+    : algorithm
+  
+  const activeAlgoLabel = ALGORITHMS.find(a => a.value === currentAlgorithm)?.label ?? algorithm
 
   return (
     <div className="p-6 h-[calc(100vh-4rem)] flex flex-col text-slate-200">
@@ -184,16 +291,15 @@ export default function CNCPipelinePage() {
             </Select>
           </div>
 
-          {(state.status === "ready" || state.status === "done") ? (
+          {(state.status === "ready" || state.status === "done" || state.status === "generating") ? (
             <>
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
-              <span className="font-semibold text-slate-200 tracking-wide truncate max-w-[200px]">
-                {state.generate.filename}
-              </span>
-              <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-500/20 whitespace-nowrap shrink-0">
-                {activeAlgoLabel}
-              </span>
+              <input
+                type="text"
+                value={dxfDisplayName}
+                onChange={(e) => setDxfDisplayName(e.target.value)}
+                className="font-semibold text-slate-200 tracking-wide truncate max-w-[200px] bg-transparent border-none outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1 -mx-1"
+              />
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
               <span className="flex items-center gap-1 font-medium whitespace-nowrap">
                 {(SCENARIO_LABELS[state.generate.scenario] ?? state.generate.scenario).split(" ").map((word, i) => {
@@ -220,19 +326,79 @@ export default function CNCPipelinePage() {
               </span>
 
               <div className="ml-auto flex items-center gap-2 pl-4">
-                <Button variant="ghost" size="sm" className="h-8 px-3 text-xs hover:bg-white/5 flex gap-1.5" onClick={reset}>
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Generate another
-                </Button>
-                {state.status === "ready" && (
-                  <Button
-                    size="sm"
-                    className="h-8 px-4 text-xs shadow-[0_0_15px_rgba(20,180,100,0.15)] bg-emerald-600 hover:bg-emerald-500 text-white"
-                    onClick={() => generateNC(state.jobId, state.generate, state.geometry)}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8 px-3 text-xs hover:bg-white/5 flex gap-1.5">
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Settings
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>NC Program Settings</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      
+                      <div className="grid gap-2 mb-2">
+                        <Label>Default Algorithm</Label>
+                        <Select value={algorithm} onValueChange={updateDefaultAlgorithm}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {ALGORITHMS.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-4 pt-4 border-t border-white/10">
+                        <div className="flex flex-col gap-1">
+                          <Label>Filename Suffix Settings</Label>
+                          <span className="text-xs text-emerald-400 font-mono break-all">{assembledFilename}.nc</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <Label className="font-normal font-mono text-xs">Append Scenario (e.g. _F-C)</Label>
+                          <Switch checked={ncSettings.scenario} onCheckedChange={c => updateSettings({ scenario: c })} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-normal font-mono text-xs">Append Algorithm (e.g. _raptor)</Label>
+                          <Switch checked={ncSettings.algorithm} onCheckedChange={c => updateSettings({ algorithm: c })} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-normal font-mono text-xs">Append Est. Time (e.g. _04-20)</Label>
+                          <Switch checked={ncSettings.time} onCheckedChange={c => updateSettings({ time: c })} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-normal font-mono text-xs">Append Custom Text</Label>
+                          <Switch checked={ncSettings.custom} onCheckedChange={c => updateSettings({ custom: c })} />
+                        </div>
+                        {ncSettings.custom && (
+                          <Input 
+                            value={ncSettings.customText} 
+                            onChange={e => updateSettings({ customText: e.target.value })} 
+                            className="h-8 text-xs font-mono" 
+                            placeholder="custom-suffix"
+                          />
+                        )}
+                      </div>
+
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {state.status === "done" && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleSave} 
+                    disabled={isSaving}
+                    className="h-8 px-3 text-xs border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400"
                   >
-                    Generate NC program
+                    <Save className="h-3.5 w-3.5 mr-1.5" />
+                    {isSaving ? "Saving..." : "Save"}
                   </Button>
                 )}
+                <div className="h-4 w-px bg-white/10 mx-2 shrink-0" />
+                <DXFDropZone onFile={handleFile} disabled={state.status === "generating"} compact />
               </div>
             </>
           ) : (
@@ -256,7 +422,7 @@ export default function CNCPipelinePage() {
         </div>
       )}
 
-      {state.status === "generating" && (
+      {state.status === "generating" && !state.geometry && (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-slate-400">Generating NC program…</p>
         </div>
@@ -270,8 +436,15 @@ export default function CNCPipelinePage() {
         </div>
       )}
 
-      {(state.status === "ready" || state.status === "done") && (
-        <div className="grid grid-cols-12 gap-6 h-full min-h-0">
+      {(state.status === "ready" || state.status === "done" || (state.status === "generating" && state.geometry)) && (
+        <div className="grid grid-cols-12 gap-6 h-full min-h-0 relative">
+          
+          {state.status === "generating" && (
+            <div className="absolute inset-0 bg-black/40 z-50 flex flex-col items-center justify-center backdrop-blur-sm rounded-lg">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4 mt-[35vh]"></div>
+              <p className="text-emerald-400 font-medium tracking-wide">Generating NC program…</p>
+            </div>
+          )}
 
           {/* LEFT: NC Code Viewer */}
           <div className="col-span-3 h-full min-h-0">
@@ -376,6 +549,7 @@ export default function CNCPipelinePage() {
 
         </div>
       )}
+
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { ChevronDown, FileStack, LayoutDashboard, LogOut, Plus, ScissorsLineDash
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -76,22 +76,7 @@ const navItems = [
   },
 ];
 
-function isSameDay(d1: Date, d2: Date) {
-  return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
-}
-
-function formatDateGroup(timestamp: number) {
-  const date = new Date(timestamp);
-  const today = new Date();
-
-  if (isSameDay(date, today)) return "Today";
-
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (isSameDay(date, yesterday)) return "Yesterday";
-
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long' }).format(date);
-}
+import { formatDateGroup } from "@/lib/date-utils";
 
 export function AppSidebar() {
   const location = useLocation();
@@ -112,6 +97,15 @@ export function AppSidebar() {
   const renameDesign = useMutation(api.designs.renameDesign);
 
   const pathIsSheetMetal = location.pathname.startsWith("/sheet-metal");
+  const pathIsCNCPipeline = location.pathname.startsWith("/cnc-pipeline");
+
+  const toggleStarNcProgram = useMutation(api.nc_programs.toggleStar);
+  const deleteNcProgram = useMutation(api.nc_programs.deleteNcProgram);
+  const updateNcProgram = useMutation(api.nc_programs.updateNcProgram);
+
+  const [ncSearchQuery, setNcSearchQuery] = useState("");
+  const [ncSortOrder, setNcSortOrder] = useState<"newest" | "oldest" | "a-z" | "z-a">("newest");
+  const [ncProgramToRename, setNcProgramToRename] = useState<{ id: Id<"nc_programs">, name: string } | null>(null);
 
   const groupedDesigns = useMemo(() => {
     if (!selectedProject) return new Map<string, ProjectDesignSummary[]>();
@@ -141,6 +135,40 @@ export function AppSidebar() {
 
     return groups;
   }, [selectedProject, searchQuery, sortOrder]);
+
+  // We should fetch NC programs if on CNC pipeline
+  const ncProgramsUnfiltered = useQuery(
+    api.nc_programs.listByProject, 
+    selectedProject ? { projectId: selectedProject.id } : "skip"
+  );
+
+  const groupedNcPrograms = useMemo(() => {
+    if (!ncProgramsUnfiltered) return new Map<string, any[]>();
+
+    let filtered = ncProgramsUnfiltered.filter((p: any) =>
+      !ncSearchQuery || p.name.toLowerCase().includes(ncSearchQuery.toLowerCase())
+    );
+
+    filtered.sort((a: any, b: any) => {
+      if (a.isStarred && !b.isStarred) return -1;
+      if (!a.isStarred && b.isStarred) return 1;
+
+      if (ncSortOrder === "newest") return b.updatedAt - a.updatedAt;
+      if (ncSortOrder === "oldest") return a.updatedAt - b.updatedAt;
+      if (ncSortOrder === "a-z") return a.name.localeCompare(b.name);
+      if (ncSortOrder === "z-a") return b.name.localeCompare(a.name);
+      return 0;
+    });
+
+    const groups = new Map<string, any[]>();
+    filtered.forEach((p: any) => {
+      const group = formatDateGroup(p.updatedAt);
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group)!.push(p);
+    });
+
+    return groups;
+  }, [ncProgramsUnfiltered, ncSearchQuery, ncSortOrder]);
 
   return (
     <>
@@ -195,7 +223,7 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {authenticated && selectedProject && (
+          {authenticated && selectedProject && pathIsSheetMetal && (
             <SidebarGroup className="min-h-0 flex-1 overflow-hidden flex flex-col pt-0">
               <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground pt-4 pb-2">
                 Designs in {selectedProject.name}
@@ -338,6 +366,134 @@ export function AppSidebar() {
               </SidebarGroupContent>
             </SidebarGroup>
           )}
+
+          {authenticated && selectedProject && pathIsCNCPipeline && (
+            <SidebarGroup className="min-h-0 flex-1 overflow-hidden flex flex-col pt-0">
+              <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground pt-4 pb-2">
+                NC Programs in {selectedProject.name}
+              </SidebarGroupLabel>
+
+              <div className="px-3 pb-3 pt-1 flex flex-col gap-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => navigate("/cnc-pipeline/new")}
+                    className="shrink-0 h-8 w-8 bg-transparent border-white/10 hover:bg-white/5"
+                    title="New NC program"
+                  >
+                    <Plus className="h-4 w-4 text-slate-300" />
+                  </Button>
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <Input
+                      placeholder="Search NC programs..."
+                      value={ncSearchQuery}
+                      onChange={(e) => setNcSearchQuery(e.target.value)}
+                      className="h-8 pl-8 bg-black/20 border-white/10 text-xs focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+                    />
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" className="shrink-0 h-8 w-8 bg-transparent border-white/10 hover:bg-white/5">
+                        <Filter className="h-3.5 w-3.5 text-slate-400" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40 border-white/10 bg-[#090d16] text-slate-200">
+                      <DropdownMenuItem onClick={() => setNcSortOrder("newest")} className="hover:bg-white/10">Newest first</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setNcSortOrder("oldest")} className="hover:bg-white/10">Oldest first</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setNcSortOrder("a-z")} className="hover:bg-white/10">A-Z</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setNcSortOrder("z-a")} className="hover:bg-white/10">Z-A</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+
+              <SidebarGroupContent className="min-h-0 flex-1">
+                <ScrollArea className="h-full pr-3 pl-3">
+                  <SidebarMenuSub className="space-y-4 pr-1 pl-0 mx-0 border-none">
+                    {(!ncProgramsUnfiltered || ncProgramsUnfiltered.length === 0) ? (
+                      <div className="rounded-lg border border-dashed border-white/8 px-3 py-4 text-center text-xs text-slate-500 mx-2">
+                        No saved NC programs.
+                      </div>
+                    ) : groupedNcPrograms.size === 0 ? (
+                      <div className="text-center text-xs text-slate-500 mx-2 py-4">
+                        No NC programs match "{ncSearchQuery}"
+                      </div>
+                    ) : (
+                      Array.from(groupedNcPrograms.entries()).map(([group, programs]) => (
+                        <div key={group}>
+                          <div className="px-2 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500/80">
+                            {group}
+                          </div>
+                          <ul className="space-y-0.5">
+                            {programs.map((program: any) => (
+                              <SidebarMenuSubItem key={program._id} className="group/item relative">
+                                <SidebarMenuSubButton
+                                  asChild
+                                  isActive={location.pathname === `/cnc-pipeline/${program._id}`}
+                                  className="text-slate-300 hover:text-white pr-8 h-8 focus-visible:ring-1 focus-visible:ring-emerald-500/50 outline-none w-full flex items-center gap-2"
+                                >
+                                  <Link to={`/cnc-pipeline/${program._id}`}>
+                                    {program.isStarred ? (
+                                      <Star className="h-4 w-4 fill-amber-400 text-amber-400 shrink-0" />
+                                    ) : (
+                                      <FileStack className="h-4 w-4 opacity-70 shrink-0" />
+                                    )}
+                                    <span className="truncate flex-1">{program.name}</span>
+                                    <div className="flex gap-1 shrink-0 ml-2">
+                                      <span className="text-[9px] border border-white/10 rounded px-1 bg-white/5 opacity-60 uppercase font-mono">{program.algorithm}</span>
+                                      <span className="text-[9px] border border-white/10 rounded px-1 bg-white/5 opacity-60 uppercase font-mono">
+                                        {{ most_common: "F-C", common: "H-F-C", rare: "F-F135-C", very_rare: "H-F-F135-C", cut_only: "C" }[program.scenario as string] || program.scenario}
+                                      </span>
+                                    </div>
+                                  </Link>
+                                </SidebarMenuSubButton>
+
+                                <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition-opacity">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 hover:bg-white/10 aria-expanded:bg-white/10 text-slate-400 hover:text-white"
+                                      >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48 border-white/10 bg-[#090d16] text-slate-200">
+                                      <DropdownMenuItem onClick={() => toggleStarNcProgram({ projectId: selectedProject.id, ncProgramId: program._id })} className="hover:bg-white/10">
+                                        {program.isStarred ? "Unstar" : "Star program"}
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => setNcProgramToRename({ id: program._id, name: program.name })} className="hover:bg-white/10">
+                                        Rename
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator className="bg-white/5" />
+                                      <DropdownMenuItem
+                                        className="text-red-400 focus:text-red-300 focus:bg-red-400/10 hover:text-red-300 hover:bg-red-400/10"
+                                        onClick={() => {
+                                          if (confirm(`Delete NC Program ${program.name}?`)) {
+                                            deleteNcProgram({ projectId: selectedProject.id, ncProgramId: program._id });
+                                          }
+                                        }}
+                                      >
+                                        Delete program
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </SidebarMenuSubItem>
+                            ))}
+                          </ul>
+                        </div>
+                      ))
+                    )}
+                  </SidebarMenuSub>
+                </ScrollArea>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
         </SidebarContent>
 
         <SidebarFooter className="border-t border-white/6 bg-black/20 px-4 py-4">
@@ -416,6 +572,49 @@ export function AppSidebar() {
                 if (designToRename && designToRename.name.trim().length >= 2) {
                   await renameDesign({ designId: designToRename.id, name: designToRename.name });
                   setDesignToRename(null);
+                }
+              }}
+            >
+              Save
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!ncProgramToRename} onOpenChange={(open) => !open && setNcProgramToRename(null)}>
+        <AlertDialogContent className="border-white/10 bg-[#090d16] text-white sm:max-w-[425px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Rename NC Program</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Enter a new name for the NC program.
+            </AlertDialogDescription>
+            <div className="py-2">
+              <Input
+                autoFocus
+                value={ncProgramToRename?.name || ""}
+                onChange={e => setNcProgramToRename(prev => prev ? { ...prev, name: e.target.value } : null)}
+                className="bg-black/20 border-white/10 text-white focus-visible:ring-emerald-500/50"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && ncProgramToRename && ncProgramToRename.name.trim().length >= 2) {
+                    e.preventDefault();
+                    if (selectedProjectId) {
+                      updateNcProgram({ projectId: selectedProjectId, ncProgramId: ncProgramToRename.id, name: ncProgramToRename.name });
+                    }
+                    setNcProgramToRename(null);
+                  }
+                }}
+              />
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-emerald-500 text-white hover:bg-emerald-600 border-none disabled:opacity-50"
+              disabled={!ncProgramToRename || ncProgramToRename.name.trim().length < 2 || !selectedProjectId}
+              onClick={async () => {
+                if (ncProgramToRename && ncProgramToRename.name.trim().length >= 2 && selectedProjectId) {
+                  await updateNcProgram({ projectId: selectedProjectId, ncProgramId: ncProgramToRename.id, name: ncProgramToRename.name });
+                  setNcProgramToRename(null);
                 }
               }}
             >

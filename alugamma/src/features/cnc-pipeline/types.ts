@@ -53,6 +53,6 @@ export type PageState =
   | { status: "idle" }
   | { status: "uploading" }
   | { status: "ready"; jobId: string; generate: GenerateResponse; geometry: GeometryResponse }
-  | { status: "generating" }
+  | { status: "generating"; jobId: string; generate: GenerateResponse; geometry: GeometryResponse }
   | { status: "done"; jobId: string; generate: GenerateResponse; geometry: GeometryResponse; ncText: string }
   | { status: "error"; message: string }

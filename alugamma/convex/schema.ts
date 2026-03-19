@@ -94,4 +94,42 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_updatedAt", ["projectId", "updatedAt"]),
+  nc_programs: defineTable({
+    organizationId: v.id("organizations"),
+    projectId: v.id("projects"),
+    name: v.string(),               // assembled filename WITHOUT extension
+    algorithm: v.string(),
+    scenario: v.string(),
+    estimatedTimeSeconds: v.number(),
+    ncCode: v.string(),
+    dxfSourceName: v.string(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+    isStarred: v.optional(v.boolean()),
+    geometryData: v.optional(
+      v.object({
+        segments: v.array(
+          v.object({
+            seq_index: v.number(),
+            layer: v.string(),
+            x1: v.number(),
+            y1: v.number(),
+            x2: v.number(),
+            y2: v.number(),
+          })
+        ),
+        bbox: v.object({
+          min_x: v.number(),
+          min_y: v.number(),
+          max_x: v.number(),
+          max_y: v.number(),
+        }),
+      })
+    ),
+    lineToSegmentMap: v.optional(v.any()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_project_updated", ["projectId", "updatedAt"]),
 });

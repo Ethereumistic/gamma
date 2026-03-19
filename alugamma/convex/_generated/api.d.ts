@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as designs from "../designs.js";
 import type * as helpers from "../helpers.js";
 import type * as http from "../http.js";
+import type * as nc_programs from "../nc_programs.js";
 import type * as validators from "../validators.js";
 import type * as workspaces from "../workspaces.js";
 
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   designs: typeof designs;
   helpers: typeof helpers;
   http: typeof http;
+  nc_programs: typeof nc_programs;
   validators: typeof validators;
   workspaces: typeof workspaces;
 }>;

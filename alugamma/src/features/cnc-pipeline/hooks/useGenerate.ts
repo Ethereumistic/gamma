@@ -11,14 +11,17 @@ export function useGenerate() {
     setState({ status: "uploading" })
     try {
       const { generate, geometry } = await uploadDXF(file, algorithm)
-      setState({ status: "ready", jobId: generate.job_id, generate, geometry })
+      setState({ status: "generating", jobId: generate.job_id, generate, geometry })
+      
+      const ncText = await fetchNCText(generate.job_id)
+      setState({ status: "done", jobId: generate.job_id, generate, geometry, ncText })
     } catch (e: any) {
       setState({ status: "error", message: e.message })
     }
   }, [])
 
   const generateNC = useCallback(async (jobId: string, generate: GenerateResponse, geometry: GeometryResponse) => {
-    setState({ status: "generating" })
+    setState({ status: "generating", jobId, generate, geometry })
     try {
       const ncText = await fetchNCText(jobId)
       setState({ status: "done", jobId, generate, geometry, ncText })

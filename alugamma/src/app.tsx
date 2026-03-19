@@ -18,7 +18,9 @@ import ProjectPage from "@/routes/project";
 import ProjectDetailPage from "@/routes/project-detail";
 import DesignDetailPage from "@/routes/design-detail";
 import SheetMetalApp from "@/routes/sheet-metal";
-import CNCPipelinePage from "@/features/cnc-pipeline/CNCPipelinePage";
+import CNCPipelineDashboardPage from "@/routes/cnc-pipeline/index";
+import CNCPipelineNewRoute from "@/routes/cnc-pipeline/new";
+import CNCProgramViewerPage from "@/routes/cnc-pipeline/$programId";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function App() {
@@ -44,7 +46,9 @@ export default function App() {
                         <Route path="/project/:projectId/:designId" element={<DesignDetailPage />} />
                         <Route path="/sheet-metal" element={<SheetMetalApp />} />
                         <Route path="/sheet-metal/:designId" element={<SheetMetalApp />} />
-                        <Route path="/cnc-pipeline" element={<CNCPipelinePage />} />
+                        <Route path="/cnc-pipeline" element={<CNCPipelineDashboardPage />} />
+                        <Route path="/cnc-pipeline/new" element={<CNCPipelineNewRoute />} />
+                        <Route path="/cnc-pipeline/:programId" element={<CNCProgramViewerPage />} />
                       </Routes>
                     </main>
                   </div>

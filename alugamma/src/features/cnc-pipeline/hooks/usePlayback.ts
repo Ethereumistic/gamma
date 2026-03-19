@@ -179,6 +179,18 @@ export function usePlayback(
     setSeekTrigger(t => t + 1);
   }, [cumulativeTime, ncLines.length]);
 
+  const resetPlayback = useCallback(() => {
+    simTimeRef.current = 0;
+    setCurrentSimTime(0);
+    setCurrentLineIndex(0);
+    setIsPlaying(false);
+    wallClockRef.current = 0;
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+      requestRef.current = undefined;
+    }
+  }, []);
+
   return {
     isPlaying,
     setIsPlaying,
@@ -194,6 +206,7 @@ export function usePlayback(
     totalDuration,
     activeLayers,
     setActiveLayers,
+    resetPlayback,
     // Expose the cut speed so GeometryViewer can compute dot animation durations
     // using the same constant without importing it separately.
     CUT_SPEED_MM_PER_S,
