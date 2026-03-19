@@ -1,6 +1,6 @@
 // src/features/cnc-pipeline/api.ts
 
-import type { GenerateResponse, GeometryResponse, PreviewResponse } from "./types"
+import type { GenerateResponse, GeometryResponse, PreviewResponse, RegenerateResponse, StoredContour, StockBbox } from "./types"
 
 const BASE = import.meta.env.VITE_CNC_API_URL || "https://cnc.alubeta.com"
 
@@ -39,4 +39,21 @@ export async function fetchNCText(jobId: string): Promise<string> {
 
 export function downloadURL(jobId: string): string {
   return `${BASE}/api/download/${jobId}`
+}
+
+export interface RegeneratePayload {
+  contours_by_layer: Record<string, StoredContour[]>
+  stock_bbox: StockBbox
+  scenario: string
+  algorithm: string
+}
+
+export async function regenerate(payload: RegeneratePayload): Promise<RegenerateResponse> {
+  const res = await fetch(`${BASE}/api/regenerate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(`Regenerate failed: ${res.status}`)
+  return res.json()
 }

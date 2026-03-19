@@ -128,6 +128,15 @@ export default defineSchema({
       })
     ),
     lineToSegmentMap: v.optional(v.any()),
+    contoursByLayer: v.optional(v.any()),
+    stockBbox: v.optional(
+      v.object({
+        min_x: v.number(),
+        max_x: v.number(),
+        min_y: v.number(),
+        max_y: v.number(),
+      })
+    ),
   })
     .index("by_project", ["projectId"])
     .index("by_organization", ["organizationId"])

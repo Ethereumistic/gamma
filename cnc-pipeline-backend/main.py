@@ -58,6 +58,8 @@ async def generate(file: UploadFile = File(...), algorithm: str = "raptor"):
                 "warnings":        result.warnings,
                 "algorithm":       algorithm,
                 "line_to_segment_map": result.line_to_segment_map,
+                "contours_by_layer": result.contours_by_layer,
+                "stock_bbox": result.stock_bbox,
             },
             "geometry": result.geometry_data
         }
@@ -67,6 +69,61 @@ async def generate(file: UploadFile = File(...), algorithm: str = "raptor"):
         raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
     finally:
         os.unlink(tmp.name)
+
+
+from pydantic import BaseModel
+
+class RegenerateRequest(BaseModel):
+    contours_by_layer: dict[str, list[dict]]
+    stock_bbox: dict
+    scenario: str
+    algorithm: str
+
+@app.post("/api/regenerate")
+async def regenerate(req: RegenerateRequest):
+    from cnc_pipeline.pipeline import run_from_contours
+
+    try:
+        result = run_from_contours(
+            contours_by_layer=req.contours_by_layer,
+            stock_bbox=req.stock_bbox,
+            scenario=req.scenario,
+            algorithm=req.algorithm,
+        )
+
+        job_id = str(uuid.uuid4())
+        # Store a mock dummy result just for download/preview if needed
+        # Or you could assemble a full PipelineResult if you want it downloadable
+        from cnc_pipeline.pipeline import PipelineResult
+        _jobs[job_id] = PipelineResult(
+            scenario=req.scenario,
+            layers_detected=list(req.contours_by_layer.keys()),
+            tools_used=result["tools_used"],
+            contour_count=0, # Don't care to recount
+            lift_count=result["lift_count"],
+            estimated_time_seconds=result["estimated_time"],
+            warnings=result["warnings"],
+            nc_text=result["nc_text"],
+            output_filename=result["output_filename"],
+            geometry_data=result["geometry_data"],
+            line_to_segment_map=result["line_to_segment_map"],
+            contours_by_layer=req.contours_by_layer,
+            stock_bbox=req.stock_bbox,
+        )
+
+        return {
+            "job_id": job_id,
+            "scenario": req.scenario,
+            "algorithm": req.algorithm,
+            "geometry_data": result["geometry_data"],
+            "line_to_segment_map": result["line_to_segment_map"],
+            "estimated_time": result["estimated_time"],
+            "nc_text": result["nc_text"],
+            "contours_by_layer": req.contours_by_layer,
+            "stock_bbox": req.stock_bbox,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Regenerate error: {str(e)}")
 
 
 @app.get("/api/preview/{job_id}")

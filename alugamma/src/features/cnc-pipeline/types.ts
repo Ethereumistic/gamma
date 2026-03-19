@@ -7,6 +7,23 @@ export type Scenario =
   | "very_rare"
   | "cut_only"
 
+export interface ContoursPoint {
+  x: number
+  y: number
+}
+
+export interface StoredContour {
+  points: ContoursPoint[]
+  is_closed: boolean
+}
+
+export interface StockBbox {
+  min_x: number
+  max_x: number
+  min_y: number
+  max_y: number
+}
+
 export interface GenerateResponse {
   job_id:           string
   filename:         string
@@ -19,6 +36,8 @@ export interface GenerateResponse {
   warnings:         string[]
   algorithm:        string      // "raptor" | "anchor" | ...
   line_to_segment_map: Record<number, number>
+  contours_by_layer: Record<string, StoredContour[]>
+  stock_bbox: StockBbox
 }
 
 export interface PreviewResponse {
@@ -46,6 +65,18 @@ export interface GeometryResponse {
     max_x: number
     max_y: number
   }
+}
+
+export interface RegenerateResponse {
+  job_id: string
+  scenario: string
+  algorithm: string
+  geometry_data: GeometryResponse
+  line_to_segment_map: Record<number, number>
+  estimated_time: number
+  nc_text: string
+  contours_by_layer: Record<string, StoredContour[]>
+  stock_bbox: StockBbox
 }
 
 // Page-level state machine

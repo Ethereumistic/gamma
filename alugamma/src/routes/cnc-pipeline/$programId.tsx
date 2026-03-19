@@ -7,7 +7,6 @@ import { PlaybackControls } from "@/features/cnc-pipeline/components/PlaybackCon
 import { GeometryViewer } from "@/features/cnc-pipeline/components/GeometryViewer";
 import { LayerControls, LAYER_COLORS } from "@/features/cnc-pipeline/components/LayerControls";
 import { usePlayback } from "@/features/cnc-pipeline/hooks/usePlayback";
-import { useGenerate } from "@/features/cnc-pipeline/hooks/useGenerate";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -15,9 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Download, Save, Settings2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DXFDropZone } from "@/features/cnc-pipeline/components/DXFDropZone";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { regenerate } from "@/features/cnc-pipeline/api";
+import type { GeometryResponse } from "@/features/cnc-pipeline/types";
 
 const ALGORITHMS = [
   { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
@@ -49,13 +48,14 @@ export default function CNCProgramViewerPage() {
   const program = useQuery(api.nc_programs.getById, { programId: programId as Id<"nc_programs"> });
   const updateNcProgram = useMutation(api.nc_programs.updateNcProgram);
 
-  const { state: genState, upload, reset: resetGenState } = useGenerate();
-
   const [editName, setEditName] = useState<string>("");
-  const [editAlgorithm, setEditAlgorithm] = useState<string>("");
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<string>("");
+  const [isRegenerating, setIsRegenerating] = useState(false);
   
-  const [algoDialogOpen, setAlgoDialogOpen] = useState(false);
-  const [pendingAlgorithm, setPendingAlgorithm] = useState("");
+  const [currentGeometry, setCurrentGeometry] = useState<GeometryResponse | null>(null);
+  const [currentNcLines, setCurrentNcLines] = useState<string[]>([]);
+  const [currentLineToSegmentMap, setCurrentLineToSegmentMap] = useState<Record<number, number>>({});
+  const [currentEstimatedTime, setCurrentEstimatedTime] = useState(0);
 
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
 
@@ -70,30 +70,15 @@ export default function CNCProgramViewerPage() {
     RAPIDS: false,
   });
 
-  // Reconstruct effective states (either from backend or overridden by local generation)
-  const isRegenerated = genState.status === "done";
-  const activeAlgorithm = isRegenerated && genState.generate ? genState.generate.algorithm : editAlgorithm;
-  const activeScenario = isRegenerated && genState.generate ? genState.generate.scenario : (program?.scenario || "unknown");
-  const activeTime = isRegenerated && genState.generate ? genState.generate.estimated_time : (program?.estimatedTimeSeconds || 0);
-  const activeNcCode = isRegenerated ? genState.ncText : (program?.ncCode || "");
-  const activeGeometry = isRegenerated ? genState.geometry : (program?.geometryData || null);
+  const activeScenario = program?.scenario || "unknown";
+  const activeTime = currentEstimatedTime || program?.estimatedTimeSeconds || 0;
   
-  const ncLines = useMemo(() => activeNcCode.split("\n"), [activeNcCode]);
-
   // Maps
-  const lineToSegmentMap: Record<number, number> = useMemo(() => {
-    const srcMap = isRegenerated ? genState.generate.line_to_segment_map : program?.lineToSegmentMap;
-    if (!srcMap) return {};
-    return Object.fromEntries(
-      Object.entries(srcMap).map(([k, v]) => [Number(k), v as number])
-    );
-  }, [isRegenerated, genState, program?.lineToSegmentMap]);
-
   const segmentToLineMap: Record<number, number> = useMemo(() => {
     return Object.fromEntries(
-      Object.entries(lineToSegmentMap).map(([line, seq]) => [seq, Number(line)])
+      Object.entries(currentLineToSegmentMap).map(([line, seq]) => [seq, Number(line)])
     );
-  }, [lineToSegmentMap]);
+  }, [currentLineToSegmentMap]);
 
   // Playback
   const {
@@ -108,14 +93,32 @@ export default function CNCProgramViewerPage() {
     rapidPlaybackSpeed,
     setRapidPlaybackSpeed,
     totalDuration,
-    currentSimTime
-  } = usePlayback(ncLines, activeGeometry?.segments || [], lineToSegmentMap);
+    currentSimTime,
+    resetPlayback,
+  } = usePlayback(currentNcLines, currentGeometry?.segments || [], currentLineToSegmentMap);
 
   // Sync edits from program
   useEffect(() => {
     if (program) {
       setEditName(program.name);
-      setEditAlgorithm(program.algorithm);
+      
+      // Only set initial state if we haven't already customized it
+      if (currentNcLines.length === 0) {
+        setSelectedAlgorithm(program.algorithm);
+        setCurrentNcLines(program.ncCode.split("\n"));
+        if (program.lineToSegmentMap) {
+          setCurrentLineToSegmentMap(
+            Object.fromEntries(
+              Object.entries(program.lineToSegmentMap).map(([k, v]) => [Number(k), v as number])
+            )
+          );
+        }
+        if (program.geometryData) {
+          // @ts-ignore
+          setCurrentGeometry(program.geometryData);
+        }
+        setCurrentEstimatedTime(program.estimatedTimeSeconds);
+      }
     }
   }, [program, programId]);
 
@@ -138,13 +141,13 @@ export default function CNCProgramViewerPage() {
   }, []);
 
   useEffect(() => {
-    if (activeGeometry && Object.keys(visible).length === 0) {
+    if (currentGeometry && Object.keys(visible).length === 0) {
       const init: Record<string, boolean> = {};
-      const uniqueLayers = [...new Set(activeGeometry.segments.map(s => s.layer))];
+      const uniqueLayers = [...new Set(currentGeometry.segments.map(s => s.layer))];
       uniqueLayers.forEach((l) => { init[l] = true });
       setVisible(init);
     }
-  }, [activeGeometry, visible]);
+  }, [currentGeometry, visible]);
 
   // Handlers
   const handleLayerToggle = (layer: string, value: boolean) => {
@@ -155,7 +158,7 @@ export default function CNCProgramViewerPage() {
   };
 
   const handleDownload = () => {
-    const blob = new Blob([activeNcCode], { type: "text/plain" });
+    const blob = new Blob([currentNcLines.join("\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -166,30 +169,58 @@ export default function CNCProgramViewerPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleDropzoneUpload = (file: File) => {
-    toast.info("Navigating to new generation environment...");
-    navigate("/cnc-pipeline/new");
-  };
+  const hasRegenerated = selectedAlgorithm !== (program?.algorithm);
+  const isDirty = hasRegenerated || (program && editName !== program.name);
+
+  async function handleRegenerate(newAlgorithm: string) {
+    if (!program?.contoursByLayer || !program?.stockBbox) return;
+    if (newAlgorithm === selectedAlgorithm) return;
+
+    setIsRegenerating(true);
+    resetPlayback();
+
+    try {
+      const result = await regenerate({
+        contours_by_layer: program.contoursByLayer,
+        stock_bbox: program.stockBbox,
+        scenario: program.scenario,
+        algorithm: newAlgorithm,
+      });
+
+      setCurrentGeometry(result.geometry_data);
+      setCurrentNcLines(result.nc_text.split("\n"));
+      setCurrentLineToSegmentMap(
+        Object.fromEntries(
+          Object.entries(result.line_to_segment_map).map(([k, v]) => [Number(k), v])
+        )
+      );
+      setCurrentEstimatedTime(result.estimated_time);
+      setSelectedAlgorithm(newAlgorithm);
+    } catch (err) {
+      toast.error("Regeneration failed", { description: String(err) });
+    } finally {
+      setIsRegenerating(false);
+    }
+  }
 
   const handleSave = async () => {
     if (!program || !program.projectId) return;
     try {
-      if (isRegenerated && genState.generate) {
+      if (hasRegenerated) {
         await updateNcProgram({
           projectId: program.projectId,
           ncProgramId: program._id,
           name: editName,
-          algorithm: genState.generate.algorithm,
-          scenario: genState.generate.scenario,
-          estimatedTimeSeconds: genState.generate.estimated_time,
-          ncCode: genState.ncText,
-          geometryData: genState.geometry ? {
-            segments: genState.geometry.segments,
-            bbox: genState.geometry.bbox,
+          algorithm: selectedAlgorithm,
+          scenario: program.scenario,
+          estimatedTimeSeconds: currentEstimatedTime,
+          ncCode: currentNcLines.join("\n"),
+          geometryData: currentGeometry ? {
+            segments: currentGeometry.segments,
+            bbox: currentGeometry.bbox,
           } : undefined,
-          lineToSegmentMap: genState.generate.line_to_segment_map,
+          lineToSegmentMap: currentLineToSegmentMap,
         });
-        resetGenState(); // Reset local override since it's saved to DB
       } else {
         await updateNcProgram({
           projectId: program.projectId,
@@ -203,7 +234,6 @@ export default function CNCProgramViewerPage() {
     }
   };
 
-  const hasUnsavedChanges = isRegenerated || (program && editName !== program.name);
 
   if (program === undefined) {
     return <div className="p-8 text-slate-400 flex items-center justify-center">Loading program...</div>;
@@ -212,67 +242,11 @@ export default function CNCProgramViewerPage() {
     return <div className="p-8 text-red-400 flex items-center justify-center">Program not found or access denied.</div>;
   }
 
-  const uniqueLayers = activeGeometry ? [...new Set(activeGeometry.segments.map(s => s.layer))] : [];
+  const uniqueLayers = currentGeometry ? [...new Set(currentGeometry.segments.map(s => s.layer))] : [];
 
   return (
     <div className="p-6 h-[calc(100vh-4rem)] flex flex-col text-slate-200">
       
-      {/* Regeneration Modal */}
-      <Dialog open={algoDialogOpen} onOpenChange={(open) => {
-        setAlgoDialogOpen(open);
-        if (!open && genState.status !== "done") {
-             setEditAlgorithm(program.algorithm); // Revert UI if cancelled
-             resetGenState();
-        }
-      }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Regenerate NC Program
-            </DialogTitle>
-            <DialogDescription className="pt-2">
-              Recalculating with the <strong className="text-emerald-400">{ALGORITHMS.find(a => a.value === pendingAlgorithm)?.label}</strong> algorithm requires the original DXF vectors. 
-              <br/><br/>
-              The original file name was: <span className="font-mono text-xs bg-white/10 px-1 py-0.5 rounded">{program.dxfSourceName}</span>
-              <br/><br/>
-              Drop or upload the corresponding DXF below to recalculate.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4 flex justify-center mt-2">
-            {genState.status === "idle" || genState.status === "error" ? (
-              <DXFDropZone onFile={async (file) => {
-                await upload(file, pendingAlgorithm);
-              }} />
-            ) : genState.status === "uploading" ? (
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4"></div>
-                Analyzing {program.dxfSourceName}...
-              </div>
-            ) : genState.status === "generating" ? (
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4"></div>
-                Recomputing paths using {ALGORITHMS.find(a => a.value === pendingAlgorithm)?.label}...
-              </div>
-            ) : genState.status === "done" ? (
-              <div className="flex flex-col items-center text-emerald-400">
-                <Save className="h-8 w-8 mb-4 opacity-80" />
-                Done! You can now preview and save these changes.
-              </div>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-             {genState.status === "done" ? (
-               <Button onClick={() => setAlgoDialogOpen(false)} className="bg-emerald-600 hover:bg-emerald-500">Preview & Save</Button>
-             ) : (
-               <Button variant="outline" onClick={() => setAlgoDialogOpen(false)}>Cancel</Button>
-             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-
       {portalNode && createPortal(
         <div className="flex items-center gap-3 w-full text-xs">
           <input
@@ -286,15 +260,9 @@ export default function CNCProgramViewerPage() {
           <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
 
           <Select 
-            value={activeAlgorithm} 
-            onValueChange={(val) => {
-              if (val !== activeAlgorithm) {
-                setEditAlgorithm(val);
-                setPendingAlgorithm(val);
-                resetGenState();
-                setAlgoDialogOpen(true);
-              }
-            }}
+            value={selectedAlgorithm} 
+            onValueChange={handleRegenerate}
+            disabled={isRegenerating || !program?.contoursByLayer}
           >
             <SelectTrigger className="h-7 w-[130px] bg-black/20 border-white/10 text-[10px] font-mono hover:bg-white/5 focus:ring-1 focus:ring-emerald-500 uppercase">
               <SelectValue />
@@ -330,9 +298,9 @@ export default function CNCProgramViewerPage() {
               variant="outline" 
               size="sm" 
               onClick={handleSave} 
-              disabled={!hasUnsavedChanges}
+              disabled={!isDirty}
               className={`h-8 px-3 text-xs border hover:bg-emerald-500/10 hover:text-emerald-400 transition-all ${
-                hasUnsavedChanges 
+                isDirty 
                   ? "border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] text-emerald-400" 
                   : "border-transparent text-slate-400 bg-white/5"
               }`}
@@ -344,8 +312,6 @@ export default function CNCProgramViewerPage() {
               <Download className="h-3.5 w-3.5 mr-1.5" />
               Download .nc
             </Button>
-            <div className="h-4 w-px bg-white/10 mx-2 shrink-0" />
-            <DXFDropZone onFile={handleDropzoneUpload} compact />
           </div>
         </div>,
         portalNode
@@ -354,7 +320,7 @@ export default function CNCProgramViewerPage() {
       <div className="grid grid-cols-12 gap-6 h-full min-h-0 relative">
         <div className="col-span-3 h-full min-h-0">
           <NCPreview
-            ncText={activeNcCode}
+            ncText={currentNcLines.join("\n")}
             jobId={program._id}
             currentLineIndex={currentLineIndex}
             onLineClick={seekToLine}
@@ -362,18 +328,25 @@ export default function CNCProgramViewerPage() {
         </div>
 
         <div className="col-span-9 h-full min-h-0">
-          <Card className={`bg-transparent h-full flex flex-col shadow-none transition-all ${isRegenerated ? "border-emerald-500/50 relative overflow-hidden" : "border-white/10"}`}>
+          <Card className={`bg-transparent h-full flex flex-col shadow-none transition-all ${hasRegenerated ? "border-emerald-500/50 relative overflow-hidden" : "border-white/10"}`}>
             
-            {isRegenerated && (
+            {hasRegenerated && (
               <div className="absolute inset-0 pointer-events-none rounded-[inherit] overflow-hidden">
                 <div className="absolute inset-0 border-[2px] border-emerald-500/20 box-border rounded-[inherit] shadow-[inset_0_0_40px_rgba(16,185,129,0.1)]"></div>
+              </div>
+            )}
+            
+            {isRegenerating && (
+              <div className="absolute inset-0 bg-black/40 z-50 flex flex-col items-center justify-center backdrop-blur-sm rounded-lg">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4"></div>
+                <p className="text-emerald-400 font-medium tracking-wide">Regenerating NC program…</p>
               </div>
             )}
 
             <CardHeader className="py-2 px-4 border-b border-white/5 flex flex-row items-center justify-between shrink-0 h-14 space-y-0">
               <div className="flex items-center gap-4">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-2">Preview</span>
-                {activeGeometry && (
+                {currentGeometry && (
                   <>
                     <div className="flex items-center gap-3 border-l border-white/10 pl-4 shrink-0">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground/60 w-12">Cut Spd</span>
@@ -403,13 +376,14 @@ export default function CNCProgramViewerPage() {
                 )}
               </div>
               <div className="flex items-center min-w-0 flex-1 justify-end relative z-10">
-                {activeGeometry ? (
+                {currentGeometry ? (
                   <div className="overflow-x-auto no-scrollbar py-1">
                     <LayerControls
                       layers={uniqueLayers}
                       visible={visible}
                       onChange={handleLayerToggle}
-                      geometrySegments={activeGeometry.segments}
+                      // @ts-ignore
+                      geometrySegments={currentGeometry.segments}
                       segmentToLineMap={segmentToLineMap}
                       onSeek={seekToLine}
                       showRapids={showRapids}
@@ -424,26 +398,32 @@ export default function CNCProgramViewerPage() {
               </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 relative overflow-hidden min-h-0 flex items-center justify-center bg-black/40">
-              {activeGeometry ? (
+              {currentGeometry ? (
                 <GeometryViewer
-                  geometry={{ ...activeGeometry, layers: uniqueLayers }}
+                  // @ts-ignore
+                  geometry={{ ...currentGeometry, layers: uniqueLayers }}
                   visible={visible}
                   showRapids={showRapids}
                   currentLineIndex={currentLineIndex}
-                  lineToSegmentMap={lineToSegmentMap}
+                  lineToSegmentMap={currentLineToSegmentMap}
                   segmentToLineMap={segmentToLineMap}
                   onSeek={seekToLine}
                   playbackSpeed={playbackSpeed}
                   rapidSpeedMultiplier={rapidPlaybackSpeed}
                   seekTrigger={seekTrigger}
-                  ncLines={ncLines}
+                  ncLines={currentNcLines}
                   isPlaying={isPlaying}
                   traceMode={traceMode}
                 />
               ) : (
                 <div className="text-center text-slate-500 max-w-[400px]">
                   <p className="mb-3 text-sm">Geometry preview is unavailable for this program. It was likely saved before geometry persistence was added.</p>
-                  <p className="text-xs">Regenerating via the algorithm dropdown will restore geometric data mapping.</p>
+                  {!program?.contoursByLayer && (
+                    <p className="text-xs">
+                      Algorithm switching is available for programs saved after this feature was introduced.
+                      Re-save this program to enable it.
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -452,7 +432,7 @@ export default function CNCProgramViewerPage() {
                 isPlaying={isPlaying}
                 onTogglePlay={() => setIsPlaying(!isPlaying)}
                 currentLine={currentLineIndex}
-                totalLines={ncLines.length}
+                totalLines={currentNcLines.length}
                 onSeek={seekToLine}
                 totalDuration={totalDuration}
                 currentSimTime={currentSimTime}

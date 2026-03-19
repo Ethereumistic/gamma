@@ -206,6 +206,8 @@ export default function CNCPipelinePage() {
           bbox: state.geometry.bbox,
         } : undefined,
         lineToSegmentMap: state.generate.line_to_segment_map || undefined,
+        contoursByLayer: state.generate.contours_by_layer || undefined,
+        stockBbox: state.generate.stock_bbox || undefined,
       })
       toast.success("NC program saved", { description: assembledFilename + ".nc" })
       navigate(`/cnc-pipeline/${id}`)

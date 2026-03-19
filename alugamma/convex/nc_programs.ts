@@ -33,6 +33,15 @@ export const saveNcProgram = mutation({
       })
     ),
     lineToSegmentMap: v.optional(v.any()),
+    contoursByLayer: v.optional(v.any()),
+    stockBbox: v.optional(
+      v.object({
+        min_x: v.number(),
+        max_x: v.number(),
+        min_y: v.number(),
+        max_y: v.number(),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     const access = await requireProjectManager(ctx, args.projectId);
@@ -57,6 +66,8 @@ export const saveNcProgram = mutation({
         updatedAt: now,
         geometryData: args.geometryData,
         lineToSegmentMap: args.lineToSegmentMap,
+        contoursByLayer: args.contoursByLayer,
+        stockBbox: args.stockBbox,
       });
       return existing._id;
     } else {
@@ -71,6 +82,8 @@ export const saveNcProgram = mutation({
         dxfSourceName: args.dxfSourceName,
         geometryData: args.geometryData,
         lineToSegmentMap: args.lineToSegmentMap,
+        contoursByLayer: args.contoursByLayer,
+        stockBbox: args.stockBbox,
         createdBy: access.userId,
         updatedBy: access.userId,
         updatedAt: now,
@@ -111,6 +124,15 @@ export const updateNcProgram = mutation({
       })
     ),
     lineToSegmentMap: v.optional(v.any()),
+    contoursByLayer: v.optional(v.any()),
+    stockBbox: v.optional(
+      v.object({
+        min_x: v.number(),
+        max_x: v.number(),
+        min_y: v.number(),
+        max_y: v.number(),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     await requireProjectManager(ctx, args.projectId);
@@ -126,6 +148,8 @@ export const updateNcProgram = mutation({
     if (args.ncCode !== undefined) patch.ncCode = args.ncCode;
     if (args.geometryData !== undefined) patch.geometryData = args.geometryData;
     if (args.lineToSegmentMap !== undefined) patch.lineToSegmentMap = args.lineToSegmentMap;
+    if (args.contoursByLayer !== undefined) patch.contoursByLayer = args.contoursByLayer;
+    if (args.stockBbox !== undefined) patch.stockBbox = args.stockBbox;
     
     await ctx.db.patch(args.ncProgramId, patch);
   },
