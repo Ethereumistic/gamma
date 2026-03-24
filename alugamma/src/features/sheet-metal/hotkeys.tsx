@@ -159,6 +159,11 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
   useHotkey("S", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("bottom"); }, { ignoreInputs: false });
   useHotkey("D", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("right"); }, { ignoreInputs: false });
 
+  useHotkey("ArrowUp", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("top"); }, { ignoreInputs: false });
+  useHotkey("ArrowLeft", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("left"); }, { ignoreInputs: false });
+  useHotkey("ArrowDown", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("bottom"); }, { ignoreInputs: false });
+  useHotkey("ArrowRight", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("right"); }, { ignoreInputs: false });
+
   useHotkey("Escape", (e) => {
     if (isTextInput(e)) {
       (e.target as HTMLElement).blur();

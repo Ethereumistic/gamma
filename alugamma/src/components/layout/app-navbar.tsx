@@ -171,6 +171,11 @@ export function AppNavbar() {
             <Input
               value={designName}
               onChange={(event) => setDesignName(event.target.value)}
+              onKeyDown={(e) => {
+                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                  e.stopPropagation();
+                }
+              }}
               placeholder="e.g. facade-panel-01"
               className="h-8 border-white/10 bg-black/20 text-xs"
             />
