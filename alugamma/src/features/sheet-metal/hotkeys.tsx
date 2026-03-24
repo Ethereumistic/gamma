@@ -19,11 +19,19 @@ function isTextInput(e: KeyboardEvent) {
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
-function isInsideFlangeInput(e: KeyboardEvent) {
+function isNumericInput(e: KeyboardEvent) {
   const target = e.target as HTMLElement;
-  return isTextInput(e) && target.hasAttribute("data-side");
+  if (target.tagName !== "INPUT") return false;
+  const inMode = target.getAttribute("inputmode") || (target as HTMLInputElement).inputMode;
+  if (inMode === "numeric") return true;
+  const type = target.getAttribute("type") || (target as HTMLInputElement).type;
+  if (type === "number") return true;
+  return false;
 }
 
+function isPlainTextInput(e: KeyboardEvent) {
+  return isTextInput(e) && !isNumericInput(e);
+}
 
 // data-side lives on the <input> itself — query it directly, never as a descendant.
 function getFlangeInputs(side: SideKey) {
@@ -78,8 +86,8 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
   });
 
   useHotkey("Mod+Z", (e) => {
-    // Don't intercept native undo inside text inputs like the design name field.
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    // Don't intercept native undo inside plain text inputs like the design name field.
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     undo();
   });
@@ -146,10 +154,10 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     if (count > 0) { setSelectedFlangeIndex(count - 1); focusLastFlangeInput(side); }
   };
 
-  useHotkey("W", (e) => { e.preventDefault(); handleSideSelect("top"); });
-  useHotkey("A", (e) => { e.preventDefault(); handleSideSelect("left"); });
-  useHotkey("S", (e) => { e.preventDefault(); handleSideSelect("bottom"); });
-  useHotkey("D", (e) => { e.preventDefault(); handleSideSelect("right"); });
+  useHotkey("W", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("top"); }, { ignoreInputs: false });
+  useHotkey("A", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("left"); }, { ignoreInputs: false });
+  useHotkey("S", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("bottom"); }, { ignoreInputs: false });
+  useHotkey("D", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("right"); }, { ignoreInputs: false });
 
   useHotkey("Escape", (e) => {
     if (isTextInput(e)) {
@@ -163,7 +171,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
   // Blur BEFORE flushSync — browser must release focus before DOM mutation,
   // otherwise .focus() on the new input is ignored.
   useHotkey("F", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -178,7 +186,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
 
   // Z: add frez, focus its input
   useHotkey("Z", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -189,7 +197,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
 
   // Shift+F: delete the focused flange (falls back to last), refocus
   useHotkey("Shift+F", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
@@ -212,7 +220,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
 
   // Shift+Z: delete the last frez
   useHotkey("Shift+Z", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
@@ -222,7 +230,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
 
   // Mod+Shift+F: delete ALL flanges on selected side
   useHotkey("Mod+Shift+F", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
@@ -233,7 +241,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
 
   // Mod+Shift+Z: delete ALL frez on selected side
   useHotkey("Mod+Shift+Z", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
@@ -243,7 +251,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
 
   // Q/E: toggle start/end relief on focused flange
   useHotkey("Q", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
@@ -256,7 +264,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
   }, { ignoreInputs: false, enabled: isSideSelected });
 
   useHotkey("E", (e) => {
-    if (isTextInput(e) && !isInsideFlangeInput(e)) return;
+    if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
