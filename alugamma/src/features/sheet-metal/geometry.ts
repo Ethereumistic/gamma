@@ -13,12 +13,14 @@ type HorizontalNotch = {
   apexX: number;
   apexY: number;
   shoulderY: number;
+  flap?: number;
 };
 
 type VerticalNotch = {
   apexX: number;
   apexY: number;
   shoulderX: number;
+  flap?: number;
 };
 
 type AmountItem = {
@@ -143,9 +145,14 @@ function addHorizontalCutEdge(
   let xCrits = [startX, endX];
   for (const notch of sorted) {
     const shoulderOff = Math.abs(notch.shoulderY - notch.apexY);
+    const D = (notch.flap || 0) * Math.SQRT2;
     xCrits.push(notch.apexX - shoulderOff);
     xCrits.push(notch.apexX);
     xCrits.push(notch.apexX + shoulderOff);
+    if (D > 0) {
+      xCrits.push(notch.apexX - Math.max(0, shoulderOff - D));
+      xCrits.push(notch.apexX + Math.max(0, shoulderOff - D));
+    }
   }
 
   for (let i = 0; i < sorted.length; i++) {
@@ -168,7 +175,8 @@ function addHorizontalCutEdge(
   }
 
   function getInnerNotchY(notch: HorizontalNotch, x: number) {
-    return notch.apexY + (isTopEdge ? 1 : -1) * Math.abs(x - notch.apexX);
+    const D = (notch.flap || 0) * Math.SQRT2;
+    return notch.apexY + (isTopEdge ? 1 : -1) * (Math.abs(x - notch.apexX) + D);
   }
 
   function getActiveNotch(xMid: number) {
@@ -231,9 +239,14 @@ function addVerticalCutEdge(
   let yCrits = [startY, endY];
   for (const notch of sorted) {
     const shoulderOff = Math.abs(notch.shoulderX - notch.apexX);
+    const D = (notch.flap || 0) * Math.SQRT2;
     yCrits.push(notch.apexY + shoulderOff);
     yCrits.push(notch.apexY);
     yCrits.push(notch.apexY - shoulderOff);
+    if (D > 0) {
+      yCrits.push(notch.apexY + Math.max(0, shoulderOff - D));
+      yCrits.push(notch.apexY - Math.max(0, shoulderOff - D));
+    }
   }
 
   for (let i = 0; i < sorted.length; i++) {
@@ -256,7 +269,8 @@ function addVerticalCutEdge(
   }
 
   function getInnerNotchX(notch: VerticalNotch, y: number) {
-    return notch.apexX + (isRightEdge ? 1 : -1) * Math.abs(y - notch.apexY);
+    const D = (notch.flap || 0) * Math.SQRT2;
+    return notch.apexX + (isRightEdge ? 1 : -1) * (Math.abs(y - notch.apexY) + D);
   }
 
   function getActiveNotch(yMid: number) {
@@ -522,37 +536,69 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
 
   model.sides.left.flanges.forEach((flange, i) => {
     if (flange.reliefs.start && outerTop > y1) {
-      topNotches.push({ apexX: leftFolds[i], apexY: y1, shoulderY: topShoulderY });
+      topNotches.push({ apexX: leftFolds[i], apexY: y1, shoulderY: topShoulderY, flap: flange.flaps?.start });
+      if (flange.flaps?.start) {
+        addLine(shapes, "FREZ", leftFolds[i], y1, leftFolds[i] - Math.abs(topShoulderY - y1), topShoulderY);
+        addLine(shapes, "FREZ", leftFolds[i], y1, leftFolds[i] + Math.abs(topShoulderY - y1), topShoulderY);
+      }
     }
     if (flange.reliefs.end && outerBottom < y0) {
-      bottomNotches.push({ apexX: leftFolds[i], apexY: y0, shoulderY: bottomShoulderY });
+      bottomNotches.push({ apexX: leftFolds[i], apexY: y0, shoulderY: bottomShoulderY, flap: flange.flaps?.end });
+      if (flange.flaps?.end) {
+        addLine(shapes, "FREZ", leftFolds[i], y0, leftFolds[i] - Math.abs(bottomShoulderY - y0), bottomShoulderY);
+        addLine(shapes, "FREZ", leftFolds[i], y0, leftFolds[i] + Math.abs(bottomShoulderY - y0), bottomShoulderY);
+      }
     }
   });
 
   model.sides.right.flanges.forEach((flange, i) => {
     if (flange.reliefs.start && outerTop > y1) {
-      topNotches.push({ apexX: rightFolds[i], apexY: y1, shoulderY: topShoulderY });
+      topNotches.push({ apexX: rightFolds[i], apexY: y1, shoulderY: topShoulderY, flap: flange.flaps?.start });
+      if (flange.flaps?.start) {
+        addLine(shapes, "FREZ", rightFolds[i], y1, rightFolds[i] - Math.abs(topShoulderY - y1), topShoulderY);
+        addLine(shapes, "FREZ", rightFolds[i], y1, rightFolds[i] + Math.abs(topShoulderY - y1), topShoulderY);
+      }
     }
     if (flange.reliefs.end && outerBottom < y0) {
-      bottomNotches.push({ apexX: rightFolds[i], apexY: y0, shoulderY: bottomShoulderY });
+      bottomNotches.push({ apexX: rightFolds[i], apexY: y0, shoulderY: bottomShoulderY, flap: flange.flaps?.end });
+      if (flange.flaps?.end) {
+        addLine(shapes, "FREZ", rightFolds[i], y0, rightFolds[i] - Math.abs(bottomShoulderY - y0), bottomShoulderY);
+        addLine(shapes, "FREZ", rightFolds[i], y0, rightFolds[i] + Math.abs(bottomShoulderY - y0), bottomShoulderY);
+      }
     }
   });
 
   model.sides.top.flanges.forEach((flange, i) => {
     if (flange.reliefs.start && outerLeft < x0) {
-      leftNotches.push({ apexX: x0, apexY: topFolds[i], shoulderX: leftShoulderX });
+      leftNotches.push({ apexX: x0, apexY: topFolds[i], shoulderX: leftShoulderX, flap: flange.flaps?.start });
+      if (flange.flaps?.start) {
+        addLine(shapes, "FREZ", x0, topFolds[i], leftShoulderX, topFolds[i] - Math.abs(leftShoulderX - x0));
+        addLine(shapes, "FREZ", x0, topFolds[i], leftShoulderX, topFolds[i] + Math.abs(leftShoulderX - x0));
+      }
     }
     if (flange.reliefs.end && outerRight > x1) {
-      rightNotches.push({ apexX: x1, apexY: topFolds[i], shoulderX: rightShoulderX });
+      rightNotches.push({ apexX: x1, apexY: topFolds[i], shoulderX: rightShoulderX, flap: flange.flaps?.end });
+      if (flange.flaps?.end) {
+        addLine(shapes, "FREZ", x1, topFolds[i], rightShoulderX, topFolds[i] - Math.abs(rightShoulderX - x1));
+        addLine(shapes, "FREZ", x1, topFolds[i], rightShoulderX, topFolds[i] + Math.abs(rightShoulderX - x1));
+      }
     }
   });
 
   model.sides.bottom.flanges.forEach((flange, i) => {
     if (flange.reliefs.start && outerLeft < x0) {
-      leftNotches.push({ apexX: x0, apexY: bottomFolds[i], shoulderX: leftShoulderX });
+      leftNotches.push({ apexX: x0, apexY: bottomFolds[i], shoulderX: leftShoulderX, flap: flange.flaps?.start });
+      if (flange.flaps?.start) {
+        addLine(shapes, "FREZ", x0, bottomFolds[i], leftShoulderX, bottomFolds[i] - Math.abs(leftShoulderX - x0));
+        addLine(shapes, "FREZ", x0, bottomFolds[i], leftShoulderX, bottomFolds[i] + Math.abs(leftShoulderX - x0));
+      }
     }
     if (flange.reliefs.end && outerRight > x1) {
-      rightNotches.push({ apexX: x1, apexY: bottomFolds[i], shoulderX: rightShoulderX });
+      rightNotches.push({ apexX: x1, apexY: bottomFolds[i], shoulderX: rightShoulderX, flap: flange.flaps?.end });
+      if (flange.flaps?.end) {
+        addLine(shapes, "FREZ", x1, bottomFolds[i], rightShoulderX, bottomFolds[i] - Math.abs(rightShoulderX - x1));
+        addLine(shapes, "FREZ", x1, bottomFolds[i], rightShoulderX, bottomFolds[i] + Math.abs(rightShoulderX - x1));
+      }
     }
   });
 
@@ -575,7 +621,7 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
       const newShoulderY = newApexY + dirY * newS;
 
       if (Math.sign(newShoulderY - newApexY) !== initialSign) continue;
-      finalNotches.push({ apexX: n.apexX, apexY: newApexY, shoulderY: newShoulderY });
+      finalNotches.push({ apexX: n.apexX, apexY: newApexY, shoulderY: newShoulderY, flap: n.flap });
     }
     return finalNotches;
   }
@@ -596,7 +642,7 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
       const newShoulderX = newApexX + dirX * newS;
 
       if (Math.sign(newShoulderX - newApexX) !== initialSign) continue;
-      finalNotches.push({ apexX: newApexX, apexY: n.apexY, shoulderX: newShoulderX });
+      finalNotches.push({ apexX: newApexX, apexY: n.apexY, shoulderX: newShoulderX, flap: n.flap });
     }
     return finalNotches;
   }

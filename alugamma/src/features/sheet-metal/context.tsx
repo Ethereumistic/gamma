@@ -71,6 +71,7 @@ type SheetMetalContextType = {
   setFrezMode: (side: SideKey, mode: FrezMode) => void;
   setFrezNotch: (side: SideKey, index: number, position: FrezNotchPosition, value: boolean) => void;
   setFlangeRelief: (side: SideKey, index: number, position: "start" | "end", value: boolean) => void;
+  setFlangeFlap: (side: SideKey, index: number, position: "start" | "end", value: number) => void;
   setCornerRelief: (corner: CornerKey, axis: CornerReliefAxis, value: boolean) => void;
   loadPreset: (index: number) => void;
   startNewDesign: () => void;
@@ -357,6 +358,23 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     }));
   }
 
+  function setFlangeFlap(side: SideKey, index: number, position: "start" | "end", value: number) {
+    patchSide(side, (draft) => ({
+      ...draft,
+      flanges: draft.flanges.map((flange, flangeIndex) =>
+        flangeIndex === index
+          ? {
+            ...flange,
+            flaps: {
+              ...flange.flaps,
+              [position]: value,
+            },
+          }
+          : flange,
+      ),
+    }));
+  }
+
   function setCornerRelief(corner: CornerKey, axis: CornerReliefAxis, value: boolean) {
     setModel((current) => ({
       ...current,
@@ -496,6 +514,7 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         setFrezMode,
         setFrezNotch,
         setFlangeRelief,
+        setFlangeFlap,
         setCornerRelief,
         loadPreset,
         startNewDesign,

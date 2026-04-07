@@ -52,6 +52,7 @@ function SideEditorForSide({ side }: { side: SideKey }) {
     setFrezMode,
     setFrezNotch,
     setFlangeRelief,
+    setFlangeFlap,
   } = useSheetMetal();
   const { selectedSide, setSelectedFlangeIndex, selectedFlangeIndex } = useSelectedSide();
   const isSelected = selectedSide === side;
@@ -86,6 +87,7 @@ function SideEditorForSide({ side }: { side: SideKey }) {
       onSetFrezMode={(mode) => setFrezMode(side, mode)}
       onSetFrezNotch={(index, position, value) => setFrezNotch(side, index, position, value)}
       onSetFlangeRelief={(index, position, value) => setFlangeRelief(side, index, position, value)}
+      onSetFlangeFlap={(index, position, value) => setFlangeFlap(side, index, position, value)}
       onClearAll={handleClearAll}
       isSelected={isSelected}
     />

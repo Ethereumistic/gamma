@@ -33,6 +33,12 @@ export const flangeMeasurementValidator = v.union(
     id: v.string(),
     amount: v.number(),
     reliefs: flangeReliefsValidator,
+    flaps: v.optional(
+      v.object({
+        start: v.optional(v.number()),
+        end: v.optional(v.number()),
+      }),
+    ),
   }),
 );
 export const frezMeasurementValidator = v.union(

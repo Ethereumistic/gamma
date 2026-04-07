@@ -27,8 +27,14 @@ export type FlangeReliefs = {
   end: boolean;
 };
 
+export type FlangeFlaps = {
+  start: number;
+  end: number;
+};
+
 export type FlangeMeasurement = Measurement & {
   reliefs: FlangeReliefs;
+  flaps: FlangeFlaps;
 };
 
 export type SideConfig = {
@@ -96,13 +102,17 @@ function nextMeasurementId() {
   return `m-${measurementCounter}`;
 }
 
-export function createFlangeMeasurement(amount = 20, reliefs?: Partial<FlangeReliefs>): FlangeMeasurement {
+export function createFlangeMeasurement(amount = 20, reliefs?: Partial<FlangeReliefs>, flaps?: Partial<FlangeFlaps>): FlangeMeasurement {
   return {
     id: nextMeasurementId(),
     amount,
     reliefs: {
       start: reliefs?.start ?? false,
       end: reliefs?.end ?? false,
+    },
+    flaps: {
+      start: flaps?.start ?? 0,
+      end: flaps?.end ?? 0,
     },
   };
 }
@@ -191,6 +201,23 @@ export function normalizeFlangeReliefs(value: unknown, fallbackEnabled = false):
   };
 }
 
+export function normalizeFlangeFlaps(value: unknown, fallbackAmount = 0): FlangeFlaps {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if ("start" in record || "end" in record) {
+      return {
+        start: typeof record.start === "number" ? record.start : fallbackAmount,
+        end: typeof record.end === "number" ? record.end : fallbackAmount,
+      };
+    }
+  }
+
+  return {
+    start: fallbackAmount,
+    end: fallbackAmount,
+  };
+}
+
 export function normalizeFlangeMeasurement(value: unknown): FlangeMeasurement {
   const measurement = normalizeMeasurement(value, 20);
 
@@ -199,12 +226,14 @@ export function normalizeFlangeMeasurement(value: unknown): FlangeMeasurement {
     return {
       ...measurement,
       reliefs: normalizeFlangeReliefs(record.reliefs, false),
+      flaps: normalizeFlangeFlaps(record.flaps, 0),
     };
   }
 
   return {
     ...measurement,
     reliefs: normalizeFlangeReliefs(undefined, false),
+    flaps: normalizeFlangeFlaps(undefined, 0),
   };
 }
 

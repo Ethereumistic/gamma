@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { flushSync } from "react-dom";
+import { useState } from "react";
 import { useHotkey, useHotkeySequence } from "@tanstack/react-hotkeys";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -60,8 +61,10 @@ function focusLastFlangeInput(side: SideKey) {
 
 export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) {
   const navigate = useNavigate();
-  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, setFlangeRelief, undo, removeFlange, removeFrez } = useSheetMetal();
+  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, setFlangeRelief, setFlangeFlap, undo, removeFlange, removeFrez } = useSheetMetal();
   const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex } = useSelectedSide();
+  const [lastQ, setLastQ] = useState(0);
+  const [lastE, setLastE] = useState(0);
   const { setDesignToDelete } = useDesignDelete();
   const { selectedProjectId } = useWorkspace();
   const deleteDesign = useMutation(api.designs.deleteDesign);
@@ -264,7 +267,21 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
         selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
           ? selectedFlangeIndex
           : sideConfig.flanges.length - 1;
-      if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "start", !sideConfig.flanges[targetIndex].reliefs.start);
+      
+      const now = Date.now();
+      if (now - lastQ < 400 && targetIndex >= 0) {
+        if (!sideConfig.flanges[targetIndex].reliefs.start) {
+          setFlangeRelief(selectedSide, targetIndex, "start", true);
+        }
+        setTimeout(() => {
+          const el = document.getElementById(`flap-start-${selectedSide}-${targetIndex}`);
+          if (el) el.focus();
+        }, 50);
+        setLastQ(0);
+      } else {
+        if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "start", !sideConfig.flanges[targetIndex].reliefs.start);
+        setLastQ(now);
+      }
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
@@ -277,7 +294,21 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
         selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
           ? selectedFlangeIndex
           : sideConfig.flanges.length - 1;
-      if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "end", !sideConfig.flanges[targetIndex].reliefs.end);
+
+      const now = Date.now();
+      if (now - lastE < 400 && targetIndex >= 0) {
+        if (!sideConfig.flanges[targetIndex].reliefs.end) {
+          setFlangeRelief(selectedSide, targetIndex, "end", true);
+        }
+        setTimeout(() => {
+          const el = document.getElementById(`flap-end-${selectedSide}-${targetIndex}`);
+          if (el) el.focus();
+        }, 50);
+        setLastE(0);
+      } else {
+        if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "end", !sideConfig.flanges[targetIndex].reliefs.end);
+        setLastE(now);
+      }
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 

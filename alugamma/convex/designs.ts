@@ -47,14 +47,20 @@ function normalizeFlangeMeasurementEntry(value: unknown) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
     const reliefs = record.reliefs;
+    const flaps = record.flaps;
 
     if (reliefs && typeof reliefs === "object" && !Array.isArray(reliefs)) {
       const reliefRecord = reliefs as Record<string, unknown>;
+      const flapRecord = typeof flaps === "object" && flaps !== null ? (flaps as Record<string, unknown>) : {};
       return {
         ...measurement,
         reliefs: {
           start: reliefRecord.start === true,
           end: reliefRecord.end === true,
+        },
+        flaps: {
+          start: typeof flapRecord.start === "number" ? flapRecord.start : 0,
+          end: typeof flapRecord.end === "number" ? flapRecord.end : 0,
         },
       };
     }
@@ -65,6 +71,10 @@ function normalizeFlangeMeasurementEntry(value: unknown) {
     reliefs: {
       start: false,
       end: false,
+    },
+    flaps: {
+      start: 0,
+      end: 0,
     },
   };
 }
