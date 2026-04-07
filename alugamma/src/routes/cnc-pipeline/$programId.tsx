@@ -19,14 +19,8 @@ import { regenerate } from "@/features/cnc-pipeline/api";
 import type { GeometryResponse } from "@/features/cnc-pipeline/types";
 
 const ALGORITHMS = [
-  { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
-  { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
-  { value: "oracle", label: "v1.0 Oracle", desc: "AI-powered optimal path selection" },
-  { value: "shapely", label: "v0.1 Shapely", desc: "Shapely-powered optimal path selection" },
-  { value: "conman", label: "v1.0 ConMan", desc: "Shapely-powered optimal path selection 2" },
-  { value: "conman_v2", label: "v1.0 ConMan v2", desc: "Shapely-powered optimal path selection 3" },
-  { value: "juggler_gemini", label: "v1.0 Juggler Gemini", desc: "Shapely-powered optimal path selection 4" },
-  { value: "juggler_claude", label: "v1.0 Juggler Claude", desc: "Shapely-powered optimal path selection 5" },
+  { value: "juggler_gemini", label: "Juggler G", desc: "Shapely-powered optimal path selection 4" },
+  { value: "juggler_claude", label: "Juggler C", desc: "Shapely-powered optimal path selection 5" },
 ];
 
 const SCENARIO_LABELS: Record<string, string> = {
@@ -51,7 +45,7 @@ export default function CNCProgramViewerPage() {
   const [editName, setEditName] = useState<string>("");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string>("");
   const [isRegenerating, setIsRegenerating] = useState(false);
-  
+
   const [currentGeometry, setCurrentGeometry] = useState<GeometryResponse | null>(null);
   const [currentNcLines, setCurrentNcLines] = useState<string[]>([]);
   const [currentLineToSegmentMap, setCurrentLineToSegmentMap] = useState<Record<number, number>>({});
@@ -72,7 +66,7 @@ export default function CNCProgramViewerPage() {
 
   const activeScenario = program?.scenario || "unknown";
   const activeTime = currentEstimatedTime || program?.estimatedTimeSeconds || 0;
-  
+
   // Maps
   const segmentToLineMap: Record<number, number> = useMemo(() => {
     return Object.fromEntries(
@@ -104,7 +98,7 @@ export default function CNCProgramViewerPage() {
     if (program && program._id !== loadedProgramId) {
       setLoadedProgramId(program._id);
       setEditName(program.name);
-      
+
       setSelectedAlgorithm(program.algorithm);
       setCurrentNcLines(program.ncCode.split("\n"));
       if (program.lineToSegmentMap) {
@@ -251,7 +245,7 @@ export default function CNCProgramViewerPage() {
 
   return (
     <div className="p-6 h-[calc(100vh-4rem)] flex flex-col text-slate-200">
-      
+
       {portalNode && createPortal(
         <div className="flex items-center gap-3 w-full text-xs">
           <input
@@ -261,11 +255,11 @@ export default function CNCProgramViewerPage() {
             className="font-semibold text-emerald-400 tracking-wide truncate max-w-[200px] border border-emerald-500/20 bg-emerald-500/10 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-emerald-500"
           />
           <span className="text-emerald-400/50 font-mono -ml-2">.nc</span>
-          
+
           <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
 
-          <Select 
-            value={selectedAlgorithm} 
+          <Select
+            value={selectedAlgorithm}
             onValueChange={handleRegenerate}
             disabled={isRegenerating || !program?.contoursByLayer}
           >
@@ -299,16 +293,15 @@ export default function CNCProgramViewerPage() {
             <Button variant="ghost" size="sm" className="h-8 px-3 text-xs border border-transparent text-slate-400 hover:text-white hover:bg-white/5">
               <Settings2 className="h-3.5 w-3.5" />
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleSave} 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSave}
               disabled={!isDirty}
-              className={`h-8 px-3 text-xs border hover:bg-emerald-500/10 hover:text-emerald-400 transition-all ${
-                isDirty 
-                  ? "border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] text-emerald-400" 
+              className={`h-8 px-3 text-xs border hover:bg-emerald-500/10 hover:text-emerald-400 transition-all ${isDirty
+                  ? "border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] text-emerald-400"
                   : "border-transparent text-slate-400 bg-white/5"
-              }`}
+                }`}
             >
               <Save className="h-3.5 w-3.5 mr-1.5" />
               Save
@@ -334,13 +327,13 @@ export default function CNCProgramViewerPage() {
 
         <div className="col-span-9 h-full min-h-0">
           <Card className={`bg-transparent h-full flex flex-col shadow-none transition-all ${hasRegenerated ? "border-emerald-500/50 relative overflow-hidden" : "border-white/10"}`}>
-            
+
             {hasRegenerated && (
               <div className="absolute inset-0 pointer-events-none rounded-[inherit] overflow-hidden">
                 <div className="absolute inset-0 border-[2px] border-emerald-500/20 box-border rounded-[inherit] shadow-[inset_0_0_40px_rgba(16,185,129,0.1)]"></div>
               </div>
             )}
-            
+
             {isRegenerating && (
               <div className="absolute inset-0 bg-black/40 z-50 flex flex-col items-center justify-center backdrop-blur-sm rounded-lg">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4"></div>

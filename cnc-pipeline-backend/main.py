@@ -32,7 +32,7 @@ def health():
 
 
 @app.post("/api/generate")
-async def generate(file: UploadFile = File(...), algorithm: str = "raptor"):
+async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemini"):
     if not file.filename.lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
 

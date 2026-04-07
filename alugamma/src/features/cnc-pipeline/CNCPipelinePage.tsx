@@ -35,14 +35,8 @@ const SCENARIO_LABELS: Record<string, string> = {
 }
 
 const ALGORITHMS: { value: string; label: string; desc: string }[] = [
-  { value: "juggler_gemini", label: "v1.0 Juggler", desc: "Shapely-powered optimal path selection 4" },
-  { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
-  { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
-  { value: "oracle", label: "v1.0 Oracle", desc: "AI-powered optimal path selection" },
-  { value: "shapely", label: "v0.1 Shapely", desc: "Shapely-powered optimal path selection" },
-  { value: "conman", label: "v1.0 ConMan", desc: "Shapely-powered optimal path selection 2" },
-  { value: "conman_v2", label: "v1.0 ConMan v2", desc: "Shapely-powered optimal path selection 3" },
-  { value: "juggler_claude", label: "v1.0 Juggler Claude", desc: "Shapely-powered optimal path selection 5" },
+  { value: "juggler_gemini", label: "Juggler G", desc: "Shapely-powered optimal path selection 4" },
+  { value: "juggler_claude", label: "Juggler C", desc: "Shapely-powered optimal path selection 5" },
 ]
 
 const formatTime = (sec: number) => {

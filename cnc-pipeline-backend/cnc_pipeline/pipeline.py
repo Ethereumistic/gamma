@@ -156,7 +156,7 @@ def run_from_contours(
     }
 
 
-def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "raptor") -> PipelineResult:
+def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "juggler_gemini") -> PipelineResult:
     """
     Full pipeline: DXF file → PipelineResult containing NC text.
     Raises ValueError for unrecoverable errors (missing CUT layer, etc.).

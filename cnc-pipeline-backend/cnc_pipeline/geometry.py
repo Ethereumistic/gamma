@@ -186,22 +186,10 @@ def sort_nearest_neighbour(contours: list[Contour]) -> list[Contour]:
 
 
 
-from .algo_raptor import sort_frez_raptor
-from .algo_anchor import sort_frez_anchor
-from .algo_oracle import sort_frez_oracle
-from .algo_shapely import sort_frez_shapely
-from .algo_conman import sort_frez_conman
-from .algo_conman_v2 import sort_frez_conman_v2
-from .algo_juggler_gemini import sort_frez_juggler
-from .algo_juggler_claude import sort_frez_juggler
+from .algo_juggler_gemini import sort_frez_juggler as sort_frez_juggler_gemini
+from .algo_juggler_claude import sort_frez_juggler as sort_frez_juggler_claude
 
 FREZ_ALGORITHMS: dict[str, str] = {
-    "raptor": "v0.4 Raptor",
-    "anchor": "v0.5 Anchor",
-    "oracle": "v1.0 Oracle",
-    "shapely": "v1.0 Shapely Global Hull",
-    "conman": "v1.0 ConMan",
-    "conman_v2": "v1.0 ConMan v2",
     "juggler_gemini": "v1.0 Juggler Gemini",
     "juggler_claude": "v1.0 Juggler Claude",
 }
@@ -209,24 +197,12 @@ FREZ_ALGORITHMS: dict[str, str] = {
 def sort_frez_outer_to_inner(
     contours: list[Contour],
     stock_bbox: BBox,
-    algorithm: str = "raptor",
+    algorithm: str = "juggler_gemini",
 ) -> list[Contour]:
     """
     Public entry point for FREZ sorting. Routes to the requested algorithm.
     """
-    if algorithm == "anchor":
-        return sort_frez_anchor(contours, stock_bbox)
-    if algorithm == "oracle":
-        return sort_frez_oracle(contours, stock_bbox)
-    if algorithm == "shapely":
-        return sort_frez_shapely(contours, stock_bbox)
-    if algorithm == "conman":
-        return sort_frez_conman(contours, stock_bbox)
-    if algorithm == "conman_v2":
-        return sort_frez_conman_v2(contours, stock_bbox)
-    if algorithm == "juggler_gemini":
-        return sort_frez_juggler(contours, stock_bbox)
     if algorithm == "juggler_claude":
-        return sort_frez_juggler(contours, stock_bbox)
+        return sort_frez_juggler_claude(contours, stock_bbox)
     # Default fallback
-    return sort_frez_raptor(contours, stock_bbox)
+    return sort_frez_juggler_gemini(contours, stock_bbox)
