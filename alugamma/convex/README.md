@@ -17,7 +17,7 @@ export const myQueryFunction = query({
     second: v.string(),
   },
 
-  // Function implementation.
+  // Function implementation
   handler: async (ctx, args) => {
     // Read the database as many times as you need here.
     // See https://docs.convex.dev/database/reading-data.
@@ -27,7 +27,7 @@ export const myQueryFunction = query({
     console.log(args.first, args.second);
 
     // Write arbitrary JavaScript here: filter, aggregate, build derived data,
-    // remove non-public properties, or create new objects
+    // remove non-public properties, or create new objects.
     return documents;
   },
 });
