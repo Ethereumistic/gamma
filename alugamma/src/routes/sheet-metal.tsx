@@ -45,20 +45,31 @@ function SideEditorForSide({ side }: { side: SideKey }) {
     geometry,
     addFlange,
     addFrez,
+    addInnerFrez,
     updateFlange,
     updateFrez,
+    updateInnerFrez,
     removeFlange,
     removeFrez,
+    removeInnerFrez,
     setFrezMode,
     setFrezNotch,
+    setInnerFrezNotch,
     setFlangeRelief,
     setFlangeFlap,
   } = useSheetMetal();
-  const { selectedSide, setSelectedFlangeIndex, selectedFlangeIndex } = useSelectedSide();
+  const {
+    selectedSide, setSelectedFlangeIndex, selectedFlangeIndex,
+    selectedInnerFrezIndex, setSelectedInnerFrezIndex,
+  } = useSelectedSide();
   const isSelected = selectedSide === side;
 
   const handleClearAll = () => {
-    // Remove frez lines first (reverse to keep indices stable)
+    // Remove inner frez lines
+    for (let i = model.sides[side].innerFrezLines.length - 1; i >= 0; i--) {
+      removeInnerFrez(side, i);
+    }
+    // Remove frez lines
     for (let i = model.sides[side].frezLines.length - 1; i >= 0; i--) {
       removeFrez(side, i);
     }
@@ -78,14 +89,20 @@ function SideEditorForSide({ side }: { side: SideKey }) {
       outwardLimit={geometry.flangeDepths[side]}
       onAddFlange={() => addFlange(side)}
       onAddFrez={() => addFrez(side)}
+      onAddInnerFrez={() => addInnerFrez(side)}
       onChangeFlange={(index, value) => updateFlange(side, index, value)}
       onChangeFrez={(index, value) => updateFrez(side, index, value)}
+      onChangeInnerFrez={(index, value) => updateInnerFrez(side, index, value)}
       onRemoveFlange={(index) => removeFlange(side, index)}
       onRemoveFrez={(index) => removeFrez(side, index)}
-      onFocusFlange={(index) => setSelectedFlangeIndex(index)}
+      onRemoveInnerFrez={(index) => removeInnerFrez(side, index)}
+      onFocusFlange={(index) => { setSelectedFlangeIndex(index); setSelectedInnerFrezIndex(null); }}
+      onFocusInnerFrez={(index) => { setSelectedInnerFrezIndex(index); setSelectedFlangeIndex(null); }}
       selectedFlangeIndex={isSelected ? selectedFlangeIndex : null}
+      selectedInnerFrezIndex={isSelected ? selectedInnerFrezIndex : null}
       onSetFrezMode={(mode) => setFrezMode(side, mode)}
       onSetFrezNotch={(index, position, value) => setFrezNotch(side, index, position, value)}
+      onSetInnerFrezNotch={(index, position, value) => setInnerFrezNotch(side, index, position, value)}
       onSetFlangeRelief={(index, position, value) => setFlangeRelief(side, index, position, value)}
       onSetFlangeFlap={(index, position, value) => setFlangeFlap(side, index, position, value)}
       onClearAll={handleClearAll}

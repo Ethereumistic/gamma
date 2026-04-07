@@ -10,6 +10,7 @@ import { presetLibrary } from "@/features/sheet-metal/presets";
 import {
   createFrezMeasurement,
   createFlangeMeasurement,
+  createInnerFrezMeasurement,
   normalizeSheetMetalModel,
   type CornerKey,
   type CornerReliefAxis,
@@ -64,12 +65,16 @@ type SheetMetalContextType = {
   setInvert: (axis: "invertX" | "invertY", value: boolean) => void;
   addFlange: (side: SideKey) => void;
   addFrez: (side: SideKey) => void;
+  addInnerFrez: (side: SideKey) => void;
   updateFlange: (side: SideKey, index: number, amount: number) => void;
   updateFrez: (side: SideKey, index: number, amount: number) => void;
+  updateInnerFrez: (side: SideKey, index: number, amount: number) => void;
   removeFlange: (side: SideKey, index: number) => void;
   removeFrez: (side: SideKey, index: number) => void;
+  removeInnerFrez: (side: SideKey, index: number) => void;
   setFrezMode: (side: SideKey, mode: FrezMode) => void;
   setFrezNotch: (side: SideKey, index: number, position: FrezNotchPosition, value: boolean) => void;
+  setInnerFrezNotch: (side: SideKey, index: number, position: FrezNotchPosition, value: boolean) => void;
   setFlangeRelief: (side: SideKey, index: number, position: "start" | "end", value: boolean) => void;
   setFlangeFlap: (side: SideKey, index: number, position: "start" | "end", value: number) => void;
   setCornerRelief: (corner: CornerKey, axis: CornerReliefAxis, value: boolean) => void;
@@ -320,8 +325,34 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     patchSide(side, (draft) => ({ ...draft, frezLines: removeMeasurement(draft.frezLines, index) }));
   }
 
+  function addInnerFrez(side: SideKey) {
+    patchSide(side, (draft) => ({
+      ...draft,
+      innerFrezLines: [...draft.innerFrezLines, createInnerFrezMeasurement(24)],
+    }));
+  }
+
+  function updateInnerFrez(side: SideKey, index: number, amount: number) {
+    patchSide(side, (draft) => ({ ...draft, innerFrezLines: replaceMeasurement(draft.innerFrezLines, index, amount) }));
+  }
+
+  function removeInnerFrez(side: SideKey, index: number) {
+    patchSide(side, (draft) => ({ ...draft, innerFrezLines: removeMeasurement(draft.innerFrezLines, index) }));
+  }
+
   function setFrezMode(side: SideKey, mode: FrezMode) {
     patchSide(side, (draft) => ({ ...draft, frezMode: mode }));
+  }
+
+  function setInnerFrezNotch(side: SideKey, index: number, position: FrezNotchPosition, value: boolean) {
+    patchSide(side, (draft) => ({
+      ...draft,
+      innerFrezLines: draft.innerFrezLines.map((line, lineIndex) =>
+        lineIndex === index
+          ? { ...line, notches: { ...line.notches, [position]: value } }
+          : line,
+      ),
+    }));
   }
 
   function setFrezNotch(side: SideKey, index: number, position: FrezNotchPosition, value: boolean) {
@@ -507,12 +538,16 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         setInvert,
         addFlange,
         addFrez,
+        addInnerFrez,
         updateFlange,
         updateFrez,
+        updateInnerFrez,
         removeFlange,
         removeFrez,
+        removeInnerFrez,
         setFrezMode,
         setFrezNotch,
+        setInnerFrezNotch,
         setFlangeRelief,
         setFlangeFlap,
         setCornerRelief,

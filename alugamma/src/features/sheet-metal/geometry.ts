@@ -481,6 +481,30 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
     addLine(shapes, "FREZ", x, startY, x, endY);
   }
 
+  // Inner frez lines — always span the full base rectangle edge-to-edge, always inward.
+  // These correspond to the new Z hotkey / right-click +F feature.
+  const innerFrezOffsetsTop = getCumulativeOffsets(model.sides.top.innerFrezLines);
+  const innerFrezOffsetsBottom = getCumulativeOffsets(model.sides.bottom.innerFrezLines);
+  const innerFrezOffsetsLeft = getCumulativeOffsets(model.sides.left.innerFrezLines);
+  const innerFrezOffsetsRight = getCumulativeOffsets(model.sides.right.innerFrezLines);
+
+  for (const offset of innerFrezOffsetsTop) {
+    const fy = y1 - offset;
+    addLine(shapes, "FREZ", x0, fy, x1, fy);
+  }
+  for (const offset of innerFrezOffsetsBottom) {
+    const fy = y0 + offset;
+    addLine(shapes, "FREZ", x0, fy, x1, fy);
+  }
+  for (const offset of innerFrezOffsetsLeft) {
+    const fx = x0 + offset;
+    addLine(shapes, "FREZ", fx, y0, fx, y1);
+  }
+  for (const offset of innerFrezOffsetsRight) {
+    const fx = x1 - offset;
+    addLine(shapes, "FREZ", fx, y0, fx, y1);
+  }
+
   const topShoulderY = y1 + getCornerShoulderOffset(model.sides.top.flanges);
   const bottomShoulderY = y0 - getCornerShoulderOffset(model.sides.bottom.flanges);
   const leftShoulderX = x0 - getCornerShoulderOffset(model.sides.left.flanges);
@@ -520,6 +544,42 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
     rightNotches,
     model.sides.bottom.frezLines,
     frezPositions.bottom,
+    { apexX: x0, shoulderX: leftShoulderX },
+    { apexX: x1, shoulderX: rightShoulderX },
+  );
+
+  // Inner frez notches — same wiring but using innerFrezLines & their positions.
+  // left/right inner frez are vertical lines → drive H-notches on top/bottom cut edges.
+  // top/bottom inner frez are horizontal lines → drive V-notches on left/right cut edges.
+  addFrezDrivenHorizontalNotches(
+    topNotches,
+    bottomNotches,
+    model.sides.left.innerFrezLines,
+    innerFrezOffsetsLeft.map((o) => x0 + o),
+    { apexY: y1, shoulderY: topShoulderY },
+    { apexY: y0, shoulderY: bottomShoulderY },
+  );
+  addFrezDrivenHorizontalNotches(
+    topNotches,
+    bottomNotches,
+    model.sides.right.innerFrezLines,
+    innerFrezOffsetsRight.map((o) => x1 - o),
+    { apexY: y1, shoulderY: topShoulderY },
+    { apexY: y0, shoulderY: bottomShoulderY },
+  );
+  addFrezDrivenVerticalNotches(
+    leftNotches,
+    rightNotches,
+    model.sides.top.innerFrezLines,
+    innerFrezOffsetsTop.map((o) => y1 - o),
+    { apexX: x0, shoulderX: leftShoulderX },
+    { apexX: x1, shoulderX: rightShoulderX },
+  );
+  addFrezDrivenVerticalNotches(
+    leftNotches,
+    rightNotches,
+    model.sides.bottom.innerFrezLines,
+    innerFrezOffsetsBottom.map((o) => y0 + o),
     { apexX: x0, shoulderX: leftShoulderX },
     { apexX: x1, shoulderX: rightShoulderX },
   );

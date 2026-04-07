@@ -61,8 +61,8 @@ function focusLastFlangeInput(side: SideKey) {
 
 export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) {
   const navigate = useNavigate();
-  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, setFlangeRelief, setFlangeFlap, undo, removeFlange, removeFrez } = useSheetMetal();
-  const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex } = useSelectedSide();
+  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, undo, removeFlange, removeFrez, removeInnerFrez } = useSheetMetal();
+  const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex, selectedInnerFrezIndex, setSelectedInnerFrezIndex } = useSelectedSide();
   const [lastQ, setLastQ] = useState(0);
   const [lastE, setLastE] = useState(0);
   const { setDesignToDelete } = useDesignDelete();
@@ -175,9 +175,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   });
 
-  // F: add flange, focus its input
-  // Blur BEFORE flushSync — browser must release focus before DOM mutation,
-  // otherwise .focus() on the new input is ignored.
+  // F: add flange, focus its input. Clears any inner frez focus.
   useHotkey("F", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
@@ -187,18 +185,24 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
       flushSync(() => {
         addFlange(selectedSide);
         setSelectedFlangeIndex(newIndex);
+        setSelectedInnerFrezIndex(null);
       });
       focusLastFlangeInput(selectedSide);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
-  // Z: add frez, focus its input
+  // Z: add inner frez, set it as focused (clears flange focus so Q/E act on it)
   useHotkey("Z", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      flushSync(() => addFrez(selectedSide));
+      const newIndex = model.sides[selectedSide].innerFrezLines.length;
+      flushSync(() => {
+        addInnerFrez(selectedSide);
+        setSelectedInnerFrezIndex(newIndex);
+        setSelectedFlangeIndex(null);
+      });
       focusLastFlangeInput(selectedSide);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
@@ -226,13 +230,13 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
-  // Shift+Z: delete the last frez
+  // Shift+Z: delete the last inner frez
   useHotkey("Shift+Z", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
-      if (sideConfig.frezLines.length > 0) removeFrez(selectedSide, sideConfig.frezLines.length - 1);
+      if (sideConfig.innerFrezLines.length > 0) removeInnerFrez(selectedSide, sideConfig.innerFrezLines.length - 1);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
@@ -247,68 +251,83 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   });
 
-  // Mod+Shift+Z: delete ALL frez on selected side
+  // Mod+Shift+Z: delete ALL inner frez on selected side
   useHotkey("Mod+Shift+Z", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (isSideSelected) {
       const sideConfig = model.sides[selectedSide];
-      for (let i = sideConfig.frezLines.length - 1; i >= 0; i--) removeFrez(selectedSide, i);
+      for (let i = sideConfig.innerFrezLines.length - 1; i >= 0; i--) removeInnerFrez(selectedSide, i);
     }
   });
 
-  // Q/E: toggle start/end relief on focused flange
+  // Q: toggle start notch on focused inner frez, OR start relief on focused flange
   useHotkey("Q", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
-    if (isSideSelected) {
-      const sideConfig = model.sides[selectedSide];
-      const targetIndex =
-        selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
-          ? selectedFlangeIndex
-          : sideConfig.flanges.length - 1;
-      
-      const now = Date.now();
-      if (now - lastQ < 400 && targetIndex >= 0) {
-        if (!sideConfig.flanges[targetIndex].reliefs.start) {
-          setFlangeRelief(selectedSide, targetIndex, "start", true);
-        }
-        setTimeout(() => {
-          const el = document.getElementById(`flap-start-${selectedSide}-${targetIndex}`);
-          if (el) el.focus();
-        }, 50);
-        setLastQ(0);
-      } else {
-        if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "start", !sideConfig.flanges[targetIndex].reliefs.start);
-        setLastQ(now);
+    if (!isSideSelected) return;
+    const sideConfig = model.sides[selectedSide];
+
+    // Inner frez is focused — toggle its start notch
+    if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
+      const current = sideConfig.innerFrezLines[selectedInnerFrezIndex].notches.start;
+      setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "start", !current);
+      return;
+    }
+
+    // Fallback: flange relief (existing double-tap logic)
+    const targetIndex =
+      selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
+        ? selectedFlangeIndex
+        : sideConfig.flanges.length - 1;
+    const now = Date.now();
+    if (now - lastQ < 400 && targetIndex >= 0) {
+      if (!sideConfig.flanges[targetIndex].reliefs.start) {
+        setFlangeRelief(selectedSide, targetIndex, "start", true);
       }
+      setTimeout(() => {
+        const el = document.getElementById(`flap-start-${selectedSide}-${targetIndex}`);
+        if (el) el.focus();
+      }, 50);
+      setLastQ(0);
+    } else {
+      if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "start", !sideConfig.flanges[targetIndex].reliefs.start);
+      setLastQ(now);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
+  // E: toggle end notch on focused inner frez, OR end relief on focused flange
   useHotkey("E", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
-    if (isSideSelected) {
-      const sideConfig = model.sides[selectedSide];
-      const targetIndex =
-        selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
-          ? selectedFlangeIndex
-          : sideConfig.flanges.length - 1;
+    if (!isSideSelected) return;
+    const sideConfig = model.sides[selectedSide];
 
-      const now = Date.now();
-      if (now - lastE < 400 && targetIndex >= 0) {
-        if (!sideConfig.flanges[targetIndex].reliefs.end) {
-          setFlangeRelief(selectedSide, targetIndex, "end", true);
-        }
-        setTimeout(() => {
-          const el = document.getElementById(`flap-end-${selectedSide}-${targetIndex}`);
-          if (el) el.focus();
-        }, 50);
-        setLastE(0);
-      } else {
-        if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "end", !sideConfig.flanges[targetIndex].reliefs.end);
-        setLastE(now);
+    // Inner frez is focused — toggle its end notch
+    if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
+      const current = sideConfig.innerFrezLines[selectedInnerFrezIndex].notches.end;
+      setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "end", !current);
+      return;
+    }
+
+    // Fallback: flange relief (existing double-tap logic)
+    const targetIndex =
+      selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
+        ? selectedFlangeIndex
+        : sideConfig.flanges.length - 1;
+    const now = Date.now();
+    if (now - lastE < 400 && targetIndex >= 0) {
+      if (!sideConfig.flanges[targetIndex].reliefs.end) {
+        setFlangeRelief(selectedSide, targetIndex, "end", true);
       }
+      setTimeout(() => {
+        const el = document.getElementById(`flap-end-${selectedSide}-${targetIndex}`);
+        if (el) el.focus();
+      }, 50);
+      setLastE(0);
+    } else {
+      if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "end", !sideConfig.flanges[targetIndex].reliefs.end);
+      setLastE(now);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 

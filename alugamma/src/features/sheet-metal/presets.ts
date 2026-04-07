@@ -30,21 +30,25 @@ export const presetLibrary: Preset[] = [
           flanges: [createFlangeMeasurement(26)],
           frezLines: [],
           frezMode: "inner",
+          innerFrezLines: [],
         },
         right: {
           flanges: [createFlangeMeasurement(28)],
           frezLines: [],
           frezMode: "inner",
+          innerFrezLines: [],
         },
         bottom: {
           flanges: [createFlangeMeasurement(142)],
           frezLines: [createFrezMeasurement(116, { start: true, end: true })],
           frezMode: "inner",
+          innerFrezLines: [],
         },
         left: {
           flanges: [createFlangeMeasurement(30)],
           frezLines: [createFrezMeasurement(220, { start: true, end: true })],
           frezMode: "inner",
+          innerFrezLines: [],
         },
       },
       cornerReliefs: {

@@ -41,6 +41,7 @@ export type SideConfig = {
   flanges: FlangeMeasurement[];
   frezLines: FrezMeasurement[];
   frezMode: FrezMode;
+  innerFrezLines: FrezMeasurement[];
 };
 
 export type CornerReliefAxes = {
@@ -133,6 +134,15 @@ export function createEmptySide(): SideConfig {
     flanges: [],
     frezLines: [],
     frezMode: "inner",
+    innerFrezLines: [],
+  };
+}
+
+export function createInnerFrezMeasurement(amount = 24): FrezMeasurement {
+  return {
+    id: nextMeasurementId(),
+    amount,
+    notches: { start: false, end: false },
   };
 }
 
@@ -300,11 +310,15 @@ function normalizeSideConfig(value: unknown): SideConfig {
     const frezLines = Array.isArray(record.frezLines)
       ? record.frezLines.map((item) => normalizeFrezMeasurement(item))
       : [];
+    const innerFrezLines = Array.isArray(record.innerFrezLines)
+      ? record.innerFrezLines.map((item) => normalizeFrezMeasurement(item))
+      : [];
 
     return {
       flanges,
       frezLines,
       frezMode: record.frezMode === "outer" ? "outer" : "inner",
+      innerFrezLines,
     };
   }
 

@@ -23,18 +23,24 @@ type SideEditorProps = {
   outwardLimit: number;
   onAddFlange: () => void;
   onAddFrez: () => void;
+  onAddInnerFrez: () => void;
   onChangeFlange: (index: number, value: number) => void;
   onChangeFrez: (index: number, value: number) => void;
+  onChangeInnerFrez: (index: number, value: number) => void;
   onRemoveFlange: (index: number) => void;
   onRemoveFrez: (index: number) => void;
+  onRemoveInnerFrez: (index: number) => void;
   onFocusFlange?: (index: number) => void;
+  onFocusInnerFrez?: (index: number) => void;
   onSetFrezMode: (mode: FrezMode) => void;
   onSetFrezNotch: (index: number, position: FrezNotchPosition, value: boolean) => void;
+  onSetInnerFrezNotch: (index: number, position: FrezNotchPosition, value: boolean) => void;
   onSetFlangeRelief: (index: number, position: "start" | "end", value: boolean) => void;
   onSetFlangeFlap: (index: number, position: "start" | "end", value: number) => void;
   onClearAll: () => void;
   isSelected?: boolean;
   selectedFlangeIndex?: number | null;
+  selectedInnerFrezIndex?: number | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -280,52 +286,150 @@ function FrezBlock({
 }
 
 /* ------------------------------------------------------------------ */
+/*  InnerFrezChip — horizontal inline chip (top / bottom), violet      */
+/* ------------------------------------------------------------------ */
+function InnerFrezChip({
+  index, value, side, notches, onChange, onRemove, onFocus, onSetNotch, inputDataProps, isSelected,
+}: {
+  index: number; value: number; side: SideKey;
+  notches: { start: boolean; end: boolean };
+  onChange: (v: number) => void; onRemove: () => void;
+  onFocus?: () => void;
+  onSetNotch: (pos: FrezNotchPosition, v: boolean) => void;
+  inputDataProps?: { "data-side": SideKey };
+  isSelected?: boolean;
+}) {
+  const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
+  const stateClass = isSelected
+    ? "border-violet-500/50 bg-violet-500/15 ring-1 ring-violet-500/50"
+    : "border-violet-500/20 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/10";
+  return (
+    <div className={`${baseClass} ${stateClass}`}>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{index + 1}</span>
+      <Input
+        type="text" inputMode="numeric" pattern="[0-9]*"
+        value={value === 0 ? "" : value.toString()}
+        onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onChange(r === "" ? 0 : Number(r)); }}
+        onFocus={(e) => { onFocus?.(); e.target.select(); }}
+        className="h-5 w-[40px] border-0 bg-white/[0.04] px-1 text-center font-mono text-[11px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-violet-500/50"
+        {...(inputDataProps || {})}
+      />
+      <label className="flex cursor-pointer items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-white/90">
+        <Checkbox checked={notches.start} onCheckedChange={(c) => onSetNotch("start", !!c)}
+          className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-violet-500 data-[state=checked]:bg-violet-500" />
+        {cornerLabels[side].start}
+      </label>
+      <label className="flex cursor-pointer items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-white/90">
+        <Checkbox checked={notches.end} onCheckedChange={(c) => onSetNotch("end", !!c)}
+          className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-violet-500 data-[state=checked]:bg-violet-500" />
+        {cornerLabels[side].end}
+      </label>
+      <button onClick={onRemove}
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-destructive/40 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100">
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  InnerFrezBlock — left / right panels, violet                       */
+/* ------------------------------------------------------------------ */
+function InnerFrezBlock({
+  index, value, side, notches, onChange, onRemove, onFocus, onSetNotch, inputDataProps, isSelected,
+}: {
+  index: number; value: number; side: SideKey;
+  notches: { start: boolean; end: boolean };
+  onChange: (v: number) => void; onRemove: () => void;
+  onFocus?: () => void;
+  onSetNotch: (pos: FrezNotchPosition, v: boolean) => void;
+  inputDataProps?: { "data-side": SideKey };
+  isSelected?: boolean;
+}) {
+  const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
+  const stateClass = isSelected
+    ? "border-violet-500/50 bg-violet-500/15 ring-1 ring-violet-500/50"
+    : "border-violet-500/20 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/10";
+  return (
+    <div className={`${baseClass} ${stateClass}`}>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{index + 1}</span>
+      <div className="flex flex-col gap-0.5">
+        <Input
+          type="text" inputMode="numeric" pattern="[0-9]*"
+          value={value === 0 ? "" : value.toString()}
+          onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onChange(r === "" ? 0 : Number(r)); }}
+          onFocus={(e) => { onFocus?.(); e.target.select(); }}
+          className="h-5 w-full border-0 bg-white/[0.04] px-1 text-center font-mono text-[11px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-violet-500/50"
+          {...(inputDataProps || {})}
+        />
+        <div className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/55 transition-colors hover:text-white/90">
+            <Checkbox checked={notches.start} onCheckedChange={(c) => onSetNotch("start", !!c)}
+              className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-violet-500 data-[state=checked]:bg-violet-500" />
+            {cornerLabels[side].start}
+          </label>
+          <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/55 transition-colors hover:text-white/90">
+            <Checkbox checked={notches.end} onCheckedChange={(c) => onSetNotch("end", !!c)}
+              className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-violet-500 data-[state=checked]:bg-violet-500" />
+            {cornerLabels[side].end}
+          </label>
+        </div>
+      </div>
+      <button onClick={onRemove}
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-destructive/40 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100">
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main SideEditor                                                    */
 /* ------------------------------------------------------------------ */
 export function SideEditor({
   side, label, accentClass, config, inwardLimit, outwardLimit,
-  onAddFlange, onAddFrez, onChangeFlange, onChangeFrez,
-  onRemoveFlange, onRemoveFrez, onFocusFlange, onSetFrezMode, onSetFrezNotch, onSetFlangeRelief, onSetFlangeFlap,
-  onClearAll, isSelected, selectedFlangeIndex,
+  onAddFlange, onAddFrez, onAddInnerFrez, onChangeFlange, onChangeFrez, onChangeInnerFrez,
+  onRemoveFlange, onRemoveFrez, onRemoveInnerFrez, onFocusFlange, onFocusInnerFrez,
+  onSetFrezMode, onSetFrezNotch, onSetInnerFrezNotch, onSetFlangeRelief, onSetFlangeFlap,
+  onClearAll, isSelected, selectedFlangeIndex, selectedInnerFrezIndex,
 }: SideEditorProps) {
   const [frezOpen, setFrezOpen] = useState(false);
 
   const frezTotal = sumMeasurements(config.frezLines);
   const frezLimit = config.frezMode === "inner" ? inwardLimit : outwardLimit;
   const hasFrez = config.frezLines.length > 0;
+  const hasInnerFrez = config.innerFrezLines.length > 0;
   const isHorizontal = side === "top" || side === "bottom";
-  const hasAny = config.flanges.length > 0 || config.frezLines.length > 0;
+  const hasAny = config.flanges.length > 0 || config.frezLines.length > 0 || config.innerFrezLines.length > 0;
 
   const inputDataProps = {
     "data-side": side,
   };
 
-  /* ── Static header: [label] [+F] [+Z] [🗑] ──────────────────────
-     Fixed height h-[30px] on BOTH sides so that the horizontal card never
-     shifts height when the first chip appears next to it.
-     The h-[30px] equals: py-1 (4px top + 4px bottom) + content ~22px.
-     We use h-[30px] explicitly so both zero-flange and n-flange states
-     render the exact same header box height.
+  /* ── Static header: [label] [+F right-click=Z] [legacy-Z toggle if exists] [🗑] ──
+     Left-click +F → add normal flange.
+     Right-click +F → add inner frez line (Z1, Z2…).
+     The old +Z dropdown is retained only as a badge toggle when a design already
+     has legacy frezLines (backward compat) — it is no longer shown as +Z to new users.
   ─────────────────────────────────────────────────────────────────── */
   const header = (
     <div className="flex h-[30px] shrink-0 items-center gap-1 px-2.5">
       <span className={`text-[11px] font-bold uppercase tracking-[0.14em] ${accentClass}`}>
         {label}
       </span>
-      <button onClick={onAddFlange}
+      <button
+        onClick={onAddFlange}
+        onContextMenu={(e) => { e.preventDefault(); onAddInnerFrez(); }}
+        title="Left-click: add flange · Right-click: add inner frez (Z)"
         className="rounded border border-emerald-500/[0.12] px-1.5 py-0.5 font-mono text-[9px] font-bold text-emerald-400/40 transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/[0.08] hover:text-emerald-400">
         +F
       </button>
-      {hasFrez || frezOpen ? (
+      {/* Legacy frez toggle — only shown when existing frezLines are present (backward compat) */}
+      {hasFrez && (
         <button onClick={() => setFrezOpen(!frezOpen)}
           className="flex items-center gap-0.5 rounded border border-fuchsia-500/25 bg-fuchsia-500/[0.08] px-1.5 py-0.5 font-mono text-[9px] font-bold text-fuchsia-400/80 transition-colors hover:border-fuchsia-500/50 hover:bg-fuchsia-500/15 hover:text-fuchsia-300">
           {config.frezLines.length}Z
           <ChevronDown className={`h-2.5 w-2.5 transition-transform ${frezOpen ? "rotate-180" : ""}`} />
-        </button>
-      ) : (
-        <button onClick={() => { onAddFrez(); setFrezOpen(true); }}
-          className="rounded border border-fuchsia-500/[0.12] px-1.5 py-0.5 font-mono text-[9px] font-bold text-fuchsia-400/40 transition-colors hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.08] hover:text-fuchsia-400">
-          +Z
         </button>
       )}
       {/* Trash — clears all flanges + frez for this side */}
@@ -352,7 +456,7 @@ export function SideEditor({
         {/* Single row — header + chip scroll area, both h-[30px] */}
         <div className="flex h-[30px] min-w-0 items-stretch">
           {header}
-          {config.flanges.length > 0 && (
+          {(config.flanges.length > 0 || hasInnerFrez) && (
             <div className="my-1 w-px shrink-0 bg-white/[0.06]" />
           )}
           {/* w-0 min-w-0 flex-1: prevents chips from pushing card wider */}
@@ -372,14 +476,26 @@ export function SideEditor({
                     inputDataProps={{ "data-side": side } as any} isSelected={selectedFlangeIndex === i}
                   />
                 ))}
+                {config.innerFrezLines.map((frez, i) => (
+                  <InnerFrezChip
+                    key={frez.id} index={i} value={frez.amount} side={side}
+                    notches={frez.notches}
+                    onChange={(v) => onChangeInnerFrez(i, v)}
+                    onRemove={() => onRemoveInnerFrez(i)}
+                    onFocus={() => onFocusInnerFrez?.(i)}
+                    onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
+                    inputDataProps={{ "data-side": side } as any}
+                    isSelected={selectedInnerFrezIndex === i}
+                  />
+                ))}
               </div>
               <ScrollBar orientation="horizontal" className="h-1" />
             </ScrollArea>
           </div>
         </div>
 
-        {/* FREZ — only thing that adds height to T/B cards */}
-        {frezOpen && (
+        {/* Legacy FREZ panel — only shown for backward compat when hasFrez */}
+        {frezOpen && hasFrez && (
           <div className="border-t border-white/[0.04] px-2 pb-2 pt-1.5">
             <div className="mb-1.5 flex items-center justify-between">
               <div className="flex items-center rounded-full border border-white/[0.06] bg-black/15 p-0.5">
@@ -443,7 +559,7 @@ export function SideEditor({
       {/* Horizontal separator — mirrors the vertical one on T/B cards */}
       <div className="mx-1.5 h-px shrink-0 bg-white/[0.06]" />
 
-      {/* Flange list — flex-1 min-h-0 fills remaining height, always scrollable */}
+      {/* Flange + inner-frez list — flex-1 min-h-0 fills remaining height, always scrollable */}
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-1 px-1.5 py-1.5">
           {config.flanges.map((flange, i) => (
@@ -459,11 +575,23 @@ export function SideEditor({
               isSelected={selectedFlangeIndex === i}
             />
           ))}
+          {config.innerFrezLines.map((frez, i) => (
+            <InnerFrezBlock
+              key={frez.id} index={i} value={frez.amount} side={side}
+              notches={frez.notches}
+              onChange={(v) => onChangeInnerFrez(i, v)}
+              onRemove={() => onRemoveInnerFrez(i)}
+              onFocus={() => onFocusInnerFrez?.(i)}
+              onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
+              inputDataProps={inputDataProps}
+              isSelected={selectedInnerFrezIndex === i}
+            />
+          ))}
         </div>
       </ScrollArea>
 
-      {/* FREZ section */}
-      {frezOpen && (
+      {/* Legacy FREZ section — only shown for backward compat when hasFrez */}
+      {frezOpen && hasFrez && (
         <div className="shrink-0 border-t border-white/[0.04] px-1.5 pb-1.5 pt-1.5">
           <div className="mb-1 flex items-center justify-between gap-1">
             <div className="flex items-center rounded-full border border-white/[0.06] bg-black/15 p-0.5">
