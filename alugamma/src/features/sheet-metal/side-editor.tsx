@@ -54,7 +54,7 @@ function FlangeChip({
   isSelected?: boolean;
 }) {
   const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
-  const stateClass = isSelected 
+  const stateClass = isSelected
     ? "border-emerald-500/50 bg-emerald-500/15 ring-1 ring-emerald-500/50"
     : "border-white/[0.05] bg-black/15 hover:border-white/10 hover:bg-black/25";
 
@@ -66,8 +66,8 @@ function FlangeChip({
         value={value === 0 ? "" : value.toString()}
         onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onChange(r === "" ? 0 : Number(r)); }}
         onFocus={(e) => {
-           onFocus?.();
-           e.target.select();
+          onFocus?.();
+          e.target.select();
         }}
         className="h-5 w-[40px] border-0 bg-white/[0.04] px-1 text-center font-mono text-[11px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
         {...(inputDataProps || {})}
@@ -77,7 +77,7 @@ function FlangeChip({
           className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
         {cornerLabels[side].start}
       </label>
-      { reliefs.start && (
+      {reliefs.start && (
         <Input
           type="text" inputMode="numeric" pattern="[0-9]*"
           id={`flap-start-${side}-${index}`}
@@ -92,7 +92,7 @@ function FlangeChip({
           className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
         {cornerLabels[side].end}
       </label>
-      { reliefs.end && (
+      {reliefs.end && (
         <Input
           type="text" inputMode="numeric" pattern="[0-9]*"
           id={`flap-end-${side}-${index}`}
@@ -128,7 +128,7 @@ function FlangeBlock({
   isSelected?: boolean;
 }) {
   const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
-  const stateClass = isSelected 
+  const stateClass = isSelected
     ? "border-emerald-500/50 bg-emerald-500/15 ring-1 ring-emerald-500/50"
     : "border-white/[0.05] bg-black/15 hover:border-white/10 hover:bg-black/25";
 
@@ -143,8 +143,8 @@ function FlangeBlock({
           value={value === 0 ? "" : value.toString()}
           onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onChange(r === "" ? 0 : Number(r)); }}
           onFocus={(e) => {
-             onFocus?.();
-             e.target.select();
+            onFocus?.();
+            e.target.select();
           }}
           className="h-5 w-full border-0 bg-white/[0.04] px-1 text-center font-mono text-[11px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
           {...(inputDataProps || {})}
@@ -156,7 +156,7 @@ function FlangeBlock({
                 className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
               {cornerLabels[side].start}
             </label>
-            { reliefs.start && (
+            {reliefs.start && (
               <Input
                 type="text" inputMode="numeric" pattern="[0-9]*"
                 id={`flap-start-${side}-${index}`}
@@ -173,7 +173,7 @@ function FlangeBlock({
                 className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
               {cornerLabels[side].end}
             </label>
-            { reliefs.end && (
+            {reliefs.end && (
               <Input
                 type="text" inputMode="numeric" pattern="[0-9]*"
                 id={`flap-end-${side}-${index}`}
@@ -362,14 +362,14 @@ export function SideEditor({
               <div className="flex h-[30px] items-center gap-1 px-1.5">
                 {config.flanges.map((flange, i) => (
                   <FlangeChip
-                        index={i} value={flange.amount} side={side}
-                        reliefs={flange.reliefs} flaps={flange.flaps}
-                        onChange={(v) => onChangeFlange(i, v)}
-                        onRemove={() => onRemoveFlange(i)}
-                        onFocus={() => onFocusFlange?.(i)}
-                        onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
-                        onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
-                        inputDataProps={{ "data-side": side } as any}                 isSelected={selectedFlangeIndex === i}
+                    index={i} value={flange.amount} side={side}
+                    reliefs={flange.reliefs} flaps={flange.flaps}
+                    onChange={(v) => onChangeFlange(i, v)}
+                    onRemove={() => onRemoveFlange(i)}
+                    onFocus={() => onFocusFlange?.(i)}
+                    onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
+                    onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
+                    inputDataProps={{ "data-side": side } as any} isSelected={selectedFlangeIndex === i}
                   />
                 ))}
               </div>
