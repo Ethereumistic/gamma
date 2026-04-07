@@ -27,7 +27,7 @@ export const myQueryFunction = query({
     console.log(args.first, args.second);
 
     // Write arbitrary JavaScript here: filter, aggregate, build derived data,
-    // remove non-public properties, or create new objects.
+    // remove non-public properties, or create new objects
     return documents;
   },
 });
