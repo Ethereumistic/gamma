@@ -149,37 +149,41 @@ function FlangeBlock({
           className="h-5 w-full border-0 bg-white/[0.04] px-1 text-center font-mono text-[11px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
           {...(inputDataProps || {})}
         />
-        <div className="flex items-center gap-2">
-          <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/55 transition-colors hover:text-white/90">
-            <Checkbox checked={reliefs.start} onCheckedChange={(c) => onSetRelief("start", !!c)}
-              className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
-            {cornerLabels[side].start}
-          </label>
-          { reliefs.start && (
-            <Input
-              type="text" inputMode="numeric" pattern="[0-9]*"
-              id={`flap-start-${side}-${index}`}
-              value={flaps.start === 0 ? "" : flaps.start.toString()}
-              onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onSetFlap("start", r === "" ? 0 : Number(r)); }}
-              placeholder="0"
-              className="h-4 w-[20px] rounded-sm border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
-            />
-          )}
-          <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/55 transition-colors hover:text-white/90">
-            <Checkbox checked={reliefs.end} onCheckedChange={(c) => onSetRelief("end", !!c)}
-              className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
-            {cornerLabels[side].end}
-          </label>
-          { reliefs.end && (
-            <Input
-              type="text" inputMode="numeric" pattern="[0-9]*"
-              id={`flap-end-${side}-${index}`}
-              value={flaps.end === 0 ? "" : flaps.end.toString()}
-              onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onSetFlap("end", r === "" ? 0 : Number(r)); }}
-              placeholder="0"
-              className="h-4 w-[20px] rounded-sm border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
-            />
-          )}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/55 transition-colors hover:text-white/90">
+              <Checkbox checked={reliefs.start} onCheckedChange={(c) => onSetRelief("start", !!c)}
+                className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
+              {cornerLabels[side].start}
+            </label>
+            { reliefs.start && (
+              <Input
+                type="text" inputMode="numeric" pattern="[0-9]*"
+                id={`flap-start-${side}-${index}`}
+                value={flaps.start === 0 ? "" : flaps.start.toString()}
+                onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onSetFlap("start", r === "" ? 0 : Number(r)); }}
+                placeholder="0"
+                className="h-4 w-[20px] rounded-sm border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+              />
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/55 transition-colors hover:text-white/90">
+              <Checkbox checked={reliefs.end} onCheckedChange={(c) => onSetRelief("end", !!c)}
+                className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500" />
+              {cornerLabels[side].end}
+            </label>
+            { reliefs.end && (
+              <Input
+                type="text" inputMode="numeric" pattern="[0-9]*"
+                id={`flap-end-${side}-${index}`}
+                value={flaps.end === 0 ? "" : flaps.end.toString()}
+                onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onSetFlap("end", r === "" ? 0 : Number(r)); }}
+                placeholder="0"
+                className="h-4 w-[20px] rounded-sm border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+              />
+            )}
+          </div>
         </div>
       </div>
       {/* Col 3: × — grid items-center keeps it vertically centered */}
