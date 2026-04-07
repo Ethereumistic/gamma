@@ -35,6 +35,7 @@ type SideEditorProps = {
   onSetFrezMode: (mode: FrezMode) => void;
   onSetFrezNotch: (index: number, position: FrezNotchPosition, value: boolean) => void;
   onSetInnerFrezNotch: (index: number, position: FrezNotchPosition, value: boolean) => void;
+  onSetInnerFrezSpan: (index: number, position: "start" | "end", value: boolean) => void;
   onSetFlangeRelief: (index: number, position: "start" | "end", value: boolean) => void;
   onSetFlangeFlap: (index: number, position: "start" | "end", value: number) => void;
   onClearAll: () => void;
@@ -289,13 +290,15 @@ function FrezBlock({
 /*  InnerFrezChip — horizontal inline chip (top / bottom), violet      */
 /* ------------------------------------------------------------------ */
 function InnerFrezChip({
-  index, value, side, notches, onChange, onRemove, onFocus, onSetNotch, inputDataProps, isSelected,
+  index, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
 }: {
   index: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
+  spanStart?: boolean; spanEnd?: boolean;
   onChange: (v: number) => void; onRemove: () => void;
   onFocus?: () => void;
   onSetNotch: (pos: FrezNotchPosition, v: boolean) => void;
+  onSetSpan: (pos: "start" | "end", v: boolean) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
 }) {
@@ -306,6 +309,12 @@ function InnerFrezChip({
   return (
     <div className={`${baseClass} ${stateClass}`}>
       <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{index + 1}</span>
+      {/* Span-start toggle (extend into start-side flange) */}
+      <button onClick={() => onSetSpan("start", !spanStart)}
+        title={`Extend into ${cornerLabels[side].start} flange (QQ)`}
+        className={`rounded px-0.5 text-[10px] font-bold transition-colors ${
+          spanStart ? "text-violet-300" : "text-white/20 hover:text-violet-400/60"
+        }`}>◄</button>
       <Input
         type="text" inputMode="numeric" pattern="[0-9]*"
         value={value === 0 ? "" : value.toString()}
@@ -314,6 +323,12 @@ function InnerFrezChip({
         className="h-5 w-[40px] border-0 bg-white/[0.04] px-1 text-center font-mono text-[11px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-violet-500/50"
         {...(inputDataProps || {})}
       />
+      {/* Span-end toggle (extend into end-side flange) */}
+      <button onClick={() => onSetSpan("end", !spanEnd)}
+        title={`Extend into ${cornerLabels[side].end} flange (EE)`}
+        className={`rounded px-0.5 text-[10px] font-bold transition-colors ${
+          spanEnd ? "text-violet-300" : "text-white/20 hover:text-violet-400/60"
+        }`}>►</button>
       <label className="flex cursor-pointer items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-white/90">
         <Checkbox checked={notches.start} onCheckedChange={(c) => onSetNotch("start", !!c)}
           className="h-2.5 w-2.5 rounded-[2px] border-white/15 data-[state=checked]:border-violet-500 data-[state=checked]:bg-violet-500" />
@@ -336,13 +351,15 @@ function InnerFrezChip({
 /*  InnerFrezBlock — left / right panels, violet                       */
 /* ------------------------------------------------------------------ */
 function InnerFrezBlock({
-  index, value, side, notches, onChange, onRemove, onFocus, onSetNotch, inputDataProps, isSelected,
+  index, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
 }: {
   index: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
+  spanStart?: boolean; spanEnd?: boolean;
   onChange: (v: number) => void; onRemove: () => void;
   onFocus?: () => void;
   onSetNotch: (pos: FrezNotchPosition, v: boolean) => void;
+  onSetSpan: (pos: "start" | "end", v: boolean) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
 }) {
@@ -374,6 +391,19 @@ function InnerFrezBlock({
             {cornerLabels[side].end}
           </label>
         </div>
+        {/* Span toggles — extend frez line into adjacent flanges */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => onSetSpan("start", !spanStart)}
+            title={`Extend into ${cornerLabels[side].start} flange (QQ)`}
+            className={`rounded px-1 text-[9px] font-bold transition-colors ${
+              spanStart ? "text-violet-300" : "text-white/20 hover:text-violet-400/60"
+            }`}>◄◄</button>
+          <button onClick={() => onSetSpan("end", !spanEnd)}
+            title={`Extend into ${cornerLabels[side].end} flange (EE)`}
+            className={`rounded px-1 text-[9px] font-bold transition-colors ${
+              spanEnd ? "text-violet-300" : "text-white/20 hover:text-violet-400/60"
+            }`}>►►</button>
+        </div>
       </div>
       <button onClick={onRemove}
         className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-destructive/40 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100">
@@ -390,7 +420,7 @@ export function SideEditor({
   side, label, accentClass, config, inwardLimit, outwardLimit,
   onAddFlange, onAddFrez, onAddInnerFrez, onChangeFlange, onChangeFrez, onChangeInnerFrez,
   onRemoveFlange, onRemoveFrez, onRemoveInnerFrez, onFocusFlange, onFocusInnerFrez,
-  onSetFrezMode, onSetFrezNotch, onSetInnerFrezNotch, onSetFlangeRelief, onSetFlangeFlap,
+  onSetFrezMode, onSetFrezNotch, onSetInnerFrezNotch, onSetInnerFrezSpan, onSetFlangeRelief, onSetFlangeFlap,
   onClearAll, isSelected, selectedFlangeIndex, selectedInnerFrezIndex,
 }: SideEditorProps) {
   const [frezOpen, setFrezOpen] = useState(false);
@@ -479,11 +509,12 @@ export function SideEditor({
                 {config.innerFrezLines.map((frez, i) => (
                   <InnerFrezChip
                     key={frez.id} index={i} value={frez.amount} side={side}
-                    notches={frez.notches}
+                    notches={frez.notches} spanStart={frez.spanStart} spanEnd={frez.spanEnd}
                     onChange={(v) => onChangeInnerFrez(i, v)}
                     onRemove={() => onRemoveInnerFrez(i)}
                     onFocus={() => onFocusInnerFrez?.(i)}
                     onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
+                    onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
                     inputDataProps={{ "data-side": side } as any}
                     isSelected={selectedInnerFrezIndex === i}
                   />
@@ -578,11 +609,12 @@ export function SideEditor({
           {config.innerFrezLines.map((frez, i) => (
             <InnerFrezBlock
               key={frez.id} index={i} value={frez.amount} side={side}
-              notches={frez.notches}
+              notches={frez.notches} spanStart={frez.spanStart} spanEnd={frez.spanEnd}
               onChange={(v) => onChangeInnerFrez(i, v)}
               onRemove={() => onRemoveInnerFrez(i)}
               onFocus={() => onFocusInnerFrez?.(i)}
               onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
+              onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
               inputDataProps={inputDataProps}
               isSelected={selectedInnerFrezIndex === i}
             />

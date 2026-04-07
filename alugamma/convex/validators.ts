@@ -47,6 +47,8 @@ export const frezMeasurementValidator = v.union(
     id: v.string(),
     amount: v.number(),
     notches: frezLineNotchesValidator,
+    spanStart: v.optional(v.boolean()),
+    spanEnd: v.optional(v.boolean()),
   }),
 );
 
@@ -70,6 +72,7 @@ export const sideConfigValidator = v.object({
   flanges: v.array(flangeMeasurementValidator),
   frezLines: v.array(frezMeasurementValidator),
   frezMode: frezModeValidator,
+  innerFrezLines: v.optional(v.array(frezMeasurementValidator)),
 });
 
 export const sheetModelValidator = v.object({

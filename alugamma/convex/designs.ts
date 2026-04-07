@@ -94,6 +94,8 @@ function normalizeFrezMeasurementEntry(value: unknown) {
                     start: notchRecord.start === true,
                     end: notchRecord.end === true,
                 },
+                ...(record.spanStart === true ? { spanStart: true } : {}),
+                ...(record.spanEnd === true   ? { spanEnd: true }   : {}),
             };
         }
     }
@@ -114,6 +116,9 @@ function normalizeSideConfig(value: unknown) {
             flanges: Array.isArray(record.flanges) ? record.flanges.map((item) => normalizeFlangeMeasurementEntry(item)) : [],
             frezLines: Array.isArray(record.frezLines) ? record.frezLines.map((item) => normalizeFrezMeasurementEntry(item)) : [],
             frezMode: record.frezMode === "outer" ? "outer" : "inner",
+            innerFrezLines: Array.isArray(record.innerFrezLines)
+                ? record.innerFrezLines.map((item) => normalizeFrezMeasurementEntry(item))
+                : [],
         };
     }
 
@@ -121,6 +126,7 @@ function normalizeSideConfig(value: unknown) {
         flanges: [],
         frezLines: [],
         frezMode: "inner",
+        innerFrezLines: [],
     };
 }
 

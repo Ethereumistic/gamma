@@ -55,6 +55,7 @@ function SideEditorForSide({ side }: { side: SideKey }) {
     setFrezMode,
     setFrezNotch,
     setInnerFrezNotch,
+    setInnerFrezSpan,
     setFlangeRelief,
     setFlangeFlap,
   } = useSheetMetal();
@@ -103,6 +104,7 @@ function SideEditorForSide({ side }: { side: SideKey }) {
       onSetFrezMode={(mode) => setFrezMode(side, mode)}
       onSetFrezNotch={(index, position, value) => setFrezNotch(side, index, position, value)}
       onSetInnerFrezNotch={(index, position, value) => setInnerFrezNotch(side, index, position, value)}
+      onSetInnerFrezSpan={(index, position, value) => setInnerFrezSpan(side, index, position, value)}
       onSetFlangeRelief={(index, position, value) => setFlangeRelief(side, index, position, value)}
       onSetFlangeFlap={(index, position, value) => setFlangeFlap(side, index, position, value)}
       onClearAll={handleClearAll}

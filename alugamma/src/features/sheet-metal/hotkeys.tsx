@@ -61,7 +61,7 @@ function focusLastFlangeInput(side: SideKey) {
 
 export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) {
   const navigate = useNavigate();
-  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, undo, removeFlange, removeFrez, removeInnerFrez } = useSheetMetal();
+  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, setInnerFrezSpan, undo, removeFlange, removeFrez, removeInnerFrez } = useSheetMetal();
   const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex, selectedInnerFrezIndex, setSelectedInnerFrezIndex } = useSelectedSide();
   const [lastQ, setLastQ] = useState(0);
   const [lastE, setLastE] = useState(0);
@@ -261,17 +261,32 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   });
 
-  // Q: toggle start notch on focused inner frez, OR start relief on focused flange
+  // Q: toggle start behaviour on focused inner frez, OR start relief on focused flange.
+  //   Single Q on inner frez  → toggle notch.start (V-notch); enabling it clears spanStart
+  //   Double Q on inner frez  → toggle spanStart (extend line); enabling it clears notch.start
+  //   notch.start and spanStart are mutually exclusive.
   useHotkey("Q", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (!isSideSelected) return;
     const sideConfig = model.sides[selectedSide];
 
-    // Inner frez is focused — toggle its start notch
     if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
-      const current = sideConfig.innerFrezLines[selectedInnerFrezIndex].notches.start;
-      setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "start", !current);
+      const frezLine = sideConfig.innerFrezLines[selectedInnerFrezIndex];
+      const now = Date.now();
+      if (now - lastQ < 400) {
+        // Double Q → toggle spanStart; enabling it forces notch.start off
+        const newSpan = !frezLine.spanStart;
+        setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "start", newSpan);
+        if (newSpan) setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "start", false);
+        setLastQ(0);
+      } else {
+        // Single Q → toggle notch.start; enabling it forces spanStart off
+        const newNotch = !frezLine.notches.start;
+        setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "start", newNotch);
+        if (newNotch) setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "start", false);
+        setLastQ(now);
+      }
       return;
     }
 
@@ -296,17 +311,32 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
-  // E: toggle end notch on focused inner frez, OR end relief on focused flange
+  // E: toggle end behaviour on focused inner frez, OR end relief on focused flange.
+  //   Single E on inner frez  → toggle notch.end (V-notch); enabling it clears spanEnd
+  //   Double E on inner frez  → toggle spanEnd (extend line); enabling it clears notch.end
+  //   notch.end and spanEnd are mutually exclusive.
   useHotkey("E", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (!isSideSelected) return;
     const sideConfig = model.sides[selectedSide];
 
-    // Inner frez is focused — toggle its end notch
     if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
-      const current = sideConfig.innerFrezLines[selectedInnerFrezIndex].notches.end;
-      setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "end", !current);
+      const frezLine = sideConfig.innerFrezLines[selectedInnerFrezIndex];
+      const now = Date.now();
+      if (now - lastE < 400) {
+        // Double E → toggle spanEnd; enabling it forces notch.end off
+        const newSpan = !frezLine.spanEnd;
+        setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "end", newSpan);
+        if (newSpan) setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "end", false);
+        setLastE(0);
+      } else {
+        // Single E → toggle notch.end; enabling it forces spanEnd off
+        const newNotch = !frezLine.notches.end;
+        setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "end", newNotch);
+        if (newNotch) setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "end", false);
+        setLastE(now);
+      }
       return;
     }
 

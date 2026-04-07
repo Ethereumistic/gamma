@@ -482,27 +482,58 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
   }
 
   // Inner frez lines — always span the full base rectangle edge-to-edge, always inward.
-  // These correspond to the new Z hotkey / right-click +F feature.
-  const innerFrezOffsetsTop = getCumulativeOffsets(model.sides.top.innerFrezLines);
-  const innerFrezOffsetsBottom = getCumulativeOffsets(model.sides.bottom.innerFrezLines);
-  const innerFrezOffsetsLeft = getCumulativeOffsets(model.sides.left.innerFrezLines);
-  const innerFrezOffsetsRight = getCumulativeOffsets(model.sides.right.innerFrezLines);
+  // spanStart / spanEnd extend the line into the adjacent side's flange area.
+  // Perpendicular flange depths used for span extension:
+  const leftFlangeDepth = sumMeasurements(model.sides.left.flanges);
+  const rightFlangeDepth = sumMeasurements(model.sides.right.flanges);
+  const topFlangeDepth = sumMeasurements(model.sides.top.flanges);
+  const bottomFlangeDepth = sumMeasurements(model.sides.bottom.flanges);
 
-  for (const offset of innerFrezOffsetsTop) {
-    const fy = y1 - offset;
-    addLine(shapes, "FREZ", x0, fy, x1, fy);
+  // Top inner frez: horizontal lines at y = y1 - offset
+  // start = left side, end = right side
+  {
+    let offsetAcc = 0;
+    for (const line of model.sides.top.innerFrezLines) {
+      offsetAcc += line.amount;
+      const fy = y1 - offsetAcc;
+      const lx = line.spanStart ? x0 - leftFlangeDepth : x0;
+      const rx = line.spanEnd   ? x1 + rightFlangeDepth : x1;
+      addLine(shapes, "FREZ", lx, fy, rx, fy);
+    }
   }
-  for (const offset of innerFrezOffsetsBottom) {
-    const fy = y0 + offset;
-    addLine(shapes, "FREZ", x0, fy, x1, fy);
+  // Bottom inner frez: horizontal lines at y = y0 + offset
+  {
+    let offsetAcc = 0;
+    for (const line of model.sides.bottom.innerFrezLines) {
+      offsetAcc += line.amount;
+      const fy = y0 + offsetAcc;
+      const lx = line.spanStart ? x0 - leftFlangeDepth : x0;
+      const rx = line.spanEnd   ? x1 + rightFlangeDepth : x1;
+      addLine(shapes, "FREZ", lx, fy, rx, fy);
+    }
   }
-  for (const offset of innerFrezOffsetsLeft) {
-    const fx = x0 + offset;
-    addLine(shapes, "FREZ", fx, y0, fx, y1);
+  // Left inner frez: vertical lines at x = x0 + offset
+  // start = top side, end = bottom side
+  {
+    let offsetAcc = 0;
+    for (const line of model.sides.left.innerFrezLines) {
+      offsetAcc += line.amount;
+      const fx = x0 + offsetAcc;
+      const ty = line.spanStart ? y1 + topFlangeDepth    : y1;
+      const by = line.spanEnd   ? y0 - bottomFlangeDepth : y0;
+      addLine(shapes, "FREZ", fx, by, fx, ty);
+    }
   }
-  for (const offset of innerFrezOffsetsRight) {
-    const fx = x1 - offset;
-    addLine(shapes, "FREZ", fx, y0, fx, y1);
+  // Right inner frez: vertical lines at x = x1 - offset
+  {
+    let offsetAcc = 0;
+    for (const line of model.sides.right.innerFrezLines) {
+      offsetAcc += line.amount;
+      const fx = x1 - offsetAcc;
+      const ty = line.spanStart ? y1 + topFlangeDepth    : y1;
+      const by = line.spanEnd   ? y0 - bottomFlangeDepth : y0;
+      addLine(shapes, "FREZ", fx, by, fx, ty);
+    }
   }
 
   const topShoulderY = y1 + getCornerShoulderOffset(model.sides.top.flanges);
@@ -551,6 +582,12 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
   // Inner frez notches — same wiring but using innerFrezLines & their positions.
   // left/right inner frez are vertical lines → drive H-notches on top/bottom cut edges.
   // top/bottom inner frez are horizontal lines → drive V-notches on left/right cut edges.
+  // Re-derive cumulative positions for the notch-driving calls (separate from rendering).
+  const innerFrezOffsetsTop    = getCumulativeOffsets(model.sides.top.innerFrezLines);
+  const innerFrezOffsetsBottom = getCumulativeOffsets(model.sides.bottom.innerFrezLines);
+  const innerFrezOffsetsLeft   = getCumulativeOffsets(model.sides.left.innerFrezLines);
+  const innerFrezOffsetsRight  = getCumulativeOffsets(model.sides.right.innerFrezLines);
+
   addFrezDrivenHorizontalNotches(
     topNotches,
     bottomNotches,

@@ -20,6 +20,10 @@ export type FrezLineNotches = {
 
 export type FrezMeasurement = Measurement & {
   notches: FrezLineNotches;
+  /** Whether the inner frez line extends into the start-side adjacent flange area */
+  spanStart?: boolean;
+  /** Whether the inner frez line extends into the end-side adjacent flange area */
+  spanEnd?: boolean;
 };
 
 export type FlangeReliefs = {
@@ -143,6 +147,8 @@ export function createInnerFrezMeasurement(amount = 24): FrezMeasurement {
     id: nextMeasurementId(),
     amount,
     notches: { start: false, end: false },
+    spanStart: false,
+    spanEnd: false,
   };
 }
 
@@ -272,12 +278,16 @@ export function normalizeFrezMeasurement(value: unknown): FrezMeasurement {
     return {
       ...measurement,
       notches: normalizeFrezLineNotches(record.notches, true),
+      spanStart: record.spanStart === true,
+      spanEnd: record.spanEnd === true,
     };
   }
 
   return {
     ...measurement,
     notches: normalizeFrezLineNotches(undefined, true),
+    spanStart: false,
+    spanEnd: false,
   };
 }
 

@@ -75,6 +75,7 @@ type SheetMetalContextType = {
   setFrezMode: (side: SideKey, mode: FrezMode) => void;
   setFrezNotch: (side: SideKey, index: number, position: FrezNotchPosition, value: boolean) => void;
   setInnerFrezNotch: (side: SideKey, index: number, position: FrezNotchPosition, value: boolean) => void;
+  setInnerFrezSpan: (side: SideKey, index: number, position: "start" | "end", value: boolean) => void;
   setFlangeRelief: (side: SideKey, index: number, position: "start" | "end", value: boolean) => void;
   setFlangeFlap: (side: SideKey, index: number, position: "start" | "end", value: number) => void;
   setCornerRelief: (corner: CornerKey, axis: CornerReliefAxis, value: boolean) => void;
@@ -355,6 +356,16 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     }));
   }
 
+  function setInnerFrezSpan(side: SideKey, index: number, position: "start" | "end", value: boolean) {
+    const key = position === "start" ? "spanStart" : "spanEnd";
+    patchSide(side, (draft) => ({
+      ...draft,
+      innerFrezLines: draft.innerFrezLines.map((line, lineIndex) =>
+        lineIndex === index ? { ...line, [key]: value } : line,
+      ),
+    }));
+  }
+
   function setFrezNotch(side: SideKey, index: number, position: FrezNotchPosition, value: boolean) {
     patchSide(side, (draft) => ({
       ...draft,
@@ -548,6 +559,7 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         setFrezMode,
         setFrezNotch,
         setInnerFrezNotch,
+        setInnerFrezSpan,
         setFlangeRelief,
         setFlangeFlap,
         setCornerRelief,
