@@ -35,13 +35,13 @@ const SCENARIO_LABELS: Record<string, string> = {
 }
 
 const ALGORITHMS: { value: string; label: string; desc: string }[] = [
+  { value: "juggler_gemini", label: "v1.0 Juggler", desc: "Shapely-powered optimal path selection 4" },
   { value: "raptor", label: "v0.4 Raptor", desc: "Polar clockwise sweep with ring clustering" },
   { value: "anchor", label: "v0.5 Anchor", desc: "Vacuum anchor preservation priority" },
   { value: "oracle", label: "v1.0 Oracle", desc: "AI-powered optimal path selection" },
   { value: "shapely", label: "v0.1 Shapely", desc: "Shapely-powered optimal path selection" },
   { value: "conman", label: "v1.0 ConMan", desc: "Shapely-powered optimal path selection 2" },
   { value: "conman_v2", label: "v1.0 ConMan v2", desc: "Shapely-powered optimal path selection 3" },
-  { value: "juggler_gemini", label: "v1.0 Juggler Gemini", desc: "Shapely-powered optimal path selection 4" },
   { value: "juggler_claude", label: "v1.0 Juggler Claude", desc: "Shapely-powered optimal path selection 5" },
 ]
 
@@ -58,7 +58,7 @@ export default function CNCPipelinePage() {
   const { state, upload, generateNC, reset } = useGenerate()
 
   const [algorithm, setAlgorithm] = useState(() => {
-    return localStorage.getItem("cnc_default_algorithm") || "raptor"
+    return localStorage.getItem("cnc_default_algorithm") || "juggler_gemini"
   })
 
   const [dxfDisplayName, setDxfDisplayName] = useState("Unknown")
@@ -255,7 +255,7 @@ export default function CNCPipelinePage() {
   const currentAlgorithm = (state.status === "ready" || state.status === "done" || state.status === "generating")
     ? state.generate.algorithm
     : algorithm
-  
+
   const activeAlgoLabel = ALGORITHMS.find(a => a.value === currentAlgorithm)?.label ?? algorithm
 
   return (
@@ -340,7 +340,7 @@ export default function CNCPipelinePage() {
                       <DialogTitle>NC Program Settings</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                      
+
                       <div className="grid gap-2 mb-2">
                         <Label>Default Algorithm</Label>
                         <Select value={algorithm} onValueChange={updateDefaultAlgorithm}>
@@ -356,7 +356,7 @@ export default function CNCPipelinePage() {
                           <Label>Filename Suffix Settings</Label>
                           <span className="text-xs text-emerald-400 font-mono break-all">{assembledFilename}.nc</span>
                         </div>
-                        
+
                         <div className="flex items-center justify-between">
                           <Label className="font-normal font-mono text-xs">Append Scenario (e.g. _F-C)</Label>
                           <Switch checked={ncSettings.scenario} onCheckedChange={c => updateSettings({ scenario: c })} />
@@ -374,10 +374,10 @@ export default function CNCPipelinePage() {
                           <Switch checked={ncSettings.custom} onCheckedChange={c => updateSettings({ custom: c })} />
                         </div>
                         {ncSettings.custom && (
-                          <Input 
-                            value={ncSettings.customText} 
-                            onChange={e => updateSettings({ customText: e.target.value })} 
-                            className="h-8 text-xs font-mono" 
+                          <Input
+                            value={ncSettings.customText}
+                            onChange={e => updateSettings({ customText: e.target.value })}
+                            className="h-8 text-xs font-mono"
                             placeholder="custom-suffix"
                           />
                         )}
@@ -388,10 +388,10 @@ export default function CNCPipelinePage() {
                 </Dialog>
 
                 {state.status === "done" && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleSave} 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSave}
                     disabled={isSaving}
                     className="h-8 px-3 text-xs border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400"
                   >
@@ -440,7 +440,7 @@ export default function CNCPipelinePage() {
 
       {(state.status === "ready" || state.status === "done" || (state.status === "generating" && state.geometry)) && (
         <div className="grid grid-cols-12 gap-6 h-full min-h-0 relative">
-          
+
           {state.status === "generating" && (
             <div className="absolute inset-0 bg-black/40 z-50 flex flex-col items-center justify-center backdrop-blur-sm rounded-lg">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4 mt-[35vh]"></div>
