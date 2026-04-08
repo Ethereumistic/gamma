@@ -42,7 +42,7 @@ export function Logo({ variant = "full", className, size = "md", showGlow = true
       >
         <span
           className={cn(
-            "text-neon-green",
+            "text-primary",
             showGlow && "text-glow-green"
           )}
         >
@@ -64,13 +64,16 @@ export function Logo({ variant = "full", className, size = "md", showGlow = true
       >
         <span
           className={cn(
-            "text-neon-green mr-4",
+            "text-neon-green mr-2",
             showGlow && "text-glow-green"
           )}
         >
           {"\u03A9"}
         </span>
-        <span className="text-foreground text-neon-magenta">Forge</span>
+        <span className={cn(
+          "text-foreground text-neon-magenta",
+          showGlow && "text-glow-magenta"
+        )}>Forge</span>
       </span>
     );
   }
@@ -91,7 +94,7 @@ export function Logo({ variant = "full", className, size = "md", showGlow = true
       >
         {"\u03A9"}mega
       </span>{" "}
-      <span className="text-neon-magenta text-glow-magenta">Forge</span>
+      <span className=" text-glow-magenta">Forge</span>
     </span>
   );
 }

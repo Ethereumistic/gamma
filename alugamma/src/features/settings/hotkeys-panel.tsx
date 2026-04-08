@@ -65,7 +65,7 @@ export function HotkeysPanel() {
     <ScrollArea className="h-[500px] pr-4">
       <div className="space-y-6">
         <div>
-          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-emerald-400">Traditional</h3>
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-primary">Traditional</h3>
           <div className="space-y-1">
             <HotkeyRow
               shortcut={
@@ -159,7 +159,7 @@ export function HotkeysPanel() {
         <Separator className="bg-white/10" />
 
         <div>
-          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-fuchsia-400">Power User (Sheet Metal)</h3>
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-accent">Power User (Sheet Metal)</h3>
           <p className="mb-3 text-xs text-muted-foreground/60">
             Side selection hotkeys only work when not typing in an input field.
           </p>

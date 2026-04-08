@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 export const organizationRoleValidator = v.union(v.literal("owner"), v.literal("admin"), v.literal("member"));
 export const projectRoleValidator = v.union(v.literal("owner"), v.literal("editor"));
-export const inviteStatusValidator = v.union(v.literal("pending"), v.literal("accepted"), v.literal("revoked"), v.literal("expired"));
+export const inviteStatusValidator = v.union(v.literal("pending"), v.literal("accepted"), v.literal("revoked"), v.literal("expired"), v.literal("declined"));
 export const frezModeValidator = v.union(v.literal("inner"), v.literal("outer"));
 export const cornerReliefAxesValidator = v.object({
   horizontal: v.boolean(),

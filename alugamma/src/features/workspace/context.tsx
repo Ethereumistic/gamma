@@ -59,17 +59,37 @@ export type ProjectSummary = {
   organizationIcon?: string;
   designs: ProjectDesignSummary[];
   ncProgramCount: number;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type PendingInviteSummary = {
   id: Id<"projectInvites">;
   organizationId: Id<"organizations">;
   organizationName: string;
+  organizationIcon?: string;
   projectId: Id<"projects">;
   projectName: string;
   role: string;
   createdAt: number;
   expiresAt: number;
+  invitedBy?: {
+    name: string;
+    email: string;
+  } | null;
+};
+
+export type PendingOrgInviteSummary = {
+  id: Id<"organizationInvites">;
+  organizationId: Id<"organizations">;
+  organizationName: string;
+  role: string;
+  createdAt: number;
+  expiresAt: number;
+  invitedBy?: {
+    name: string;
+    email: string;
+  } | null;
 };
 
 type ViewerWorkspace = {
@@ -78,6 +98,7 @@ type ViewerWorkspace = {
   organizations: OrganizationSummary[];
   projects: ProjectSummary[];
   pendingInvites: PendingInviteSummary[];
+  pendingOrgInvites: PendingOrgInviteSummary[];
 };
 
 type WorkspaceContextValue = {
@@ -88,6 +109,7 @@ type WorkspaceContextValue = {
   organizations: OrganizationSummary[];
   projects: ProjectSummary[];
   pendingInvites: PendingInviteSummary[];
+  pendingOrgInvites: PendingOrgInviteSummary[];
   selectedOrganizationId: Id<"organizations"> | null;
   setSelectedOrganizationId: (organizationId: Id<"organizations"> | null) => void;
   selectedProjectId: Id<"projects"> | null;
@@ -203,6 +225,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         organizations: workspace?.organizations ?? [],
         projects: workspace?.projects ?? [],
         pendingInvites: workspace?.pendingInvites ?? [],
+        pendingOrgInvites: workspace?.pendingOrgInvites ?? [],
         selectedOrganizationId,
         setSelectedOrganizationId: setOrganizationId,
         selectedProjectId,

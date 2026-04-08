@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import { AppNavbar } from "@/components/layout/app-navbar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -54,6 +54,9 @@ function AppLayout() {
     );
   }
 
+  const location = useLocation();
+  const isLanding = location.pathname === "/";
+
   // Authenticated: full app layout with sidebar + navbar
   return (
     <DesignDeleteProvider>
@@ -63,7 +66,7 @@ function AppLayout() {
             <div className="flex min-h-screen w-full bg-background text-foreground">
               <AppSidebar />
               <div className="flex flex-1 flex-col overflow-hidden">
-                <AppNavbar />
+                {!isLanding && <AppNavbar />}
                 <main className="flex-1 overflow-y-auto">
                   <Routes>
                     <Route path="/" element={<LandingPage />} />

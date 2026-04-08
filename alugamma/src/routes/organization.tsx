@@ -87,7 +87,7 @@ export default function OrganizationPage() {
                                                         {org.icon || "🏢"}
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <h3 className="font-display text-2xl font-black text-white group-hover:text-primary transition-colors">
+                                                        <h3 className="font-display text-2xl font-black text-white transition-colors">
                                                             {org.name}
                                                         </h3>
                                                         <div className="flex items-center gap-3 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">

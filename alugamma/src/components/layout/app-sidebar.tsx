@@ -79,7 +79,7 @@ const toolItems = [
   },
 ];
 
-import { LogoShort, LogoMark } from "@/components/logo";
+import { LogoShort, LogoMark, Logo } from "@/components/logo";
 import { formatDateGroup } from "@/lib/date-utils";
 
 export function AppSidebar() {
@@ -177,12 +177,13 @@ export function AppSidebar() {
   return (
     <>
       <Sidebar className="border-r border-white/10 bg-[linear-gradient(180deg,rgba(10,10,10,0.98),rgba(6,6,6,0.99))]">
-        <SidebarHeader className="border-b border-white/5 px-4 py-4">
-          <Link to="/" className="flex items-center gap-1.5 px-1 py-1 group">
-            <span className="font-display text-3xl font-black tracking-tighter">
+        <SidebarHeader className="border-b border-white/5 px-4 py-4 ">
+          <Link to="/" className="flex items-center justify-center py-1.5 group">
+            {/* <span className="font-display text-3xl font-black tracking-tighter">
               <span className="text-neon-green text-glow-green drop-shadow-[0_0_8px_rgba(57,255,20,0.5)]">Ω</span>
               <span className="text-neon-magenta text-glow-magenta drop-shadow-[0_0_8px_rgba(255,0,255,0.4)] ml-[-1px]">Forge</span>
-            </span>
+            </span> */}
+            <Logo size="lg" variant="short" showGlow={true} className="text-white" />
           </Link>
 
           {authenticated && (
@@ -555,26 +556,26 @@ export function AppSidebar() {
 
         <SidebarFooter className="border-t border-white/6 bg-black/40 px-3 py-4">
           {authenticated && viewer ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1.5 hover:bg-white/[0.04] transition-all group/footer">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2 text-left hover:bg-white/5 hover:border-white/20 outline-none focus-visible:ring-1 focus-visible:ring-primary/30">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-neon-green-sm shadow-inner">
-                      <UserRound className="h-4 w-4" />
+                  <button className="flex flex-1 items-center gap-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-primary/30 min-w-0">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-neon-green-sm shadow-inner group-hover/footer:border-primary/40 transition-colors">
+                      <UserRound className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-xs font-bold uppercase tracking-widest text-white">
-                        {viewer.name || viewer.email?.split('@')[0]}
+                      <p className="truncate text-[10px] font-bold uppercase tracking-wide text-white">
+                        {viewer.email}
                       </p>
-                      <p className="truncate text-[9px] font-mono text-slate-500 group-hover:text-slate-400">
+                      <p className="truncate text-[9px] font-mono text-slate-500">
                         {selectedProject?.name ?? 'No Project'}
                       </p>
                     </div>
-                    <ChevronDown className="h-3 w-3 text-slate-500" />
+                    <ChevronDown className="h-3 w-3 text-slate-500 shrink-0" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
-                  side="right"
+                  side="top"
                   align="end"
                   className="w-56 overflow-hidden rounded-xl border-white/10 bg-background p-1 shadow-2xl backdrop-blur-xl"
                   sideOffset={12}
@@ -582,8 +583,8 @@ export function AppSidebar() {
                   <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
                     Operations
                   </DropdownMenuLabel>
-                  <DropdownMenuItem 
-                    onClick={() => navigate("/")} 
+                  <DropdownMenuItem
+                    onClick={() => navigate("/")}
                     className={cn(
                       "gap-2 rounded-lg py-2 cursor-pointer transition-colors focus:bg-primary/10 focus:text-primary",
                       location.pathname === "/" && "bg-primary/10 text-primary font-bold"
@@ -592,8 +593,8 @@ export function AppSidebar() {
                     <LayoutDashboard className="h-4 w-4" />
                     <span className="text-xs font-medium">Workspace</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => navigate("/organization")} 
+                  <DropdownMenuItem
+                    onClick={() => navigate("/organization")}
                     className={cn(
                       "gap-2 rounded-lg py-2 cursor-pointer transition-colors focus:bg-primary/10 focus:text-primary",
                       location.pathname === "/organization" && "bg-primary/10 text-primary font-bold"
@@ -602,8 +603,8 @@ export function AppSidebar() {
                     <UserRound className="h-4 w-4" />
                     <span className="text-xs font-medium">Organization</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => navigate("/project")} 
+                  <DropdownMenuItem
+                    onClick={() => navigate("/project")}
                     className={cn(
                       "gap-2 rounded-lg py-2 cursor-pointer transition-colors focus:bg-primary/10 focus:text-primary",
                       location.pathname === "/project" && "bg-primary/10 text-primary font-bold"
@@ -626,11 +627,11 @@ export function AppSidebar() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-xl bg-white/[0.02] border border-white/10 text-slate-400 hover:text-white hover:bg-white/5"
+                className="h-8 w-8 shrink-0 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                 onClick={() => openSettings("hotkeys")}
                 title="Settings"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
           ) : (

@@ -134,6 +134,8 @@ export const viewerWorkspace = query({
         description: string;
         defaults?: Infer<typeof projectDefaultsValidator>;
         role: string;
+        updatedAt: number;
+        _creationTime: number;
       }
     >();
 
@@ -157,6 +159,8 @@ export const viewerWorkspace = query({
         description: project.description ?? "",
         defaults: project.defaults,
         role: membership.role,
+        updatedAt: project.updatedAt,
+        _creationTime: project._creationTime,
       });
     }
 
@@ -181,6 +185,8 @@ export const viewerWorkspace = query({
           description: project.description ?? "",
           defaults: project.defaults,
           role: existing?.role ?? membership.role,
+          updatedAt: project.updatedAt,
+          _creationTime: project._creationTime,
         });
       }
     }
@@ -212,6 +218,7 @@ export const viewerWorkspace = query({
 
           return {
             ...project,
+            createdAt: project._creationTime,
             organizationIcon: organization?.icon,
             memberCount,
             designs: [...designs]
@@ -242,6 +249,7 @@ export const viewerWorkspace = query({
         .map(async (invite) => {
           const project = await ctx.db.get(invite.projectId);
           const organization = await ctx.db.get(invite.organizationId);
+          const inviter = await ctx.db.get(invite.invitedBy);
           if (!project || !organization) {
             return null;
           }
@@ -250,11 +258,16 @@ export const viewerWorkspace = query({
             id: invite._id,
             organizationId: invite.organizationId,
             organizationName: organization.name,
+            organizationIcon: organization.icon,
             projectId: invite.projectId,
             projectName: project.name,
             role: invite.role,
             createdAt: invite.createdAt,
             expiresAt: invite.expiresAt,
+            invitedBy: inviter ? {
+              name: inviter.name ?? "User",
+              email: inviter.email ?? "",
+            } : null,
           };
         }),
     );
@@ -271,6 +284,7 @@ export const viewerWorkspace = query({
         .filter((invite) => invite.expiresAt > now)
         .map(async (invite) => {
           const organization = await ctx.db.get(invite.organizationId);
+          const inviter = await ctx.db.get(invite.invitedBy);
           if (!organization) {
             return null;
           }
@@ -282,6 +296,10 @@ export const viewerWorkspace = query({
             role: invite.role,
             createdAt: invite.createdAt,
             expiresAt: invite.expiresAt,
+            invitedBy: inviter ? {
+              name: inviter.name ?? "User",
+              email: inviter.email ?? "",
+            } : null,
           };
         }),
     );
@@ -696,5 +714,109 @@ export const updateProjectDefaults = mutation({
   handler: async (ctx, args) => {
     const access = await requireProjectManager(ctx, args.projectId);
     await ctx.db.patch(args.projectId, { defaults: args.defaults });
+  },
+});
+
+export const declineProjectInvite = mutation({
+  args: {
+    inviteId: v.id("projectInvites"),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireViewer(ctx);
+    const invite = await ctx.db.get(args.inviteId);
+
+    if (!invite) {
+      throw new Error("Invite not found.");
+    }
+
+    if (invite.status !== "pending") {
+      throw new Error("This invite is no longer active.");
+    }
+
+    if (!viewer.email || invite.email !== viewer.email) {
+      throw new Error("This invite belongs to a different email address.");
+    }
+
+    await ctx.db.patch(invite._id, {
+      status: "declined",
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+export const acceptOrganizationInvite = mutation({
+  args: {
+    inviteId: v.id("organizationInvites"),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireViewer(ctx);
+    const invite = await ctx.db.get(args.inviteId);
+
+    if (!invite) {
+      throw new Error("Invite not found.");
+    }
+
+    if (invite.status !== "pending") {
+      throw new Error("This invite is no longer active.");
+    }
+
+    if (invite.expiresAt <= Date.now()) {
+      await ctx.db.patch(invite._id, { status: "expired", updatedAt: Date.now() });
+      throw new Error("This invite has expired.");
+    }
+
+    if (!viewer.email || invite.email !== viewer.email) {
+      throw new Error("This invite belongs to a different email address.");
+    }
+
+    const now = Date.now();
+    const orgMembership = await getOrganizationMembership(ctx, invite.organizationId, viewer.userId);
+    if (!orgMembership) {
+      await ctx.db.insert("organizationMembers", {
+        organizationId: invite.organizationId,
+        userId: viewer.userId,
+        role: invite.role,
+        joinedAt: now,
+      });
+    }
+
+    await ctx.db.patch(invite._id, {
+      status: "accepted",
+      acceptedAt: now,
+      updatedAt: now,
+    });
+
+    return { success: true };
+  },
+});
+
+export const declineOrganizationInvite = mutation({
+  args: {
+    inviteId: v.id("organizationInvites"),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireViewer(ctx);
+    const invite = await ctx.db.get(args.inviteId);
+
+    if (!invite) {
+      throw new Error("Invite not found.");
+    }
+
+    if (invite.status !== "pending") {
+      throw new Error("This invite is no longer active.");
+    }
+
+    if (!viewer.email || invite.email !== viewer.email) {
+      throw new Error("This invite belongs to a different email address.");
+    }
+
+    await ctx.db.patch(invite._id, {
+      status: "declined",
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
   },
 });

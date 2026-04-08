@@ -382,9 +382,9 @@ export default function ProjectPage() {
                                         >
                                             <div className="mb-6 flex items-start justify-between">
                                                 <div className="space-y-1.5">
-                                                    <h3 className={`font-display text-2xl font-black text-white transition-colors leading-tight ${isSelected ? 'text-accent' : 'group-hover:text-accent'}`}>
-                                                        {project.name}
-                                                    </h3>
+                                                    <h3 className={`font-display text-2xl font-black text-white transition-colors leading-tight`}>
+                                                         {project.name.length > 16 ? project.name.substring(0, 16) + "..." : project.name}
+                                                     </h3>
                                                     <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
                                                         <span className="text-sm">{project.organizationIcon || "🏢"}</span>
                                                         {project.organizationName}
@@ -418,9 +418,9 @@ export default function ProjectPage() {
                                                 </div>
 
                                                 <div className="flex items-center justify-between gap-3 pt-2">
-                                                    <div className="font-mono text-[9px] text-slate-700 uppercase tracking-tighter truncate opacity-60">
-                                                        ID: {project.slug || project.id.substring(0, 8)}
-                                                    </div>
+                                                        <div className="font-mono text-[9px] text-slate-700 uppercase tracking-tighter truncate opacity-60">
+                                                            CREATED: {new Date(project.createdAt).toLocaleDateString()}
+                                                        </div>
                                                     <div className="flex gap-2">
                                                         {(project.designs?.length ?? 0) > 0 && (
                                                             <Button
@@ -437,7 +437,7 @@ export default function ProjectPage() {
                                                             </Button>
                                                         )}
                                                         <Button
-                                                            variant="neon"
+                                                            variant={isSelected ? "neon" : "secondary"}
                                                             size="sm"
                                                             className=""
                                                             onClick={(e) => {
