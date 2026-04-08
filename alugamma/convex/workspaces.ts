@@ -15,6 +15,27 @@ import {
 } from "./helpers";
 import { organizationRoleValidator, projectDefaultsValidator, projectRoleValidator } from "./validators";
 
+const DEFAULT_ICONS = [
+  "🏢", "🏪", "🏫", "🏭", "🏠", "🏡", "🏥", "🏦", "🏗️", "📐",
+  "🔨", "🛠️", "🔧", "⚙️", "🔦", "💎", "🔋", "💡", "💻", "💾",
+  "📱", "📊", "📈", "📉", "📫", "📦", "🚚", "🚛", "🚜", "🛰️",
+  "🚀", "🛸", "🛫", "🚢", "🛥️", "⛴️", "🛶", "⛵", "🚤", "🚲",
+  "🛴", "🛵", "🏍️", "🏎️", "🎨", "🎭", "🎬", "🎤", "🎧", "🎷",
+  "🎸", "🎹", "🎺", "🎻", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖️",
+  "🎗️", "🎫", "🎟️", "🏷️", "📚", "📖", "🔖", "📒", "📓", "📔",
+  "📘", "📗", "📙", "📕", "🧪", "🧬", "🔭", "📡", "🌿", "🌲",
+  "🌳", "🌴", "🌵", "🎋", "🍃", "🍂", "🍁", "🍄", "🌊", "🔥",
+  "⚡", "🌈", "☀️", "🌙", "⭐", "🌌", "🌍", "🗺️",
+];
+
+async function getRandomIcon(ctx: MutationCtx) {
+  const orgs = await ctx.db.query("organizations").collect();
+  const used = new Set(orgs.map((o) => o.icon).filter(Boolean) as string[]);
+  const available = DEFAULT_ICONS.filter((i) => !used.has(i));
+  const pool = available.length > 0 ? available : DEFAULT_ICONS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 async function nextOrganizationSlug(ctx: MutationCtx, name: string) {
   const base = slugify(name) || "organization";
   let slug = base;
@@ -93,6 +114,7 @@ export const viewerWorkspace = query({
         return {
           id: organization._id,
           name: organization.name,
+          icon: organization.icon,
           slug: organization.slug,
           role: membership.role,
           memberCount,
@@ -172,8 +194,26 @@ export const viewerWorkspace = query({
             .withIndex("by_project_updatedAt", (query) => query.eq("projectId", project.id))
             .collect();
 
+          const memberCount = (
+            await ctx.db
+              .query("projectMembers")
+              .withIndex("by_project", (query) => query.eq("projectId", project.id))
+              .collect()
+          ).length;
+
+          const ncProgramCount = (
+            await ctx.db
+              .query("nc_programs")
+              .withIndex("by_project", (query) => query.eq("projectId", project.id))
+              .collect()
+          ).length;
+
+          const organization = await ctx.db.get(project.organizationId);
+
           return {
             ...project,
+            organizationIcon: organization?.icon,
+            memberCount,
             designs: [...designs]
               .sort((left, right) => right.updatedAt - left.updatedAt)
               .map((design) => ({
@@ -184,6 +224,7 @@ export const viewerWorkspace = query({
                 createdAt: design.createdAt,
                 isStarred: design.isStarred,
               })),
+            ncProgramCount,
           };
         }),
     );
@@ -292,6 +333,7 @@ export const organizationAccessOverview = query({
       organization: {
         id: args.organizationId,
         name: organization?.name ?? "",
+        icon: organization?.icon,
         slug: organization?.slug ?? "",
       },
       members,
@@ -406,6 +448,7 @@ export const removeOrganizationMember = mutation({
 export const createOrganization = mutation({
   args: {
     name: v.string(),
+    icon: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const viewer = await requireViewer(ctx);
@@ -418,6 +461,7 @@ export const createOrganization = mutation({
     const now = Date.now();
     const organizationId = await ctx.db.insert("organizations", {
       name,
+      icon: args.icon ?? (await getRandomIcon(ctx)),
       slug: await nextOrganizationSlug(ctx, name),
       createdBy: viewer.userId,
       createdAt: now,
@@ -432,6 +476,23 @@ export const createOrganization = mutation({
     });
 
     return { organizationId };
+  },
+});
+
+export const backfillOrganizationIcons = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const orgs = await ctx.db.query("organizations").collect();
+    const used = new Set(orgs.map((o) => o.icon).filter(Boolean) as string[]);
+    for (const org of orgs) {
+      if (!org.icon) {
+        const available = DEFAULT_ICONS.filter((i) => !used.has(i));
+        const pool = available.length > 0 ? available : DEFAULT_ICONS;
+        const icon = pool[Math.floor(Math.random() * pool.length)];
+        await ctx.db.patch(org._id, { icon });
+        used.add(icon);
+      }
+    }
   },
 });
 

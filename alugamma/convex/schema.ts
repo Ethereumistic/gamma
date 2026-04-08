@@ -14,6 +14,7 @@ export default defineSchema({
   ...authTables,
   organizations: defineTable({
     name: v.string(),
+    icon: v.optional(v.string()),
     slug: v.string(),
     createdBy: v.id("users"),
     createdAt: v.number(),

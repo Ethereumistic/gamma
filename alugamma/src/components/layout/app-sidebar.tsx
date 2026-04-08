@@ -179,7 +179,7 @@ export function AppSidebar() {
       <Sidebar className="border-r border-white/10 bg-[linear-gradient(180deg,rgba(10,10,10,0.98),rgba(6,6,6,0.99))]">
         <SidebarHeader className="border-b border-white/5 px-4 py-4">
           <Link to="/" className="flex items-center gap-1.5 px-1 py-1 group">
-            <span className="font-display text-3xl font-black tracking-tighter transition-all group-hover:scale-[1.02]">
+            <span className="font-display text-3xl font-black tracking-tighter">
               <span className="text-neon-green text-glow-green drop-shadow-[0_0_8px_rgba(57,255,20,0.5)]">Ω</span>
               <span className="text-neon-magenta text-glow-magenta drop-shadow-[0_0_8px_rgba(255,0,255,0.4)] ml-[-1px]">Forge</span>
             </span>
@@ -207,7 +207,7 @@ export function AppSidebar() {
                         asChild
                         isActive={isActive}
                         className={cn(
-                          "h-10 px-3 rounded-xl border transition-all duration-300",
+                          "h-10 px-3 rounded-xl border",
                           isActive
                             ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
                             : "text-slate-400 border-transparent hover:bg-white/5 hover:text-white"
@@ -215,7 +215,7 @@ export function AppSidebar() {
                       >
                         <Link to={item.url} className="flex items-center gap-3">
                           <div className={cn(
-                            "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300",
+                            "flex h-6 w-6 items-center justify-center rounded-md",
                             isActive ? "bg-primary/20 text-primary shadow-neon-green-sm" : "bg-black/40 text-slate-500"
                           )}>
                             <item.icon className="h-3.5 w-3.5" />
@@ -246,14 +246,14 @@ export function AppSidebar() {
                       key={item.title}
                       to={item.url}
                       className={cn(
-                        "flex flex-col items-center justify-center gap-3 py-5 rounded-xl border transition-all duration-300 group",
+                        "flex flex-col items-center justify-center gap-3 py-5 rounded-xl border group",
                         isActive
                           ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
                           : "bg-white/[0.03] border-white/5 text-slate-400 hover:bg-white/10 hover:border-white/20 hover:text-white"
                       )}
                     >
                       <div className={cn(
-                        "p-2 rounded-lg transition-all duration-300",
+                        "p-2 rounded-lg",
                         isActive ? "bg-primary/20" : "bg-black/40 group-hover:scale-110"
                       )}>
                         <item.icon className="h-5 w-5" />
@@ -286,7 +286,7 @@ export function AppSidebar() {
                       }
                       navigate("/sheet-metal/new");
                     }}
-                    className="shrink-0 h-8 w-8 transition-transform active:scale-95"
+                    className="shrink-0 h-8 w-8"
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -339,7 +339,7 @@ export function AppSidebar() {
                                   asChild
                                   isActive={location.pathname === `/sheet-metal/${design.id}`}
                                   className={cn(
-                                    "pr-8 h-8 transition-all duration-200 outline-none w-full",
+                                    "pr-8 h-8 outline-none w-full",
                                     location.pathname === `/sheet-metal/${design.id}`
                                       ? "bg-primary/10 text-primary border-r-2 border-primary"
                                       : "text-slate-400 hover:text-white"
@@ -355,7 +355,7 @@ export function AppSidebar() {
                                   </Link>
                                 </SidebarMenuSubButton>
 
-                                <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition-opacity">
+                                <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover/item:opacity-100 focus-within:opacity-100">
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -431,7 +431,7 @@ export function AppSidebar() {
                     variant="neon"
                     size="icon"
                     onClick={() => navigate("/cnc-pipeline/new")}
-                    className="shrink-0 h-8 w-8 transition-transform active:scale-95 shadow-neon-green-sm"
+                    className="shrink-0 h-8 w-8 shadow-neon-green-sm"
                     title="New NC program"
                   >
                     <Plus className="h-4 w-4" />
@@ -485,7 +485,7 @@ export function AppSidebar() {
                                   asChild
                                   isActive={location.pathname === `/cnc-pipeline/${program._id}`}
                                   className={cn(
-                                    "pr-8 h-8 transition-all duration-200 outline-none w-full flex items-center gap-2",
+                                    "pr-8 h-8 outline-none w-full flex items-center gap-2",
                                     location.pathname === `/cnc-pipeline/${program._id}`
                                       ? "bg-primary/10 text-primary border-r-2 border-primary"
                                       : "text-slate-400 hover:text-white"
@@ -507,7 +507,7 @@ export function AppSidebar() {
                                   </Link>
                                 </SidebarMenuSubButton>
 
-                                <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition-opacity">
+                                <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover/item:opacity-100 focus-within:opacity-100">
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                       <Button
@@ -558,8 +558,8 @@ export function AppSidebar() {
             <div className="flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2 text-left transition-all hover:bg-white/5 hover:border-white/20 outline-none focus-visible:ring-1 focus-visible:ring-primary/30">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-neon-green-sm shadow-inner transition-transform active:scale-95">
+                  <button className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2 text-left hover:bg-white/5 hover:border-white/20 outline-none focus-visible:ring-1 focus-visible:ring-primary/30">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-neon-green-sm shadow-inner">
                       <UserRound className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -626,7 +626,7 @@ export function AppSidebar() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-xl bg-white/[0.02] border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 active:scale-95 transition-all"
+                className="h-10 w-10 shrink-0 rounded-xl bg-white/[0.02] border border-white/10 text-slate-400 hover:text-white hover:bg-white/5"
                 onClick={() => openSettings("hotkeys")}
                 title="Settings"
               >

@@ -16,6 +16,7 @@ export type WorkspaceViewer = {
 export type OrganizationSummary = {
   id: Id<"organizations">;
   name: string;
+  icon?: string;
   slug: string;
   role: string;
   memberCount: number;
@@ -54,7 +55,10 @@ export type ProjectSummary = {
     };
   };
   role: string;
+  memberCount: number;
+  organizationIcon?: string;
   designs: ProjectDesignSummary[];
+  ncProgramCount: number;
 };
 
 export type PendingInviteSummary = {

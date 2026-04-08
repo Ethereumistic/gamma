@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useConvex } from "convex/react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { toast } from "sonner";
-import { Loader2Icon, DownloadIcon, CheckIcon } from "lucide-react";
+import { Loader2Icon, DownloadIcon, CheckIcon, Building2, LockKeyhole, FileStack, Search, LayoutDashboard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -225,125 +226,241 @@ function BatchExportDialog({
 }
 
 export default function ProjectPage() {
-    const { authenticated, isLoadingWorkspace, projects } = useWorkspace();
+    const { authenticated, isLoadingWorkspace, projects, organizations, selectedProjectId, setSelectedProjectId, setSelectedOrganizationId } = useWorkspace();
+    const navigate = useNavigate();
     const convex = useConvex();
     const [exportingProject, setExportingProject] = useState<any>(null);
 
+    // Filtering state
+    const [filterOrgId, setFilterOrgId] = useState<string | null>(null);
+    const [projectSearchQuery, setProjectSearchQuery] = useState("");
+
+    const filteredProjects = useMemo(() => {
+        let result = projects;
+
+        if (filterOrgId) {
+            result = result.filter(p => p.organizationId === filterOrgId);
+        }
+
+        if (projectSearchQuery) {
+            const query = projectSearchQuery.toLowerCase();
+            result = result.filter(p =>
+                p.name.toLowerCase().includes(query) ||
+                p.organizationName.toLowerCase().includes(query) ||
+                (p.organizationIcon && p.organizationIcon.includes(query))
+            );
+        }
+
+        return result;
+    }, [projects, filterOrgId, projectSearchQuery]);
+
+    // Portal for Navbar filters
+    const [portalMounted, setPortalMounted] = useState(false);
+    useEffect(() => {
+        setPortalMounted(true);
+    }, []);
+
+    const navbarContent = portalMounted && document.getElementById("project-navbar-portal") ? createPortal(
+        <div className="flex w-full items-center gap-6">
+            <div className="relative flex items-center group">
+                <Search className="absolute left-3 size-3.5 text-slate-500 group-focus-within:text-neon-green transition-colors" />
+                <Input
+                    value={projectSearchQuery}
+                    onChange={(e) => setProjectSearchQuery(e.target.value)}
+                    placeholder="Search projects..."
+                    className="h-9 w-[200px] bg-black/40 border-white/5 pl-9 text-xs font-medium focus:border-neon-green/30 focus:ring-1 focus:ring-neon-green/20"
+                />
+            </div>
+
+            <div className="h-4 w-[1px] bg-white/10" />
+
+            <div className="flex-1 overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-1.5 p-1">
+                    <button
+                        onClick={() => setFilterOrgId(null)}
+                        className={`flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-4 text-[10px] font-bold uppercase tracking-widest border transition-all ${filterOrgId === null
+                            ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
+                            : "bg-white/5 border-transparent text-slate-500 hover:bg-white/10 hover:text-white"
+                            }`}
+                    >
+                        <LayoutDashboard className="size-3" />
+                        ALL PROJECTS
+                    </button>
+
+                    {organizations.map(org => (
+                        <button
+                            key={org.id}
+                            onClick={() => setFilterOrgId(org.id)}
+                            className={`flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-4 text-[10px] font-bold uppercase tracking-widest border transition-all ${filterOrgId === org.id
+                                ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
+                                : "bg-white/5 border-transparent text-slate-500 hover:bg-white/10 hover:text-white"
+                                }`}
+                        >
+                            <span className="text-sm leading-none">{org.icon || "🏢"}</span>
+                            {org.name}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>,
+        document.getElementById("project-navbar-portal")!
+    ) : null;
+
     if (isLoadingWorkspace) {
         return (
-            <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-10 lg:px-8">
-                <Card className="border-white/10 bg-card/85">
-                    <CardContent className="py-10 text-center text-sm text-muted-foreground">Loading...</CardContent>
-                </Card>
+            <div className="flex h-full items-center justify-center bg-background/50 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-neon-green border-t-transparent shadow-neon-green-sm" />
+                    <p className="font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-neon-green ml-1">Decoding Projects...</p>
+                </div>
             </div>
         );
     }
 
     if (!authenticated) {
         return (
-            <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-10 lg:px-8">
-                <Card className="border-white/10 bg-card/85">
-                    <CardHeader>
-                        <CardTitle>Sign in required</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4 text-sm text-muted-foreground">
-                        <p>You need to be signed in to view your projects.</p>
-                        <Button asChild>
-                            <Link to="/auth">Sign in</Link>
-                        </Button>
-                    </CardContent>
-                </Card>
+            <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center p-6 text-center">
+                <div className="mb-6 flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-500">
+                    <LockKeyhole className="size-8" />
+                </div>
+                <h2 className="font-display text-2xl font-black uppercase tracking-tight text-white">Authorization Required</h2>
+                <p className="mt-2 text-sm text-slate-500">Sign in to access your secure project silos and design pipelines.</p>
+                <Button asChild className="mt-8 h-12 w-full bg-neon-green text-black hover:bg-neon-green/90 font-bold uppercase tracking-widest transition-all">
+                    <Link to="/auth">Authenticate User</Link>
+                </Button>
             </div>
         );
     }
 
     return (
-        <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-10 lg:px-8">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+        <div className="relative min-h-full overflow-y-auto bg-background px-6 py-10 lg:px-12">
+            {navbarContent}
+            {/* Subtle background effects */}
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                <div className="absolute left-1/2 top-0 h-[400px] w-[600px] -translate-x-1/2 rounded-full bg-neon-green/5 blur-[100px]" />
             </div>
 
-            {projects.length === 0 ? (
-                <Card className="border-white/10 bg-card/85">
-                    <CardHeader>
-                        <CardTitle>No projects found</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm text-muted-foreground">
-                        You are not a member of any projects yet.
-                    </CardContent>
-                </Card>
-            ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {projects.map((project) => (
-                        <Card key={project.id} className="flex flex-col border-white/10 bg-card/85 transition-colors hover:bg-card/95">
-                            <CardHeader className="pb-4">
-                                <CardTitle className="flex items-center justify-between gap-4">
-                                    <span className="truncate">{project.name}</span>
-                                    <span className="flex-shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                        {project.role}
-                                    </span>
-                                </CardTitle>
-                                <div className="text-xs text-muted-foreground">
-                                    Org: {project.organizationName}
-                                </div>
-                            </CardHeader>
-                            <CardContent className="flex flex-1 flex-col gap-4">
-                                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                    <span>{project.designs?.length ?? 0} design{(project.designs?.length ?? 0) !== 1 && "s"}</span>
-                                </div>
+            <div className="relative z-10 mx-auto w-full max-w-[1400px] space-y-10">
+                <header className="flex flex-col justify-between gap-6 md:flex-row md:items-end border-b border-white/5 pb-8">
+                    <div className="space-y-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400">
+                            Central Repository
+                        </div>
+                        <h1 className="font-display text-4xl font-black tracking-tighter text-white lg:text-5xl">
+                            Project <span className="text-glow-white">Sequences</span>
+                        </h1>
+                        <p className="max-w-xl text-xs leading-relaxed text-slate-400 uppercase tracking-wider opacity-60">
+                            Orchestrating industrial design silos and profile matrix deployments.
+                        </p>
+                    </div>
+                </header>
 
-                                {(project.designs?.length ?? 0) > 0 && (
-                                    <Accordion type="single" collapsible className="w-full">
-                                        <AccordionItem value="designs" className="border-white/10 border-b-0">
-                                            <AccordionTrigger className="py-2 text-sm hover:no-underline">
-                                                View Designs
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                                <div className="flex flex-col gap-2 pt-2">
-                                                    {project.designs.map(design => (
-                                                        <div key={design.id} className="flex items-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm">
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="truncate font-medium">{design.name}</span>
-                                                                    {design.isStarred && <Badge variant="secondary" className="px-1 py-0 h-4 text-[10px]">★</Badge>}
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex gap-1 shrink-0">
-                                                                <Button asChild variant="ghost" size="sm" className="h-6 px-2 text-xs">
-                                                                    <Link to={`/project/${project.id}/${design.id}`}>Preview</Link>
-                                                                </Button>
-                                                                <Button asChild variant="secondary" size="sm" className="h-6 px-2 text-xs">
-                                                                    <Link to={`/sheet-metal/${design.id}`}>Edit</Link>
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </AccordionContent>
-                                        </AccordionItem>
-                                    </Accordion>
-                                )}
-
-                                <div className="mt-auto pt-4 flex gap-2">
-                                    <Button asChild variant="secondary" className="w-full">
-                                        <Link to={`/project/${project.id}`}>View Project Details</Link>
-                                    </Button>
-                                    {(project.designs?.length ?? 0) > 0 && (
-                                        <Button
-                                            variant="outline"
-                                            className="w-full"
-                                            onClick={() => setExportingProject(project)}
+                <main>
+                    {filteredProjects.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-white/10 bg-white/[0.02] py-32 px-10 text-center">
+                            <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-white/5 text-slate-700">
+                                <FileStack className="size-10" />
+                            </div>
+                            <h3 className="font-display text-xl font-black uppercase tracking-widest text-white">No items found</h3>
+                            <p className="mt-2 max-w-sm text-sm text-slate-500 uppercase tracking-wider font-bold">Try adjusting your filters or initialize a new project.</p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                            {filteredProjects.map((project, idx) => {
+                                const isSelected = project.id === selectedProjectId;
+                                return (
+                                    <div key={project.id}>
+                                        <button
+                                            onClick={() => {
+                                                setSelectedProjectId(project.id);
+                                                setSelectedOrganizationId(project.organizationId);
+                                            }}
+                                            className={`group relative flex h-full w-full flex-col overflow-hidden rounded-[2.5rem] border p-8 text-left transition-all duration-500 ${isSelected
+                                                ? "border-accent/40 bg-accent/5 shadow-neon-magenta-sm"
+                                                : "border-white/5 bg-black/40 hover:bg-white/[0.03] hover:border-white/20"
+                                                }`}
                                         >
-                                            <DownloadIcon className="mr-2 h-4 w-4" />
-                                            Batch Export .DXF
-                                        </Button>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            )}
+                                            <div className="mb-6 flex items-start justify-between">
+                                                <div className="space-y-1.5">
+                                                    <h3 className={`font-display text-2xl font-black text-white transition-colors leading-tight ${isSelected ? 'text-accent' : 'group-hover:text-accent'}`}>
+                                                        {project.name}
+                                                    </h3>
+                                                    <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                                                        <span className="text-sm">{project.organizationIcon || "🏢"}</span>
+                                                        {project.organizationName}
+                                                    </div>
+                                                </div>
+                                                <div className={`rounded-lg border px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors ${isSelected ? "border-accent/40 bg-accent/20 text-accent text-glow-accent-sm" : "border-white/10 bg-black/40 text-slate-400"
+                                                    }`}>
+                                                    {project.role}
+                                                </div>
+                                            </div>
+
+                                            <p className="mb-8 line-clamp-3 min-h-[60px] text-xs leading-relaxed text-slate-400 group-hover:text-slate-300">
+                                                {project.description || "No technical specification provided. Operating under standard industrial profile protocol."}
+                                            </p>
+
+                                            <div className="mt-auto flex flex-col gap-4">
+                                                {/* Stats Mini Grid */}
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div className="rounded-xl border border-white/5 bg-black/40 p-2.5 text-center transition-colors group-hover:border-accent/20">
+                                                        <p className="text-lg font-black text-white">{project.designs?.length ?? 0}</p>
+                                                        <p className="text-[7px] font-bold uppercase tracking-widest text-slate-600">DESIGNS</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-white/5 bg-black/40 p-2.5 text-center transition-colors group-hover:border-accent/20">
+                                                        <p className="text-lg font-black text-white">{project.ncProgramCount || 0}</p>
+                                                        <p className="text-[7px] font-bold uppercase tracking-widest text-slate-600">PROGRAMS</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-white/5 bg-black/40 p-2.5 text-center transition-colors group-hover:border-accent/20">
+                                                        <p className="text-lg font-black text-white">{project.memberCount || 1}</p>
+                                                        <p className="text-[7px] font-bold uppercase tracking-widest text-slate-600">MEMBERS</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-3 pt-2">
+                                                    <div className="font-mono text-[9px] text-slate-700 uppercase tracking-tighter truncate opacity-60">
+                                                        ID: {project.slug || project.id.substring(0, 8)}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        {(project.designs?.length ?? 0) > 0 && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-9 w-9 p-0 border border-white/5 hover:bg-white/5"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setExportingProject(project);
+                                                                }}
+                                                                title="Batch Export"
+                                                            >
+                                                                <DownloadIcon className="size-4 text-slate-400" />
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            variant="neon"
+                                                            size="sm"
+                                                            className=""
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                navigate(`/project/${project.id}`);
+                                                            }}
+                                                        >
+                                                            Open Project
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Industrial identification lines */}
+                                            <div className="absolute left-0 top-1/2 h-12 w-[1px] -translate-y-1/2 bg-white/5" />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </main>
+            </div>
 
             <BatchExportDialog
                 project={exportingProject}

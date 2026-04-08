@@ -83,10 +83,14 @@ export function WorkspaceSwitcher() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300 group h-14 rounded-xl shadow-[inset_0_0_20px_rgba(255,255,255,0.02)]"
+              className="bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 group h-14 rounded-xl shadow-[inset_0_0_20px_rgba(255,255,255,0.02)]"
             >
-              <div className="flex aspect-square size-10 items-center justify-center rounded-lg bg-gradient-to-br from-neon-green/20 to-neon-green/5 border border-neon-green/20 text-neon-green group-hover:scale-110 transition-transform duration-500 shadow-neon-green-sm">
-                <Building2 className="size-5 text-glow-green-sm" />
+              <div className="flex aspect-square size-10 items-center justify-center rounded-lg bg-gradient-to-br from-neon-green/20 to-neon-green/5 border border-neon-green/20 text-neon-green shadow-neon-green-sm text-xl">
+                {selectedOrganization?.icon ? (
+                  <span>{selectedOrganization.icon}</span>
+                ) : (
+                  <Building2 className="size-5 text-glow-green-sm" />
+                )}
               </div>
               <div className="grid flex-1 text-left text-xs leading-tight ml-3">
                 <span className="truncate font-bold text-white uppercase tracking-widest">
@@ -96,7 +100,7 @@ export function WorkspaceSwitcher() {
                   {selectedProject?.name ?? "Select Project"}
                 </span>
               </div>
-              <ChevronsUpDown className="ml-auto size-3.5 text-slate-600 group-hover:text-neon-green transition-colors duration-300" />
+              <ChevronsUpDown className="ml-auto size-3.5 text-slate-600 group-hover:text-neon-green" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -119,19 +123,23 @@ export function WorkspaceSwitcher() {
                       <button
                         onClick={() => handleOrganizationChange(org.id)}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-all duration-300 group/org",
+                          "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left group/org",
                           isOrgSelected
                             ? "bg-primary/10 text-primary ring-1 ring-primary/20"
                             : "text-slate-400 hover:bg-white/5 hover:text-white"
                         )}
                       >
                         <div className={cn(
-                          "flex size-7 items-center justify-center rounded-md border transition-all duration-300",
+                          "flex size-7 items-center justify-center rounded-md border text-base",
                           isOrgSelected
                             ? "border-primary/40 bg-primary/20 shadow-neon-green-sm"
                             : "border-white/10 bg-black/40 group-hover/org:border-white/20"
                         )}>
-                          <Building2 className={cn("size-4", isOrgSelected && "text-glow-green-sm")} />
+                          {org.icon ? (
+                            <span>{org.icon}</span>
+                          ) : (
+                            <Building2 className={cn("size-4", isOrgSelected && "text-glow-green-sm")} />
+                          )}
                         </div>
                         <span className="text-xs font-bold uppercase tracking-widest truncate flex-1">{org.name}</span>
                         {isOrgSelected && (
@@ -147,14 +155,14 @@ export function WorkspaceSwitcher() {
                               key={project.id}
                               onClick={() => handleProjectChange(project.id)}
                               className={cn(
-                                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[11px] transition-all duration-300 group/prj",
+                                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[11px] group/prj",
                                 isProjectSelected
                                   ? "bg-accent/10 text-accent ring-1 ring-accent/20 font-bold"
                                   : "text-slate-500 hover:bg-white/5 hover:text-slate-300"
                               )}
                             >
                               <div className={cn(
-                                "flex size-5 items-center justify-center rounded border transition-all duration-300",
+                                "flex size-5 items-center justify-center rounded border",
                                 isProjectSelected
                                   ? "border-accent/40 bg-accent/20 shadow-neon-magenta-sm"
                                   : "border-white/5 bg-black/40 group-hover/prj:border-white/10"
@@ -186,7 +194,7 @@ export function WorkspaceSwitcher() {
             <div className="space-y-1">
               <DropdownMenuItem
                 onClick={() => navigate("/organization")}
-                className="flex items-center gap-3 rounded-lg py-2.5 transition-all duration-300 cursor-pointer focus:bg-primary/10 focus:text-primary"
+                className="flex items-center gap-3 rounded-lg py-2.5 cursor-pointer focus:bg-primary/10 focus:text-primary"
               >
                 <div className="flex size-7 items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/40 shadow-inner">
                   <Building2 className="size-3.5" />
@@ -195,7 +203,7 @@ export function WorkspaceSwitcher() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => navigate("/project")}
-                className="flex items-center gap-3 rounded-lg py-2.5 transition-all duration-300 cursor-pointer focus:bg-primary/10 focus:text-primary"
+                className="flex items-center gap-3 rounded-lg py-2.5 cursor-pointer focus:bg-primary/10 focus:text-primary"
               >
                 <div className="flex size-7 items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/40 shadow-inner">
                   <LayoutDashboard className="size-3.5" />

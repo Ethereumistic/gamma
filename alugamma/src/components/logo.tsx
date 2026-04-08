@@ -64,7 +64,7 @@ export function Logo({ variant = "full", className, size = "md", showGlow = true
       >
         <span
           className={cn(
-            "text-neon-green",
+            "text-neon-green mr-4",
             showGlow && "text-glow-green"
           )}
         >

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Building2, FolderKanban, LockKeyhole, MailPlus, Users2, ScissorsLineDashed, Cpu, ArrowRight, CheckCircle2, ChevronRight } from "lucide-react";
+import { Building2, FolderKanban, LockKeyhole, MailPlus, Users2, ScissorsLineDashed, Cpu, ArrowRight, CheckCircle2, ChevronRight, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
@@ -32,6 +32,7 @@ export default function LandingPage() {
     selectedProject,
   } = useWorkspace();
   const [organizationName, setOrganizationName] = useState("");
+  const [organizationIcon, setOrganizationIcon] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -76,9 +77,13 @@ export default function LandingPage() {
     setError(null);
 
     try {
-      const result = await createOrganization({ name: organizationName });
+      const result = await createOrganization({
+        name: organizationName,
+        icon: organizationIcon.trim() || undefined
+      });
       setSelectedOrganizationId(result.organizationId);
       setOrganizationName("");
+      setOrganizationIcon("");
       setFeedback("Organization created.");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Unable to create organization.");
@@ -160,314 +165,367 @@ export default function LandingPage() {
 
   // ── AUTHENTICATED: Dashboard ──
   return (
-    <div className="flex h-full flex-col px-4 py-8 lg:px-8">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6">
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr),420px]">
-          <Card className="overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(57,255,20,0.06),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-2xl">
-            <CardContent className="flex h-full flex-col justify-between gap-8 p-8 lg:p-10">
-              <div className="space-y-5">
-                <div className="inline-flex items-center gap-2 rounded-full border border-neon-green/20 bg-neon-green/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.28em] text-neon-green text-glow-green-sm">
-                  Workspace Control Center
-                </div>
-                <div>
-                  <p className="text-sm uppercase tracking-[0.28em] text-slate-400">Signed in as</p>
-                  <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight text-white lg:text-5xl">
-                    {viewer?.name || viewer?.email || "Workspace user"}
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
-                    Create organizations, manage project access, and open the sheet-metal editor against a selected project.
-                    Every DXF export is stored as reusable model data inside that project.
-                  </p>
-                </div>
-              </div>
+    <div className="relative min-h-full overflow-y-auto overflow-x-hidden bg-background">
+      {/* Subtle Background Effects */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/4 top-0 h-[500px] w-[500px] rounded-full bg-neon-green/5 blur-[120px]" />
+        <div className="absolute right-1/4 bottom-0 h-[500px] w-[500px] rounded-full bg-neon-magenta/5 blur-[120px]" />
+      </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <StatCard title="Organizations" value={organizations.length.toString()} subtitle="Memberships you can access" />
-                <StatCard title="Projects" value={projects.length.toString()} subtitle="Available editors and exports" />
-                <StatCard title="Pending invites" value={pendingInvites.length.toString()} subtitle="Accept from the web app" />
-              </div>
+      <div className="relative z-10 mx-auto flex w-full max-w-[1200px] flex-col gap-10 px-6 py-12 lg:px-12">
+        {/* --- TOP HEADER --- */}
+        <header className="space-y-4 text-center">
+          <h1 className="font-display text-5xl font-black tracking-tighter text-white lg:text-7xl">
+            Manage <span className="text-glow-white">Workspace</span>
+          </h1>
+          <p className="mx-auto max-w-2xl text-sm leading-relaxed text-slate-400">
+            Create organizations, projects, and invite team members to your workspace.
+          </p>
+        </header>
 
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={() => navigate("/sheet-metal")}>Open sheet-metal editor</Button>
-                <Button variant="outline" onClick={() => selectedProjectId && navigate("/sheet-metal")} disabled={!selectedProjectId}>
-                  Open selected project
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex flex-col gap-6">
-            <Card className="border-white/10 bg-card/85">
-              <CardHeader>
-                <CardTitle>Create organization</CardTitle>
-                <CardDescription>Each organization can contain multiple projects and member roles.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-3" onSubmit={handleCreateOrganization}>
-                  <Input
-                    value={organizationName}
-                    onChange={(event) => setOrganizationName(event.target.value)}
-                    placeholder="e.g. Facade Engineering"
-                  />
-                  <Button className="w-full" disabled={busyAction === "organization"}>
-                    {busyAction === "organization" ? "Creating..." : "Create organization"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/10 bg-card/85">
-              <CardHeader>
-                <CardTitle>Create project</CardTitle>
-                <CardDescription>Select the owning organization first.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-3" onSubmit={handleCreateProject}>
-                  <Select
-                    value={selectedOrganizationId ?? undefined}
-                    onValueChange={(value) => setSelectedOrganizationId(value as Id<"organizations">)}
-                  >
-                    <SelectTrigger className="bg-black/20">
-                      <SelectValue placeholder="Choose organization" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organizations.map((organization) => (
-                        <SelectItem key={organization.id} value={organization.id}>
-                          {organization.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="e.g. Tower A fronts" />
-                  <Input
-                    value={projectDescription}
-                    onChange={(event) => setProjectDescription(event.target.value)}
-                    placeholder="Short project description"
-                  />
-                  <Button className="w-full" disabled={busyAction === "project" || organizations.length === 0}>
-                    {busyAction === "project" ? "Creating..." : "Create project"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {(feedback || error) && (
-          <div
-            className={`rounded-2xl border px-4 py-3 text-sm ${error
-              ? "border-destructive/30 bg-destructive/10 text-destructive"
-              : "border-neon-green/30 bg-neon-green/10 text-neon-green"
-              }`}
-          >
-            {error ?? feedback}
-          </div>
-        )}
-
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),420px]">
-          <Card className="border-white/10 bg-card/80">
-            <CardHeader className="flex flex-row items-end justify-between gap-4 border-b border-white/6">
-              <div>
-                <CardTitle>Projects</CardTitle>
-                <CardDescription>Select a project to edit designs or manage access.</CardDescription>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => selectedProjectId && navigate("/sheet-metal")} disabled={!selectedProjectId}>
-                Open in editor
-              </Button>
-            </CardHeader>
-            <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
-              {projects.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 p-6 text-sm text-muted-foreground md:col-span-2">
-                  No projects yet. Create an organization and then your first project to start saving DXF design data.
-                </div>
-              )}
-              {projects.map((project) => {
-                const isSelected = project.id === selectedProjectId;
-                return (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedProjectId(project.id);
-                      setSelectedOrganizationId(project.organizationId);
-                    }}
-                    className={`rounded-[1.5rem] border p-5 text-left transition-colors ${isSelected
-                      ? "border-neon-green/40 bg-neon-green/5 shadow-neon-green-sm"
-                      : "border-white/8 bg-black/10 hover:bg-white/[0.03]"
-                      }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="font-display text-xl font-semibold text-white">{project.name}</h3>
-                        <p className="mt-1 text-xs uppercase tracking-[0.26em] text-slate-400">{project.organizationName}</p>
-                      </div>
-                      <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-300">
-                        {project.role}
-                      </span>
-                    </div>
-                    <p className="mt-4 min-h-12 text-sm leading-6 text-muted-foreground">
-                      {project.description || "No description provided."}
+        {/* --- PENDING INVITES (PRIMARY) --- */}
+        {pendingInvites.length > 0 && (
+          <section className="relative overflow-hidden rounded-[2.5rem] border border-accent/30 bg-accent/5 p-8 shadow-neon-magenta-lg lg:p-12">
+            {/* Decorative background glow */}
+            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-accent/20 blur-[80px]" />
+            
+            <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center">
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center gap-3 text-accent transition-colors">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-accent/10 border border-accent/20">
+                    <MailPlus className="size-6 shadow-neon-magenta-sm" />
+                  </div>
+                  <div>
+                    <h2 className="font-display text-2xl font-black uppercase tracking-tight text-white">
+                      Incoming Invites
+                    </h2>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent/80">
+                      {pendingInvites.length} Pending Actions
                     </p>
-                    <div className="mt-5 text-xs uppercase tracking-[0.24em] text-slate-500">{project.slug}</div>
-                  </button>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          <div className="flex flex-col gap-6">
-            <Card className="border-white/10 bg-card/85">
-              <CardHeader>
-                <CardTitle>Pending invites</CardTitle>
-                <CardDescription>Invites appear when the signed-in email matches the invited address.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {pendingInvites.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-sm text-muted-foreground">
-                    No pending invites for {viewer?.email}.
                   </div>
-                ) : (
-                  pendingInvites.map((invite) => (
-                    <div key={invite.id} className="rounded-2xl border border-white/8 bg-black/10 p-4">
-                      <p className="font-medium text-white">{invite.projectName}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{invite.organizationName}</p>
-                      <p className="mt-3 text-xs uppercase tracking-[0.24em] text-slate-400">{invite.role}</p>
-                      <Button
-                        className="mt-4 w-full"
-                        size="sm"
-                        disabled={busyAction === invite.id}
-                        onClick={() => void handleAcceptInvite(invite.id, invite.projectId, invite.organizationId)}
-                      >
-                        {busyAction === invite.id ? "Accepting..." : "Accept invite"}
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
+                </div>
+                <p className="max-w-xl text-sm leading-relaxed text-slate-300">
+                  Other operators have invited you to collaborate. Accept the invitation to gain access to their project silos.
+                </p>
+              </div>
 
-            <Card className="border-white/10 bg-card/85">
-              <CardHeader>
-                <CardTitle>Organizations</CardTitle>
-                <CardDescription>Select where new projects should be created.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {organizations.map((organization) => {
-                  const isSelected = organization.id === selectedOrganizationId;
-                  return (
-                    <button
-                      key={organization.id}
-                      type="button"
-                      className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${isSelected ? "border-neon-green/40 bg-neon-green/5" : "border-white/8 bg-black/10 hover:bg-white/[0.03]"
-                        }`}
-                      onClick={() => setSelectedOrganizationId(organization.id)}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-white">{organization.name}</p>
-                          <p className="text-xs uppercase tracking-[0.24em] text-slate-400">{organization.role}</p>
-                        </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          <div>{organization.projectCount} projects</div>
-                          <div>{organization.memberCount} members</div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {selectedProject && accessOverview && (
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr),420px]">
-            <Card className="border-white/10 bg-card/80">
-              <CardHeader className="border-b border-white/6">
-                <CardTitle>{selectedProject.name}</CardTitle>
-                <CardDescription>{selectedProject.description || "Project access and active memberships."}</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
-                <div className="rounded-[1.5rem] border border-white/8 bg-black/10 p-5">
-                  <h3 className="font-display text-lg font-semibold text-white">Members</h3>
-                  <div className="mt-4 space-y-3">
-                    {accessOverview.members.map((member) => (
-                      <div key={member.id} className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="font-medium text-white">{member.name}</p>
-                            <p className="text-sm text-muted-foreground">{member.email || "No email on profile"}</p>
+              <div className="flex flex-wrap gap-4 lg:justify-end">
+                 {pendingInvites.map((invite) => (
+                    <div key={invite.id} className="flex min-w-[300px] flex-col gap-4 rounded-3xl border border-white/5 bg-black/60 p-6 transition-all hover:border-accent/40">
+                       <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                             <h4 className="font-display text-base font-bold text-white uppercase tracking-wider">{invite.projectName}</h4>
+                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{invite.organizationName}</p>
                           </div>
-                          <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-300">
-                            {member.role}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-[1.5rem] border border-white/8 bg-black/10 p-5">
-                  <h3 className="font-display text-lg font-semibold text-white">Pending project invites</h3>
-                  <div className="mt-4 space-y-3">
-                    {accessOverview.invites.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-sm text-muted-foreground">
-                        No pending invites for this project.
-                      </div>
-                    ) : (
-                      accessOverview.invites.map((invite) => (
-                        <div key={invite.id} className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
-                          <p className="font-medium text-white">{invite.email}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.24em] text-slate-400">{invite.role}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/10 bg-card/85">
-              <CardHeader>
-                <CardTitle>Invite user</CardTitle>
-                <CardDescription>
-                  {accessOverview.canManage
-                    ? "Create an email-based project invite."
-                    : "You can view this project, but only managers can invite users."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-3" onSubmit={handleInvite}>
-                  <Input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(event) => setInviteEmail(event.target.value)}
-                    placeholder="name@company.com"
-                    disabled={!accessOverview.canManage}
-                  />
-                  <Select
-                    value={inviteRole}
-                    onValueChange={(value) => setInviteRole(value as "editor" | "owner")}
-                    disabled={!accessOverview.canManage}
-                  >
-                    <SelectTrigger className="bg-black/20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="editor">Editor</SelectItem>
-                      <SelectItem value="owner">Owner</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button className="w-full" disabled={!accessOverview.canManage || busyAction === "invite"}>
-                    <MailPlus className="h-4 w-4" />
-                    {busyAction === "invite" ? "Saving invite..." : "Invite to project"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+                          <div className="rounded-lg border border-accent/20 bg-accent/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-accent">
+                             {invite.role}
+                          </div>
+                       </div>
+                       <Button 
+                          className="w-full bg-accent text-white hover:bg-accent/90 h-10 font-bold uppercase tracking-[0.2em] text-[10px] shadow-neon-magenta-sm"
+                          onClick={() => handleAcceptInvite(invite.id, invite.projectId, invite.organizationId)}
+                          disabled={!!busyAction}
+                       >
+                          {busyAction === invite.id ? "Accepting..." : "ACCEPT INVITE"}
+                       </Button>
+                    </div>
+                 ))}
+              </div>
+            </div>
           </section>
         )}
+
+        {/* --- MANAGEMENT GRIDS --- */}
+        <div className="grid gap-8 lg:grid-cols-[1fr,380px]">
+          
+          {/* Create Stack */}
+          <div className="space-y-6">
+            <h2 className="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-[0.4em] text-slate-500">
+              <span className="h-[1px] flex-1 bg-white/5" />
+              WORKSPACE SETUP
+              <span className="h-[1px] flex-1 bg-white/5" />
+            </h2>
+
+            <Tabs defaultValue="project" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 h-14 bg-black/40 border border-white/5 rounded-2xl p-1">
+                <TabsTrigger 
+                  value="project" 
+                  className="rounded-xl data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary/20 transition-all font-bold uppercase tracking-widest text-[10px]"
+                >
+                  CREATE PROJECT
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="org" 
+                  className="rounded-xl data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary/20 transition-all font-bold uppercase tracking-widest text-[10px]"
+                >
+                  CREATE ORG
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="project" className="mt-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                <Card className="border-white/10 bg-white/[0.02] backdrop-blur-sm overflow-hidden rounded-[2rem]">
+                  <CardHeader className="bg-white/[0.02] border-b border-white/5">
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest">Initialization</CardTitle>
+                    <CardDescription className="text-[10px] text-slate-500 uppercase tracking-wider">Start a new project sequence</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    <form className="space-y-5" onSubmit={handleCreateProject}>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 ml-1">Select Organization</label>
+                        <Select
+                          value={selectedOrganizationId ?? undefined}
+                          onValueChange={(value) => setSelectedOrganizationId(value as Id<"organizations">)}
+                        >
+                          <SelectTrigger className="h-12 border-white/10 bg-black/40">
+                            <SelectValue placeholder="Select high-level authority" />
+                          </SelectTrigger>
+                          <SelectContent className="border-white/10 bg-zinc-950 shadow-2xl">
+                            {organizations.map((organization) => (
+                              <SelectItem key={organization.id} value={organization.id}>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xl">{organization.icon || "🏢"}</span>
+                                  <span className="font-bold uppercase tracking-wider text-xs">{organization.name}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 ml-1">Project Name</label>
+                        <Input 
+                          value={projectName} 
+                          onChange={(e) => setProjectName(e.target.value)} 
+                          placeholder="e.g. Tower 7 - Profile Matrix"
+                          className="h-12 border-white/10 bg-black/40 text-sm font-medium"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 ml-1">Description</label>
+                        <Input
+                          value={projectDescription}
+                          onChange={(e) => setProjectDescription(e.target.value)}
+                          placeholder="Project configuration objectives..."
+                          className="h-12 border-white/10 bg-black/40 text-sm font-medium"
+                        />
+                      </div>
+                      <Button className="w-full h-14 bg-primary text-black hover:bg-primary/90 font-bold text-xs uppercase tracking-[0.3em] shadow-neon-green-sm" disabled={!!busyAction || organizations.length === 0}>
+                        {busyAction === "project" ? "Generating Silo..." : "CREATE PROJECT"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="org" className="mt-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                <Card className="border-white/10 bg-white/[0.02] backdrop-blur-sm overflow-hidden rounded-[2rem]">
+                  <CardHeader className="bg-white/[0.02] border-b border-white/5">
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest">CREATE ORGANIZATION</CardTitle>
+                    <CardDescription className="text-[10px] text-slate-500 uppercase tracking-wider">Register a new high-level industrial entity</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    <form className="space-y-5" onSubmit={handleCreateOrganization}>
+                      <div className="grid grid-cols-[80px,1fr] gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 text-center block">Icon</label>
+                          <Input
+                            value={organizationIcon}
+                            onChange={(e) => setOrganizationIcon(e.target.value)}
+                            placeholder="🏢"
+                            className="h-14 text-center text-2xl bg-black/40 border-white/10"
+                            maxLength={4}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 ml-1">Organization Name</label>
+                          <Input
+                            value={organizationName}
+                            onChange={(e) => setOrganizationName(e.target.value)}
+                            placeholder="e.g. Alumini Industrial Forge"
+                            className="h-14 bg-black/40 border-white/10 text-sm font-medium"
+                          />
+                        </div>
+                      </div>
+                      <Button className="w-full h-14 bg-primary text-black hover:bg-primary/90 font-bold text-xs uppercase tracking-[0.3em]" disabled={!!busyAction}>
+                        {busyAction === "organization" ? "Registering Entity..." : "CREATE ORGANIZATION"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          {/* Personnel Deployment */}
+          <div className="space-y-6">
+            <h2 className="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-[0.4em] text-slate-500">
+              <span className="h-[1px] flex-1 bg-white/5" />
+              MEMBER INVITES
+              <span className="h-[1px] flex-1 bg-white/5" />
+            </h2>
+
+            <Card className="border-white/10 bg-white/[0.02] backdrop-blur-sm overflow-hidden rounded-[2rem]">
+              <CardHeader className="bg-white/[0.02] border-b border-white/5">
+                <CardTitle className="text-sm font-bold uppercase tracking-widest">SEND INVITE</CardTitle>
+                <CardDescription className="text-[10px] text-slate-500 uppercase tracking-wider">Authorize external operators to your project silos</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="mb-6 rounded-xl border border-primary/10 bg-primary/5 p-4 flex gap-4 items-center">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-black/40 border border-white/5 text-xl transition-all">
+                    {selectedProject?.organizationIcon || "🏢"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Active Context</p>
+                    <p className="font-display text-sm font-bold text-white truncate">{selectedProject?.name || "No Project Selected"}</p>
+                  </div>
+                  {selectedProject && (
+                    <div className="rounded-full bg-primary/20 px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest text-primary">
+                      {selectedProject.role}
+                    </div>
+                  )}
+                </div>
+
+                <form className="space-y-5" onSubmit={handleInvite}>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 ml-1">Email Address</label>
+                    <Input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="operator@sector.inc"
+                      className="h-12 border-white/10 bg-black/40 text-sm font-medium"
+                      disabled={!!(!selectedProject || (accessOverview && !accessOverview.canManage))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-500 ml-1">Access Level</label>
+                    <Select
+                      value={inviteRole}
+                      onValueChange={(v) => setInviteRole(v as any)}
+                      disabled={!!(!selectedProject || (accessOverview && !accessOverview.canManage))}
+                    >
+                      <SelectTrigger className="h-12 border-white/10 bg-black/40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="border-white/10 bg-zinc-950 text-xs shadow-2xl">
+                        <SelectItem value="editor" className="font-bold uppercase tracking-wider">Editor (Write Access)</SelectItem>
+                        <SelectItem value="owner" className="font-bold uppercase tracking-wider">Owner (Full Control)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {(!selectedProject || (accessOverview && !accessOverview.canManage)) ? (
+                    <div className="rounded-xl bg-destructive/5 border border-destructive/20 p-3 text-center">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-destructive">
+                         Insufficient Clearance
+                      </p>
+                    </div>
+                  ) : (
+                    <Button className="w-full h-14 bg-accent text-white hover:bg-accent/90 font-bold text-xs uppercase tracking-[0.3em] shadow-neon-magenta-sm transition-all group" disabled={!!busyAction}>
+                       <MailPlus className="size-4 mr-2 group-hover:scale-110 transition-transform" />
+                       {busyAction === "invite" ? "Transmitting..." : "SEND INVITE"}
+                    </Button>
+                  )}
+                </form>
+              </CardContent>
+            </Card>
+
+            {(feedback || error) && (
+              <div
+                className={`rounded-2xl border p-4 text-[10px] font-bold uppercase tracking-[0.2em] text-center ${error
+                  ? "border-destructive/30 bg-destructive/5 text-destructive"
+                  : "border-neon-green/30 bg-neon-green/5 text-neon-green shadow-neon-green-sm"
+                }`}
+              >
+                {error ?? feedback}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Internal Sub-components ────────────────────────────────────────────────────────────
+
+function StatPill({ label, value, highlight }: { label: string; value: number | string; highlight?: boolean }) {
+  return (
+    <div className={`flex items-center gap-3 rounded-2xl border px-5 py-3 backdrop-blur-md transition-all ${highlight
+        ? "border-neon-magenta/40 bg-neon-magenta/5 text-neon-magenta shadow-neon-magenta-sm"
+        : "border-white/10 bg-white/5 text-white"
+      }`}>
+      <div className="text-2xl font-black tabular-nums tracking-tighter">{value}</div>
+      <div className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-60">{label}</div>
+    </div>
+  );
+}
+
+function ProjectActionCard({ project, isSelected, onClick, onAction, delay }: { project: any; isSelected: boolean; onClick: () => void; onAction: () => void; delay: number }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative flex flex-col overflow-hidden rounded-[2rem] border p-6 text-left transition-all duration-300 ${isSelected
+          ? "border-primary/40 bg-primary/5 shadow-neon-green-sm"
+          : "border-white/8 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/20"
+        }`}
+    >
+      <div className="mb-4 flex items-start justify-between">
+        <div className="space-y-1">
+          <h3 className="font-display text-xl font-black text-white group-hover:text-primary transition-colors">
+            {project.name}
+          </h3>
+          <p className="inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-slate-500">
+            <Building2 className="size-3" />
+            {project.organizationName}
+          </p>
+        </div>
+        <div className={`rounded-lg border px-2 py-1 text-[8px] font-bold uppercase tracking-widest transition-colors ${isSelected ? "border-primary/40 bg-primary/20 text-primary" : "border-white/10 bg-black/40 text-slate-400"
+          }`}>
+          {project.role}
+        </div>
+      </div>
+
+      <p className="mb-6 line-clamp-2 min-h-[40px] text-xs leading-relaxed text-slate-400 group-hover:text-slate-300">
+        {project.description || "No project description provided. Industrial default sequence active."}
+      </p>
+
+      <div className="mt-auto flex items-center justify-between">
+        <div className="font-mono text-[9px] text-slate-600 uppercase tracking-tighter">
+          {project.slug}
+        </div>
+        {isSelected && (
+          <Button
+            variant="neon"
+            size="sm"
+            className="h-8 px-4 text-[10px] uppercase tracking-widest"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction();
+            }}
+          >
+            Enter Workspace
+          </Button>
+        )}
+      </div>
+
+      {isSelected && (
+        <div
+          className="absolute -inset-[1px] -z-10 rounded-[2rem] bg-primary/5 blur-sm"
+        />
+      )}
+    </button>
+  );
+}
+
+function EmptyState({ title, description, icon }: { title: string; description: string; icon: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-white/10 bg-white/[0.02] py-24 px-10 text-center">
+      <div className="mb-4 flex size-16 items-center justify-center rounded-2xl bg-white/5 text-slate-600">
+        {icon}
+      </div>
+      <h3 className="font-display text-lg font-bold uppercase tracking-widest text-white">{title}</h3>
+      <p className="mt-2 max-w-sm text-sm text-slate-500">{description}</p>
     </div>
   );
 }
