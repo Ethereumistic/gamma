@@ -5,7 +5,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-
+import { cn } from "@/lib/utils";
 import {
   Sidebar,
   SidebarContent,
@@ -48,7 +48,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { useSettings } from "@/features/settings/context";
 
-const navItems = [
+const systemItems = [
   {
     title: "Workspace",
     url: "/",
@@ -57,13 +57,16 @@ const navItems = [
   {
     title: "Organizations",
     url: "/organization",
-    icon: LayoutDashboard, // Will replace with Building / Users later if needed
+    icon: UserRound,
   },
   {
     title: "Projects",
     url: "/project",
     icon: FileStack,
   },
+];
+
+const toolItems = [
   {
     title: "Sheet Metal",
     url: "/sheet-metal",
@@ -76,6 +79,7 @@ const navItems = [
   },
 ];
 
+import { LogoShort, LogoMark } from "@/components/logo";
 import { formatDateGroup } from "@/lib/date-utils";
 
 export function AppSidebar() {
@@ -138,7 +142,7 @@ export function AppSidebar() {
 
   // We should fetch NC programs if on CNC pipeline
   const ncProgramsUnfiltered = useQuery(
-    api.nc_programs.listByProject, 
+    api.nc_programs.listByProject,
     selectedProject ? { projectId: selectedProject.id } : "skip"
   );
 
@@ -172,16 +176,13 @@ export function AppSidebar() {
 
   return (
     <>
-      <Sidebar className="border-r border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(9,13,22,0.98))]">
+      <Sidebar className="border-r border-white/10 bg-[linear-gradient(180deg,rgba(10,10,10,0.98),rgba(6,6,6,0.99))]">
         <SidebarHeader className="border-b border-white/5 px-4 py-4">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-primary shadow-[0_0_18px_rgba(20,180,100,0.14)]">
-              <ScissorsLineDashed className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="font-display text-lg font-semibold tracking-tight text-white">AluGamma</span>
-              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">DXF Workspace</p>
-            </div>
+          <Link to="/" className="flex items-center gap-1.5 px-1 py-1 group">
+            <span className="font-display text-3xl font-black tracking-tighter transition-all group-hover:scale-[1.02]">
+              <span className="text-neon-green text-glow-green drop-shadow-[0_0_8px_rgba(57,255,20,0.5)]">Ω</span>
+              <span className="text-neon-magenta text-glow-magenta drop-shadow-[0_0_8px_rgba(255,0,255,0.4)] ml-[-1px]">Forge</span>
+            </span>
           </Link>
 
           {authenticated && (
@@ -192,28 +193,37 @@ export function AppSidebar() {
         </SidebarHeader>
 
         <SidebarContent className="overflow-hidden">
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Internal Tools
+          <SidebarGroup className="pb-0">
+            <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-2">
+              System
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navItems.map((item) => {
-                  const isActive = item.url === "/sheet-metal" ? pathIsSheetMetal : location.pathname === item.url;
+                {systemItems.map((item) => {
+                  const isActive = location.pathname === item.url;
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        className={
+                        className={cn(
+                          "h-10 px-3 rounded-xl border transition-all duration-300",
                           isActive
-                            ? "bg-primary/15 text-primary"
-                            : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
-                        }
+                            ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
+                            : "text-slate-400 border-transparent hover:bg-white/5 hover:text-white"
+                        )}
                       >
-                        <Link to={item.url}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
+                        <Link to={item.url} className="flex items-center gap-3">
+                          <div className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300",
+                            isActive ? "bg-primary/20 text-primary shadow-neon-green-sm" : "bg-black/40 text-slate-500"
+                          )}>
+                            <item.icon className="h-3.5 w-3.5" />
+                          </div>
+                          <span className="font-bold text-[10px] uppercase tracking-widest">{item.title}</span>
+                          {isActive && (
+                            <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shadow-neon-green animate-pulse" />
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -223,16 +233,52 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
 
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-3 mt-2">
+              Internal Tools
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <div className="grid grid-cols-2 gap-2.5 px-2">
+                {toolItems.map((item) => {
+                  const isActive = item.url === "/sheet-metal" ? pathIsSheetMetal : location.pathname.startsWith(item.url);
+                  return (
+                    <Link
+                      key={item.title}
+                      to={item.url}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-3 py-5 rounded-xl border transition-all duration-300 group",
+                        isActive
+                          ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
+                          : "bg-white/[0.03] border-white/5 text-slate-400 hover:bg-white/10 hover:border-white/20 hover:text-white"
+                      )}
+                    >
+                      <div className={cn(
+                        "p-2 rounded-lg transition-all duration-300",
+                        isActive ? "bg-primary/20" : "bg-black/40 group-hover:scale-110"
+                      )}>
+                        <item.icon className="h-5 w-5" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-center">
+                        {item.title.split(' ').map((tile, i) => <span key={i} className="block last:text-[9px] last:opacity-70">{tile}</span>)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
           {authenticated && selectedProject && pathIsSheetMetal && (
             <SidebarGroup className="min-h-0 flex-1 overflow-hidden flex flex-col pt-0">
-              <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground pt-4 pb-2">
-                Designs in {selectedProject.name}
+              <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/80 pt-6 pb-3 px-4 flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                Designs in <span className="text-white ml-1">{selectedProject.name}</span>
               </SidebarGroupLabel>
 
               <div className="px-3 pb-3 pt-1 flex flex-col gap-2 shrink-0">
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="outline"
+                    variant="neon"
                     size="icon"
                     onClick={() => {
                       if (location.pathname === "/sheet-metal" || location.pathname === "/sheet-metal/new") {
@@ -240,9 +286,9 @@ export function AppSidebar() {
                       }
                       navigate("/sheet-metal/new");
                     }}
-                    className="shrink-0 h-8 w-8 bg-transparent border-white/10 hover:bg-white/5"
+                    className="shrink-0 h-8 w-8 transition-transform active:scale-95"
                   >
-                    <Plus className="h-4 w-4 text-slate-300" />
+                    <Plus className="h-4 w-4" />
                   </Button>
                   <div className="relative flex-1">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -250,7 +296,7 @@ export function AppSidebar() {
                       placeholder="Search designs..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="h-8 pl-8 bg-black/20 border-white/10 text-xs focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+                      className="h-8 pl-8 bg-black/20 border-white/10 text-xs focus-visible:ring-1 focus-visible:ring-primary/50"
                     />
                   </div>
                   <DropdownMenu>
@@ -292,7 +338,12 @@ export function AppSidebar() {
                                 <SidebarMenuSubButton
                                   asChild
                                   isActive={location.pathname === `/sheet-metal/${design.id}`}
-                                  className="text-slate-300 hover:text-white pr-8 h-8 focus-visible:ring-1 focus-visible:ring-emerald-500/50 outline-none w-full"
+                                  className={cn(
+                                    "pr-8 h-8 transition-all duration-200 outline-none w-full",
+                                    location.pathname === `/sheet-metal/${design.id}`
+                                      ? "bg-primary/10 text-primary border-r-2 border-primary"
+                                      : "text-slate-400 hover:text-white"
+                                  )}
                                 >
                                   <Link to={`/sheet-metal/${design.id}`}>
                                     {design.isStarred ? (
@@ -369,20 +420,21 @@ export function AppSidebar() {
 
           {authenticated && selectedProject && pathIsCNCPipeline && (
             <SidebarGroup className="min-h-0 flex-1 overflow-hidden flex flex-col pt-0">
-              <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground pt-4 pb-2">
-                NC Programs in {selectedProject.name}
+              <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/80 pt-6 pb-3 px-4 flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                NC Programs in <span className="text-white ml-1">{selectedProject.name}</span>
               </SidebarGroupLabel>
 
               <div className="px-3 pb-3 pt-1 flex flex-col gap-2 shrink-0">
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="outline"
+                    variant="neon"
                     size="icon"
                     onClick={() => navigate("/cnc-pipeline/new")}
-                    className="shrink-0 h-8 w-8 bg-transparent border-white/10 hover:bg-white/5"
+                    className="shrink-0 h-8 w-8 transition-transform active:scale-95 shadow-neon-green-sm"
                     title="New NC program"
                   >
-                    <Plus className="h-4 w-4 text-slate-300" />
+                    <Plus className="h-4 w-4" />
                   </Button>
                   <div className="relative flex-1">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -390,7 +442,7 @@ export function AppSidebar() {
                       placeholder="Search NC programs..."
                       value={ncSearchQuery}
                       onChange={(e) => setNcSearchQuery(e.target.value)}
-                      className="h-8 pl-8 bg-black/20 border-white/10 text-xs focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+                      className="h-8 pl-8 bg-black/20 border-white/10 text-xs focus-visible:ring-1 focus-visible:ring-primary/50"
                     />
                   </div>
                   <DropdownMenu>
@@ -432,7 +484,12 @@ export function AppSidebar() {
                                 <SidebarMenuSubButton
                                   asChild
                                   isActive={location.pathname === `/cnc-pipeline/${program._id}`}
-                                  className="text-slate-300 hover:text-white pr-8 h-8 focus-visible:ring-1 focus-visible:ring-emerald-500/50 outline-none w-full flex items-center gap-2"
+                                  className={cn(
+                                    "pr-8 h-8 transition-all duration-200 outline-none w-full flex items-center gap-2",
+                                    location.pathname === `/cnc-pipeline/${program._id}`
+                                      ? "bg-primary/10 text-primary border-r-2 border-primary"
+                                      : "text-slate-400 hover:text-white"
+                                  )}
                                 >
                                   <Link to={`/cnc-pipeline/${program._id}`}>
                                     {program.isStarred ? (
@@ -496,45 +553,89 @@ export function AppSidebar() {
 
         </SidebarContent>
 
-        <SidebarFooter className="border-t border-white/6 bg-black/20 px-4 py-4">
+        <SidebarFooter className="border-t border-white/6 bg-black/40 px-3 py-4">
           {authenticated && viewer ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-1">
-                <div className="flex-1 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/20 text-slate-300">
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2 text-left transition-all hover:bg-white/5 hover:border-white/20 outline-none focus-visible:ring-1 focus-visible:ring-primary/30">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-neon-green-sm shadow-inner transition-transform active:scale-95">
                       <UserRound className="h-4 w-4" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-white">{viewer.name || viewer.email}</p>
-                      {/* <p className="truncate text-xs text-slate-500">{viewer.email}</p> */}
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-xs font-bold uppercase tracking-widest text-white">
+                        {viewer.name || viewer.email?.split('@')[0]}
+                      </p>
+                      <p className="truncate text-[9px] font-mono text-slate-500 group-hover:text-slate-400">
+                        {selectedProject?.name ?? 'No Project'}
+                      </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-white"
-                      onClick={() => openSettings("hotkeys")}
-                      title="Settings"
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </div>
+                    <ChevronDown className="h-3 w-3 text-slate-500" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="right"
+                  align="end"
+                  className="w-56 overflow-hidden rounded-xl border-white/10 bg-background p-1 shadow-2xl backdrop-blur-xl"
+                  sideOffset={12}
+                >
+                  <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                    Operations
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem 
+                    onClick={() => navigate("/")} 
+                    className={cn(
+                      "gap-2 rounded-lg py-2 cursor-pointer transition-colors focus:bg-primary/10 focus:text-primary",
+                      location.pathname === "/" && "bg-primary/10 text-primary font-bold"
+                    )}
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    <span className="text-xs font-medium">Workspace</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => navigate("/organization")} 
+                    className={cn(
+                      "gap-2 rounded-lg py-2 cursor-pointer transition-colors focus:bg-primary/10 focus:text-primary",
+                      location.pathname === "/organization" && "bg-primary/10 text-primary font-bold"
+                    )}
+                  >
+                    <UserRound className="h-4 w-4" />
+                    <span className="text-xs font-medium">Organization</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => navigate("/project")} 
+                    className={cn(
+                      "gap-2 rounded-lg py-2 cursor-pointer transition-colors focus:bg-primary/10 focus:text-primary",
+                      location.pathname === "/project" && "bg-primary/10 text-primary font-bold"
+                    )}
+                  >
+                    <FileStack className="h-4 w-4" />
+                    <span className="text-xs font-medium">Project</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/5" />
+                  <DropdownMenuItem
+                    onClick={() => void signOut()}
+                    className="gap-2 rounded-lg py-2 cursor-pointer focus:bg-destructive/10 focus:text-destructive text-red-400"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span className="text-xs font-medium">Sign Out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-                </div>
-
-              </div>
               <Button
-                variant="outline"
-                className="w-full justify-start border-white/10 bg-black/20 text-slate-300 hover:bg-white/5 hover:text-white"
-                onClick={() => void signOut()}
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-xl bg-white/[0.02] border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 active:scale-95 transition-all"
+                onClick={() => openSettings("hotkeys")}
+                title="Settings"
               >
-                <LogOut className="h-4 w-4" />
-                Sign out
+                <Settings className="h-4 w-4" />
               </Button>
             </div>
           ) : (
-            <Button asChild className="w-full justify-start">
-              <Link to="/auth">Sign in</Link>
+            <Button asChild className="w-full bg-primary text-black font-bold hover:bg-primary/90 border-none">
+              <Link to="/auth">Sign In</Link>
             </Button>
           )}
         </SidebarFooter>
@@ -543,16 +644,16 @@ export function AppSidebar() {
       <AlertDialog open={!!designToRename} onOpenChange={(open) => !open && setDesignToRename(null)}>
         <AlertDialogContent className="border-white/10 bg-[#090d16] text-white sm:max-w-[425px]">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Rename design</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
-              Enter a new name for the design.
+            <AlertDialogTitle className="font-display text-xl font-bold uppercase tracking-tight text-white">Rename Design</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400 font-body text-sm">
+              Enter a new identifier for this design profile.
             </AlertDialogDescription>
-            <div className="py-2">
+            <div className="py-4">
               <Input
                 autoFocus
                 value={designToRename?.name || ""}
                 onChange={e => setDesignToRename(prev => prev ? { ...prev, name: e.target.value } : null)}
-                className="bg-black/20 border-white/10 text-white focus-visible:ring-emerald-500/50"
+                className="bg-black/40 border-white/10 text-white focus-visible:ring-primary/50"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && designToRename && designToRename.name.trim().length >= 2) {
                     e.preventDefault();
@@ -563,10 +664,10 @@ export function AppSidebar() {
               />
             </div>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5">Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl border-white/10 bg-transparent text-slate-400 hover:bg-white/5 hover:text-white transition-all">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-emerald-500 text-white hover:bg-emerald-600 border-none disabled:opacity-50"
+              className="rounded-xl bg-primary text-black font-bold uppercase tracking-widest hover:bg-primary/90 border-none shadow-neon-green-sm"
               disabled={!designToRename || designToRename.name.trim().length < 2}
               onClick={async () => {
                 if (designToRename && designToRename.name.trim().length >= 2) {
@@ -575,7 +676,7 @@ export function AppSidebar() {
                 }
               }}
             >
-              Save
+              Update Design
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -584,16 +685,16 @@ export function AppSidebar() {
       <AlertDialog open={!!ncProgramToRename} onOpenChange={(open) => !open && setNcProgramToRename(null)}>
         <AlertDialogContent className="border-white/10 bg-[#090d16] text-white sm:max-w-[425px]">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Rename NC Program</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
-              Enter a new name for the NC program.
+            <AlertDialogTitle className="font-display text-xl font-bold uppercase tracking-tight text-white">Rename NC Program</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400 font-body text-sm">
+              Update the identifier for this CNC production sequence.
             </AlertDialogDescription>
-            <div className="py-2">
+            <div className="py-4">
               <Input
                 autoFocus
                 value={ncProgramToRename?.name || ""}
                 onChange={e => setNcProgramToRename(prev => prev ? { ...prev, name: e.target.value } : null)}
-                className="bg-black/20 border-white/10 text-white focus-visible:ring-emerald-500/50"
+                className="bg-black/40 border-white/10 text-white focus-visible:ring-primary/50"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && ncProgramToRename && ncProgramToRename.name.trim().length >= 2) {
                     e.preventDefault();
@@ -606,10 +707,10 @@ export function AppSidebar() {
               />
             </div>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5">Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl border-white/10 bg-transparent text-slate-400 hover:bg-white/5 hover:text-white transition-all">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-emerald-500 text-white hover:bg-emerald-600 border-none disabled:opacity-50"
+              className="rounded-xl bg-primary text-black font-bold uppercase tracking-widest hover:bg-primary/90 border-none shadow-neon-green-sm"
               disabled={!ncProgramToRename || ncProgramToRename.name.trim().length < 2 || !selectedProjectId}
               onClick={async () => {
                 if (ncProgramToRename && ncProgramToRename.name.trim().length >= 2 && selectedProjectId) {
@@ -618,7 +719,7 @@ export function AppSidebar() {
                 }
               }}
             >
-              Save
+              Update Program
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

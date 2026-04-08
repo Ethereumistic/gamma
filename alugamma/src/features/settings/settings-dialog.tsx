@@ -7,14 +7,15 @@ export function SettingsDialog() {
 
   return (
     <Dialog open={settingsOpen} onOpenChange={(open) => !open && closeSettings()}>
-      <DialogContent className="max-w-2xl border-white/10 bg-[#090d16] text-white">
+      <DialogContent className="max-w-2xl border-white/10 bg-background text-white">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
         <div className="flex gap-6 pt-2">
-          <nav className="w-36 shrink-0">
-            <button className="w-full rounded-lg bg-white/10 px-3 py-2 text-left text-sm font-medium text-white transition-colors hover:bg-white/15">
-              Keyboard Shortcuts
+          <nav className="w-[180px] shrink-0 border-r border-white/5 pr-6">
+            <button className="flex w-full items-center gap-2 rounded-lg bg-primary px-4 py-2 text-left text-xs font-bold uppercase tracking-widest text-black transition-all shadow-neon-green-sm">
+              <div className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
+              Hotkeys
             </button>
           </nav>
           <div className="flex-1">

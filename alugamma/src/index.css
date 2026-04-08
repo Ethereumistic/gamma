@@ -4,38 +4,58 @@
 
 @layer base {
   :root {
-    --background: 220 27% 9%;
-    --foreground: 210 25% 94%;
-    --card: 220 24% 12%;
-    --card-foreground: 210 25% 94%;
-    --popover: 220 24% 12%;
-    --popover-foreground: 210 25% 94%;
-    --primary: 146 72% 50%;
-    --primary-foreground: 210 40% 8%;
-    --secondary: 215 28% 18%;
-    --secondary-foreground: 210 22% 90%;
-    --muted: 216 22% 16%;
-    --muted-foreground: 215 18% 68%;
-    --accent: 285 75% 58%;
-    --accent-foreground: 210 25% 96%;
+    /* Deep black background */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 94%;
+
+    /* Card surfaces - slightly lighter than bg */
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 94%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 94%;
+
+    /* Primary: Laser Green #39FF14 → HSL(110, 100%, 54%) */
+    --primary: 110 100% 54%;
+    --primary-foreground: 0 0% 4%;
+
+    /* Secondary */
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 90%;
+
+    /* Muted */
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 55%;
+
+    /* Accent: Neon Magenta #FF00FF → HSL(300, 100%, 50%) */
+    --accent: 300 100% 50%;
+    --accent-foreground: 0 0% 98%;
+
+    /* Destructive */
     --destructive: 0 72% 54%;
-    --destructive-foreground: 210 25% 96%;
-    --border: 217 21% 22%;
-    --input: 217 22% 18%;
-    --ring: 146 72% 50%;
-    --sheet-frez: 294 77% 55%;
-    --sheet-cut: 129 86% 59%;
-    --sheet-steel: 214 23% 14%;
-    --sheet-line: 216 17% 28%;
-    --radius: 1rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --destructive-foreground: 0 0% 96%;
+
+    /* Borders & Input */
+    --border: 0 0% 14%;
+    --input: 0 0% 10%;
+    --ring: 110 100% 54%;
+
+    /* Sheet-specific colors */
+    --sheet-frez: 300 100% 50%;
+    --sheet-cut: 110 100% 54%;
+    --sheet-steel: 0 0% 8%;
+    --sheet-line: 0 0% 18%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 110 100% 54%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 110 100% 54%;
   }
 
   * {
@@ -51,24 +71,24 @@
   body {
     @apply bg-background font-body text-foreground antialiased;
     background-image:
-      radial-gradient(circle at top left, rgba(39, 140, 110, 0.18), transparent 28%),
-      radial-gradient(circle at top right, rgba(182, 59, 199, 0.12), transparent 24%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%),
-      linear-gradient(135deg, rgba(10, 14, 23, 0.96), rgba(6, 8, 15, 1));
+      radial-gradient(circle at top left, rgba(57, 255, 20, 0.06), transparent 35%),
+      radial-gradient(circle at bottom right, rgba(255, 0, 255, 0.04), transparent 35%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent 20%);
   }
 
   ::selection {
     background: hsl(var(--primary) / 0.3);
   }
+
   .dark {
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 110 100% 54%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 110 100% 54%;
   }
 }
 
@@ -76,5 +96,31 @@
   .panel-grid {
     background-image: theme("backgroundImage.grid");
     background-size: 56px 56px;
+  }
+
+  /* Neon text glow utilities */
+  .text-glow-green {
+    text-shadow: 0 0 10px rgba(57, 255, 20, 0.5), 0 0 40px rgba(57, 255, 20, 0.2), 0 0 80px rgba(57, 255, 20, 0.1);
+  }
+
+  .text-glow-magenta {
+    text-shadow: 0 0 10px rgba(255, 0, 255, 0.5), 0 0 40px rgba(255, 0, 255, 0.2), 0 0 80px rgba(255, 0, 255, 0.1);
+  }
+
+  .text-glow-green-sm {
+    text-shadow: 0 0 6px rgba(57, 255, 20, 0.4), 0 0 20px rgba(57, 255, 20, 0.15);
+  }
+
+  .text-glow-magenta-sm {
+    text-shadow: 0 0 6px rgba(255, 0, 255, 0.4), 0 0 20px rgba(255, 0, 255, 0.15);
+  }
+
+  /* Neon border glow */
+  .border-glow-green {
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.2), inset 0 0 8px rgba(57, 255, 20, 0.05);
+  }
+
+  .border-glow-magenta {
+    box-shadow: 0 0 8px rgba(255, 0, 255, 0.2), inset 0 0 8px rgba(255, 0, 255, 0.05);
   }
 }

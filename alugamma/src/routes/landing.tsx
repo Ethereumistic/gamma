@@ -1,7 +1,10 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Building2, FolderKanban, LockKeyhole, MailPlus, Users2 } from "lucide-react";
+import { Building2, FolderKanban, LockKeyhole, MailPlus, Users2, ScissorsLineDashed, Cpu, ArrowRight, CheckCircle2, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useConvexAuth } from "convex/react";
+import { motion, AnimatePresence } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useWorkspace } from "@/features/workspace/context";
+import { Logo, LogoMark } from "@/components/logo";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -42,11 +47,11 @@ export default function LandingPage() {
   const accessOverview =
     (useQuery(api.workspaces.projectAccessOverview, selectedProjectId ? { projectId: selectedProjectId } : "skip") as
       | {
-          project: { id: Id<"projects">; name: string; description: string };
-          members: Array<{ id: Id<"projectMembers">; userId: Id<"users">; name: string; email: string; role: string }>;
-          invites: Array<{ id: Id<"projectInvites">; email: string; role: string; createdAt: number; expiresAt: number }>;
-          canManage: boolean;
-        }
+        project: { id: Id<"projects">; name: string; description: string };
+        members: Array<{ id: Id<"projectMembers">; userId: Id<"users">; name: string; email: string; role: string }>;
+        invites: Array<{ id: Id<"projectInvites">; email: string; role: string; createdAt: number; expiresAt: number }>;
+        canManage: boolean;
+      }
       | undefined) ?? null;
 
   if (isLoadingWorkspace) {
@@ -59,52 +64,9 @@ export default function LandingPage() {
     );
   }
 
+  // ── UNAUTHENTICATED: 2-column hero + login form ──
   if (!authenticated) {
-    return (
-      <div className="flex h-full flex-col px-4 py-12 lg:px-8">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-16">
-          <section className="mt-12 flex flex-col items-center justify-center gap-6 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary shadow-[0_0_15px_rgba(20,180,100,0.1)]">
-              <LockKeyhole className="h-4 w-4" />
-              Convex-backed DXF workspace
-            </div>
-            <h1 className="font-display max-w-4xl text-5xl font-semibold tracking-tight text-white lg:text-7xl">
-              Save design data, not just the exported DXF.
-            </h1>
-            <p className="max-w-[760px] text-lg leading-relaxed text-muted-foreground">
-              Organizations own projects, projects own saved sheet configurations, and every export can be reopened and
-              re-generated later with the same flanges, FREZ lines, and corner relief settings.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
-              <Button asChild size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/20">
-                <Link to="/auth">Sign in or create account</Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className="h-12 border-white/10 px-8 text-base hover:bg-white/5">
-                <Link to="/sheet-metal">Open editor preview</Link>
-              </Button>
-            </div>
-          </section>
-
-          <section className="grid gap-6 md:grid-cols-3">
-            <FeatureCard
-              icon={<Building2 className="h-6 w-6 text-sky-400" />}
-              title="Organizations"
-              description="Separate customer teams, departments, or production groups with clear ownership."
-            />
-            <FeatureCard
-              icon={<FolderKanban className="h-6 w-6 text-emerald-400" />}
-              title="Project-based designs"
-              description="Group saved DXF input data per project and re-open any design for editing or export."
-            />
-            <FeatureCard
-              icon={<Users2 className="h-6 w-6 text-amber-400" />}
-              title="Email invites"
-              description="Invite teammates to a project by email, then let them accept access from the web app."
-            />
-          </section>
-        </div>
-      </div>
-    );
+    return <LandingHero />;
   }
 
   async function handleCreateOrganization(event: React.FormEvent<HTMLFormElement>) {
@@ -196,18 +158,19 @@ export default function LandingPage() {
     }
   }
 
+  // ── AUTHENTICATED: Dashboard ──
   return (
     <div className="flex h-full flex-col px-4 py-8 lg:px-8">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6">
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr),420px]">
-          <Card className="overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(58,196,143,0.15),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] shadow-2xl">
+          <Card className="overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(57,255,20,0.06),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-2xl">
             <CardContent className="flex h-full flex-col justify-between gap-8 p-8 lg:p-10">
               <div className="space-y-5">
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.28em] text-emerald-100">
+                <div className="inline-flex items-center gap-2 rounded-full border border-neon-green/20 bg-neon-green/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.28em] text-neon-green text-glow-green-sm">
                   Workspace Control Center
                 </div>
                 <div>
-                  <p className="text-sm uppercase tracking-[0.28em] text-slate-300">Signed in as</p>
+                  <p className="text-sm uppercase tracking-[0.28em] text-slate-400">Signed in as</p>
                   <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight text-white lg:text-5xl">
                     {viewer?.name || viewer?.email || "Workspace user"}
                   </h1>
@@ -292,11 +255,10 @@ export default function LandingPage() {
 
         {(feedback || error) && (
           <div
-            className={`rounded-2xl border px-4 py-3 text-sm ${
-              error
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-            }`}
+            className={`rounded-2xl border px-4 py-3 text-sm ${error
+              ? "border-destructive/30 bg-destructive/10 text-destructive"
+              : "border-neon-green/30 bg-neon-green/10 text-neon-green"
+              }`}
           >
             {error ?? feedback}
           </div>
@@ -329,11 +291,10 @@ export default function LandingPage() {
                       setSelectedProjectId(project.id);
                       setSelectedOrganizationId(project.organizationId);
                     }}
-                    className={`rounded-[1.5rem] border p-5 text-left transition-colors ${
-                      isSelected
-                        ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_rgba(20,180,100,0.08)]"
-                        : "border-white/8 bg-black/10 hover:bg-white/[0.03]"
-                    }`}
+                    className={`rounded-[1.5rem] border p-5 text-left transition-colors ${isSelected
+                      ? "border-neon-green/40 bg-neon-green/5 shadow-neon-green-sm"
+                      : "border-white/8 bg-black/10 hover:bg-white/[0.03]"
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -397,9 +358,8 @@ export default function LandingPage() {
                     <button
                       key={organization.id}
                       type="button"
-                      className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${
-                        isSelected ? "border-primary/40 bg-primary/10" : "border-white/8 bg-black/10 hover:bg-white/[0.03]"
-                      }`}
+                      className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${isSelected ? "border-neon-green/40 bg-neon-green/5" : "border-white/8 bg-black/10 hover:bg-white/[0.03]"
+                        }`}
                       onClick={() => setSelectedOrganizationId(organization.id)}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -512,15 +472,303 @@ export default function LandingPage() {
   );
 }
 
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+// ─── LANDING HERO (unauthenticated) ────────────────────────────────────────────
+
+function LandingHero() {
+  const { signIn } = useAuthActions();
+  const { isAuthenticated } = useConvexAuth();
+  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (isAuthenticated) {
+    return null;
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const result = await signIn("password", {
+        flow: mode,
+        email,
+        password,
+        ...(mode === "signUp" && name.trim().length > 0 ? { name: name.trim() } : {}),
+      });
+
+      if (result.redirect) {
+        window.location.href = result.redirect.toString();
+        return;
+      }
+
+      setMessage(mode === "signUp" ? "Account created. Signing you in..." : "Signing you in...");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Authentication failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-4 rounded-3xl border border-white/5 bg-card/40 p-8 shadow-panel backdrop-blur transition-colors hover:bg-card/60">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/5 bg-black/20 shadow-inner">
-        {icon}
+    <div className="relative flex min-h-full flex-col items-center justify-center overflow-hidden bg-background px-4 py-8 lg:px-8">
+      {/* Background Layer */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.15] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]">
+          <div className="panel-grid h-full w-full" />
+        </div>
+
+        {/* Decorative Orbs */}
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.05, 0.08, 0.05],
+          }}
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute -left-32 top-1/4 h-[500px] w-[500px] rounded-full bg-neon-green/10 blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            scale: [1.2, 1, 1.2],
+            opacity: [0.04, 0.07, 0.04],
+          }}
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute -right-32 bottom-1/4 h-[500px] w-[500px] rounded-full bg-neon-magenta/10 blur-[120px]"
+        />
       </div>
-      <h3 className="font-display text-xl font-semibold text-white">{title}</h3>
-      <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+
+      <div className="relative z-10 grid w-full max-w-[1240px] gap-12 lg:grid-cols-[1fr,440px] lg:gap-20">
+        {/* LEFT COLUMN: Hero content */}
+        <motion.section
+          initial={{ opacity: 0, x: -30 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="flex flex-col justify-center space-y-12"
+        >
+          <div className="space-y-8">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <Logo variant="full" size="xl" className="brightness-110 drop-shadow-[0_0_15px_rgba(57,255,20,0.3)]" />
+            </motion.div>
+
+            <div className="space-y-4">
+              <motion.h2
+                initial={{ opacity: 0, letterSpacing: "0.2em" }}
+                animate={{ opacity: 1, letterSpacing: "0.45em" }}
+                transition={{ duration: 1, delay: 0.4 }}
+                className="font-mono text-xs font-bold uppercase text-neon-magenta text-glow-magenta-sm lg:text-sm"
+              >
+                Precision Forged to &Omega;
+              </motion.h2>
+
+            </div>
+
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8 }}
+              className="max-w-xl text-lg leading-relaxed text-slate-400 lg:text-xl"
+            >
+              The advanced fenestration ecosystem. From DXF profile engineering to
+              <span className="text-white"> automated CNC manufacturing</span>—all powered
+              by a high-precision geometry engine.
+            </motion.p>
+
+            {/* Feature display */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1, duration: 0.6 }}
+              className="grid gap-4 sm:grid-cols-2 lg:flex lg:flex-wrap"
+            >
+              <FeaturePill icon={<ScissorsLineDashed />} label="DXF Editor" delay={1.1} />
+              <FeaturePill icon={<Building2 />} label="Assembly Engine" delay={1.2} />
+              <FeaturePill icon={<Cpu />} label="CNC Pipeline" delay={1.3} />
+              <FeaturePill icon={<FolderKanban />} label="PDR Management" delay={1.4} />
+            </motion.div>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.5 }}
+            className="flex items-center gap-6"
+          >
+            <div className="h-[1px] w-12 bg-neon-green/30" />
+            <p className="font-mono text-[10px] uppercase tracking-[0.5em] text-slate-500">
+              Trusted by modern envelope fabricators
+            </p>
+          </motion.div>
+        </motion.section>
+
+        {/* RIGHT COLUMN: Auth Card */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, x: 20 }}
+          animate={{ opacity: 1, scale: 1, x: 0 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+          className="relative"
+        >
+          {/* Decorative halo around card */}
+          <div className="absolute -inset-1 rounded-[2rem] bg-gradient-to-br from-neon-green/20 via-transparent to-neon-magenta/20 blur-xl transition-opacity group-hover:opacity-100" />
+
+          <Card className="relative overflow-hidden border-white/10 bg-card/40 shadow-2xl backdrop-blur-xl transition-all hover:border-neon-green/30 hover:shadow-neon-green/5">
+            {/* Top scanning line effect */}
+            <motion.div
+              animate={{ top: ["0%", "100%", "0%"] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+              className="absolute left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-green/20 to-transparent"
+            />
+
+            <Tabs value={mode} onValueChange={(v) => setMode(v as any)} className="w-full">
+              <CardHeader className="space-y-6 border-b border-white/5 bg-white/[0.02] p-8">
+                <div className="flex flex-col gap-6">
+                  {/* Custom Tab Switcher using Tabs component */}
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="signIn">Sign In</TabsTrigger>
+                    <TabsTrigger value="signUp">Sign Up</TabsTrigger>
+                  </TabsList>
+
+                  <div>
+                    <CardTitle className="font-display text-2xl font-bold tracking-tight text-white">
+                      {mode === "signIn" ? "Welcome Back" : "Initialize Account"}
+                    </CardTitle>
+                    <CardDescription className="mt-2 font-body text-sm text-slate-400">
+                      {mode === "signIn"
+                        ? "Enter your credentials to access the Forge control center."
+                        : "Create your workspace and start designing at scale."}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-8">
+                <form className="space-y-5" onSubmit={handleSubmit}>
+                  <AnimatePresence mode="wait">
+                    {mode === "signUp" && (
+                      <motion.div
+                        key="name"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <AuthField label="Full name">
+                          <Input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="Ahmad Saab"
+                          />
+                        </AuthField>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <AuthField label="Email address">
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      autoComplete="email"
+                    />
+                  </AuthField>
+
+                  <AuthField label="Security Key">
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+                    />
+                  </AuthField>
+
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs font-semibold text-destructive uppercase tracking-widest"
+                    >
+                      <div className="h-1.5 w-1.5 rounded-full bg-destructive animate-pulse" />
+                      {error}
+                    </motion.div>
+                  )}
+
+                  {message && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-2 rounded-xl border border-neon-green/30 bg-neon-green/5 px-4 py-3 text-xs font-semibold text-neon-green uppercase tracking-widest"
+                    >
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                      {message}
+                    </motion.div>
+                  )}
+
+                  <Button
+                    variant="default"
+                    className="h-12 w-full group"
+                    disabled={submitting}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      {submitting ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                      ) : (
+                        <>
+                          {mode === "signIn" ? "Authorize" : "Initialize"}
+                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                        </>
+                      )}
+                    </span>
+                  </Button>
+
+                  <p className="text-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                    Secured by Convex &Omega; Engine
+                  </p>
+                </form>
+              </CardContent>
+            </Tabs>
+          </Card>
+        </motion.div>
+      </div>
     </div>
+  );
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function AuthField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-2">
+      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 opacity-80">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function FeaturePill({ icon, label, delay = 0 }: { icon: React.ReactNode; label: string; delay?: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay }}
+      whileHover={{ y: -2, scale: 1.05 }}
+      className="group flex cursor-default items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] px-5 py-3 text-sm transition-all hover:border-neon-green/40 hover:bg-neon-green/5 hover:shadow-neon-green-sm"
+    >
+      <span className="text-neon-green transition-transform group-hover:scale-110">
+        {React.cloneElement(icon as React.ReactElement, { className: "h-5 w-5" })}
+      </span>
+      <span className="font-display font-medium text-slate-300 group-hover:text-white">{label}</span>
+    </motion.div>
   );
 }
 

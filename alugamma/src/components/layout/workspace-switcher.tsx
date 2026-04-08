@@ -23,15 +23,15 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 export function WorkspaceSwitcher() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { 
-    organizations, 
-    projects, 
-    selectedOrganizationId, 
-    selectedProjectId, 
-    setSelectedOrganizationId, 
+  const {
+    organizations,
+    projects,
+    selectedOrganizationId,
+    selectedProjectId,
+    setSelectedOrganizationId,
     setSelectedProjectId,
     selectedOrganization,
-    selectedProject 
+    selectedProject
   } = useWorkspace()
   const { saveDesign } = useSheetMetal()
   const [open, setOpen] = React.useState(false)
@@ -83,32 +83,32 @@ export function WorkspaceSwitcher() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="bg-white/5 border border-white/10 hover:bg-white/10 transition-colors duration-200 group h-14"
+              className="bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300 group h-14 rounded-xl shadow-[inset_0_0_20px_rgba(255,255,255,0.02)]"
             >
-              <div className="flex aspect-square size-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20 text-emerald-400 group-hover:scale-105 transition-transform duration-200">
-                <Building2 className="size-5" />
+              <div className="flex aspect-square size-10 items-center justify-center rounded-lg bg-gradient-to-br from-neon-green/20 to-neon-green/5 border border-neon-green/20 text-neon-green group-hover:scale-110 transition-transform duration-500 shadow-neon-green-sm">
+                <Building2 className="size-5 text-glow-green-sm" />
               </div>
-              <div className="grid flex-1 text-left text-sm leading-tight ml-2">
-                <span className="truncate font-semibold text-white tracking-tight">
-                  {selectedOrganization?.name ?? "Select Organization"}
+              <div className="grid flex-1 text-left text-xs leading-tight ml-3">
+                <span className="truncate font-bold text-white uppercase tracking-widest">
+                  {selectedOrganization?.name ?? "Select Org"}
                 </span>
-                <span className="truncate text-[11px] text-slate-400 font-medium">
+                <span className="truncate text-[10px] text-slate-500 font-mono tracking-tighter mt-0.5">
                   {selectedProject?.name ?? "Select Project"}
                 </span>
               </div>
-              <ChevronsUpDown className="ml-auto size-4 text-slate-500 group-hover:text-slate-300 transition-colors" />
+              <ChevronsUpDown className="ml-auto size-3.5 text-slate-600 group-hover:text-neon-green transition-colors duration-300" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-64 rounded-xl border-white/10 bg-[#0c1425] p-2 text-slate-200 shadow-2xl backdrop-blur-xl"
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-64 rounded-xl border-white/10 bg-background p-2 text-slate-200 shadow-2xl backdrop-blur-xl"
             align="start"
             sideOffset={8}
           >
             <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
               Workspaces & Projects
             </DropdownMenuLabel>
-            
-            <ScrollArea className="mt-1 max-h-[280px] overflow-y-auto pr-3">
+
+            <ScrollArea className="mt-2 h-[320px] pr-4">
               <div className="space-y-1">
                 {organizations.map((org) => {
                   const orgProjects = projects.filter(p => p.organizationId === org.id)
@@ -119,23 +119,23 @@ export function WorkspaceSwitcher() {
                       <button
                         onClick={() => handleOrganizationChange(org.id)}
                         className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-all duration-200",
-                          isOrgSelected 
-                            ? "bg-emerald-500/10 text-emerald-400" 
-                            : "text-slate-300 hover:bg-white/5 hover:text-white"
+                          "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-all duration-300 group/org",
+                          isOrgSelected
+                            ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                            : "text-slate-400 hover:bg-white/5 hover:text-white"
                         )}
                       >
                         <div className={cn(
-                          "flex size-6 items-center justify-center rounded-md border transition-colors",
-                          isOrgSelected 
-                            ? "border-emerald-500/20 bg-emerald-500/10" 
-                            : "border-white/10 bg-white/5"
+                          "flex size-7 items-center justify-center rounded-md border transition-all duration-300",
+                          isOrgSelected
+                            ? "border-primary/40 bg-primary/20 shadow-neon-green-sm"
+                            : "border-white/10 bg-black/40 group-hover/org:border-white/20"
                         )}>
-                          <Building2 className="size-3.5" />
+                          <Building2 className={cn("size-4", isOrgSelected && "text-glow-green-sm")} />
                         </div>
-                        <span className="text-sm font-semibold truncate flex-1">{org.name}</span>
+                        <span className="text-xs font-bold uppercase tracking-widest truncate flex-1">{org.name}</span>
                         {isOrgSelected && (
-                          <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                          <div className="size-1.5 rounded-full bg-primary shadow-neon-green mx-1 animate-pulse" />
                         )}
                       </button>
 
@@ -147,21 +147,28 @@ export function WorkspaceSwitcher() {
                               key={project.id}
                               onClick={() => handleProjectChange(project.id)}
                               className={cn(
-                                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-all duration-200",
-                                isProjectSelected 
-                                  ? "bg-white/10 text-white font-medium shadow-sm" 
-                                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[11px] transition-all duration-300 group/prj",
+                                isProjectSelected
+                                  ? "bg-accent/10 text-accent ring-1 ring-accent/20 font-bold"
+                                  : "text-slate-500 hover:bg-white/5 hover:text-slate-300"
                               )}
                             >
-                              <Folder className={cn(
-                                "size-3",
-                                isProjectSelected ? "text-emerald-400" : "text-slate-500"
-                              )} />
-                              <span className="truncate">{project.name}</span>
+                              <div className={cn(
+                                "flex size-5 items-center justify-center rounded border transition-all duration-300",
+                                isProjectSelected
+                                  ? "border-accent/40 bg-accent/20 shadow-neon-magenta-sm"
+                                  : "border-white/5 bg-black/40 group-hover/prj:border-white/10"
+                              )}>
+                                <Folder className={cn("size-3", isProjectSelected && "text-glow-magenta-sm")} />
+                              </div>
+                              <span className="truncate tracking-wide flex-1">{project.name}</span>
+                              {isProjectSelected && (
+                                <div className="size-1 rounded-full bg-accent shadow-neon-magenta animate-pulse" />
+                              )}
                             </button>
                           )
                         })}
-                        
+
                         {orgProjects.length === 0 && (
                           <div className="px-2 py-1.5 text-[10px] italic text-slate-600">
                             No projects in this organization
@@ -175,25 +182,25 @@ export function WorkspaceSwitcher() {
             </ScrollArea>
 
             <DropdownMenuSeparator className="my-2 bg-white/5" />
-            
+
             <div className="space-y-1">
               <DropdownMenuItem
                 onClick={() => navigate("/organization")}
-                className="flex items-center gap-2 rounded-lg py-2 hover:bg-emerald-500/10 hover:text-emerald-400 cursor-pointer transition-colors"
+                className="flex items-center gap-3 rounded-lg py-2.5 transition-all duration-300 cursor-pointer focus:bg-primary/10 focus:text-primary"
               >
-                <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-white/20">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/40 shadow-inner">
                   <Building2 className="size-3.5" />
                 </div>
-                <span className="text-xs font-medium">Manage Organizations</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest">Manage Organizations</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => navigate("/project")}
-                className="flex items-center gap-2 rounded-lg py-2 hover:bg-emerald-500/10 hover:text-emerald-400 cursor-pointer transition-colors"
+                className="flex items-center gap-3 rounded-lg py-2.5 transition-all duration-300 cursor-pointer focus:bg-primary/10 focus:text-primary"
               >
-                <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-white/20">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/40 shadow-inner">
                   <LayoutDashboard className="size-3.5" />
                 </div>
-                <span className="text-xs font-medium">Manage Projects</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest">Manage Projects</span>
               </DropdownMenuItem>
             </div>
           </DropdownMenuContent>
