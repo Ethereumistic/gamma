@@ -417,7 +417,7 @@ export default function LandingPage() {
                           key={project.id}
                           onClick={() => {
                             setSelectedProjectId(project.id);
-                            navigate(`/projects/${project.slug}`);
+                            navigate(`/project/${project.id}`);
                           }}
                           className="w-full group relative flex flex-col gap-1 rounded-2xl border border-white/5 bg-black/40 p-4 transition-all hover:border-primary/40 hover:bg-primary/5 hover:shadow-neon-green-sm"
                         >
@@ -447,7 +447,7 @@ export default function LandingPage() {
                     size="sm"
                     className="mt-6 w-full text-[9px] font-bold uppercase tracking-widest text-slate-500 hover:text-primary hover:bg-primary/5"
                     onClick={() => {
-                      // Navigate to projects list or similar
+                      navigate(`/project`);
                     }}
                   >
                     View All Projects
