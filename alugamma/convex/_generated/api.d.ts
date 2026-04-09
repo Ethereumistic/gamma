@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as cnc_settings from "../cnc_settings.js";
 import type * as designs from "../designs.js";
 import type * as helpers from "../helpers.js";
 import type * as http from "../http.js";
@@ -24,6 +25,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  cnc_settings: typeof cnc_settings;
   designs: typeof designs;
   helpers: typeof helpers;
   http: typeof http;

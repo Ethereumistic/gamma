@@ -41,10 +41,12 @@ class GCodeWriter:
         self.program_name = program_name
         self.total_path_length = 0.0
 
-    def write(self, toolpath_blocks: list[tuple[int, str, list[Move]]], bbox: BBox) -> tuple[str, dict[int, int]]:
+    def write(self, toolpath_blocks: list[tuple[int, str, list[Move]]], bbox: BBox, tools: dict[int, dict] | None = None) -> tuple[str, dict[int, int]]:
         counter = LineCounter()
         lines = []
         line_to_segment_map = {}
+        
+        resolved_tools = tools if tools is not None else TOOLS
         
         # We need to maintain state across all blocks since first rapid uses previous toolpath's last position
         machine_x = None
@@ -52,7 +54,7 @@ class GCodeWriter:
         
         for index, block in enumerate(toolpath_blocks, start=1):
             tool_num, layer_name, moves = block
-            tool = TOOLS[tool_num]
+            tool = resolved_tools[tool_num]
             is_final_toolpath = (index == len(toolpath_blocks))
             
             # Pre-calculate stats for comment block

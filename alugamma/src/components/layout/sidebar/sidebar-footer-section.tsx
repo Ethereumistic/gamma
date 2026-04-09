@@ -108,7 +108,7 @@ export function SidebarFooterSection() {
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-          onClick={() => openSettings("hotkeys")}
+          onClick={() => openSettings("cnc")}
           title="Settings"
         >
           <Settings className="h-3.5 w-3.5" />
