@@ -13,48 +13,51 @@ import { systemItems, toolItems } from "@/lib/navigation";
 export function SidebarNavSection() {
   const location = useLocation();
   const pathIsSheetMetal = location.pathname.startsWith("/sheet-metal");
+  const isInternalToolRoute = pathIsSheetMetal || location.pathname.startsWith("/cnc-pipeline");
 
   return (
     <>
-      <SidebarGroup className="pb-0">
-        <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-2">
-          System
-        </SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            {systemItems.map((item) => {
-              const isActive = location.pathname === item.url;
-              return (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive}
-                    className={cn(
-                      "h-10 px-3 rounded-xl border",
-                      isActive
-                        ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
-                        : "text-slate-400 border-transparent hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <Link to={item.url} className="flex items-center gap-3">
-                      <div className={cn(
-                        "flex h-6 w-6 items-center justify-center rounded-md",
-                        isActive ? "bg-primary/20 text-primary shadow-neon-green-sm" : "bg-black/40 text-slate-500"
-                      )}>
-                        <item.icon className="h-3.5 w-3.5" />
-                      </div>
-                      <span className="font-bold text-[10px] uppercase tracking-widest">{item.title}</span>
-                      {isActive && (
-                        <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shadow-neon-green animate-pulse" />
+      {!isInternalToolRoute && (
+        <SidebarGroup className="pb-0">
+          <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-2">
+            System
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {systemItems.map((item) => {
+                const isActive = location.pathname === item.url;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      className={cn(
+                        "h-10 px-3 rounded-xl border",
+                        isActive
+                          ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
+                          : "text-slate-400 border-transparent hover:bg-white/5 hover:text-white"
                       )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
+                    >
+                      <Link to={item.url} className="flex items-center gap-3">
+                        <div className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-md",
+                          isActive ? "bg-primary/20 text-primary shadow-neon-green-sm" : "bg-black/40 text-slate-500"
+                        )}>
+                          <item.icon className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="font-bold text-[10px] uppercase tracking-widest">{item.title}</span>
+                        {isActive && (
+                          <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shadow-neon-green animate-pulse" />
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
 
       <SidebarGroup>
         <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-3 mt-2">
@@ -69,20 +72,20 @@ export function SidebarNavSection() {
                   key={item.title}
                   to={item.url}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-3 py-5 rounded-xl border group",
+                    "flex flex-col items-center justify-center gap-2 aspect-square rounded-2xl border group transition-all duration-300",
                     isActive
-                      ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm"
-                      : "bg-white/[0.03] border-white/5 text-slate-400 hover:bg-white/10 hover:border-white/20 hover:text-white"
+                      ? "bg-primary/10 border-primary/30 text-primary shadow-neon-green-sm scale-[0.98]"
+                      : "bg-white/[0.03] border-white/5 text-slate-400 hover:bg-white/10 hover:border-white/20 hover:text-white hover:scale-105"
                   )}
                 >
                   <div className={cn(
-                    "p-2 rounded-lg",
-                    isActive ? "bg-primary/20" : "bg-black/40 group-hover:scale-110"
+                    "p-3 rounded-xl transition-all duration-300",
+                    isActive ? "bg-primary/20 shadow-neon-green" : "bg-black/40 group-hover:scale-110"
                   )}>
-                    <item.icon className="h-5 w-5" />
+                    <item.icon className={cn("h-7 w-7", isActive ? "text-primary" : "text-slate-400")} />
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-center">
-                    {item.title.split(' ').map((tile, i) => <span key={i} className="block last:text-[9px] last:opacity-70">{tile}</span>)}
+                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-center opacity-80">
+                    {item.title}
                   </span>
                 </Link>
               );

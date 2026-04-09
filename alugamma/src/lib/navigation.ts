@@ -27,12 +27,12 @@ export const systemItems: NavItem[] = [
 
 export const toolItems: NavItem[] = [
   {
-    title: "Sheet Metal",
+    title: "Sheets",
     url: "/sheet-metal",
     icon: ScissorsLineDashed,
   },
   {
-    title: "CNC Pipeline",
+    title: "CNC",
     url: "/cnc-pipeline",
     icon: LayoutDashboard,
   },

@@ -30,8 +30,9 @@ type FilterableItem = {
 type ItemAction = {
   label: string;
   labelActive?: string;
-  onClick: () => void;
+  onClick?: () => void;
   destructive?: boolean;
+  disabled?: boolean;
 };
 
 type SidebarItemListProps<T extends FilterableItem> = {
@@ -45,7 +46,7 @@ type SidebarItemListProps<T extends FilterableItem> = {
   getItemId: (item: T) => string;
   onAdd: () => void;
   addTitle?: string;
-  renderIcon: (item: T) => ReactNode;
+  renderIcon: (item: T, isActive?: boolean) => ReactNode;
   renderItemMeta?: (item: T) => ReactNode;
   getActions: (item: T) => ItemAction[];
   onDuplicate?: (item: T) => Promise<void>;
@@ -98,7 +99,7 @@ export function SidebarItemList<T extends FilterableItem>({
             variant="neon"
             size="icon"
             onClick={onAdd}
-            className="shrink-0 h-8 w-8 shadow-neon-green-sm"
+            className="shrink-0 h-8 w-8 shadow-neon-magenta-sm"
             title={addTitle ?? "New"}
           >
             <Plus className="h-4 w-4" />
@@ -145,15 +146,15 @@ export function SidebarItemList<T extends FilterableItem>({
                             asChild
                             isActive={itemActive}
                             className={cn(
-                              "pr-8 h-8 outline-none w-full flex items-center gap-2",
+                              "pr-8 h-9 outline-none w-full flex items-center gap-2 rounded-lg border transition-all duration-200",
                               itemActive
-                                ? "bg-primary/10 text-primary border-r-2 border-primary"
-                                : "text-slate-400 hover:text-white"
+                                ? "bg-primary/10 text-primary border-primary/30 shadow-neon-green-sm"
+                                : "text-slate-400 border-transparent hover:bg-white/5 hover:text-white"
                             )}
                           >
                             <Link to={getItemUrl(item)}>
-                              {renderIcon(item)}
-                              <span className="truncate flex-1">{item.name}</span>
+                              {renderIcon(item, itemActive)}
+                              <span className={cn("truncate flex-1", itemActive && "text-primary")}>{item.name}</span>
                               {renderItemMeta?.(item)}
                             </Link>
                           </SidebarMenuSubButton>
@@ -190,15 +191,18 @@ export function SidebarItemList<T extends FilterableItem>({
                                     <span key={i}>
                                       <DropdownMenuItem
                                         onClick={action.onClick}
+                                        disabled={action.disabled || !action.onClick}
                                         className={cn(
                                           action.destructive
                                             ? "text-red-400 focus:text-red-300 focus:bg-red-400/10 hover:text-red-300 hover:bg-red-400/10"
-                                            : "hover:bg-white/10"
+                                            : !action.onClick
+                                              ? "text-slate-500 font-mono text-[10px] uppercase tracking-wider focus:bg-transparent cursor-default"
+                                              : "hover:bg-white/10"
                                         )}
                                       >
                                         {action.label}
                                       </DropdownMenuItem>
-                                      {action.destructive && i === actions.length - 1 && (
+                                      {(!action.onClick || action.destructive) && i < actions.length - 1 && (
                                         <DropdownMenuSeparator className="bg-white/5" />
                                       )}
                                     </span>

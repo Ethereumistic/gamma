@@ -3,7 +3,8 @@ import { FileStack, Star } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import { Id } from "../../../convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
 import { useSheetMetal } from "@/features/sheet-metal/context";
 import { useWorkspace } from "@/features/workspace/context";
@@ -73,7 +74,7 @@ export function AppSidebar() {
 
           {showDesignsPanel && (
             <SidebarItemList
-              label={<span>Designs in <span className="text-white ml-1">{selectedProject.name}</span></span>}
+              label={<span className="text-nowrap truncate">DXFs in <span className="text-white ml-1">{selectedProject.name}</span></span>}
               searchPlaceholder="Search designs..."
               emptyMessage="No saved designs yet."
               items={selectedProject.designs}
@@ -88,10 +89,10 @@ export function AppSidebar() {
                 navigate("/sheet-metal/new");
               }}
               addTitle="New design"
-              renderIcon={(d) =>
+              renderIcon={(d, isActive) =>
                 d.isStarred
                   ? <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                  : <FileStack className="h-4 w-4 opacity-70" />
+                  : <FileStack className={cn("h-4 w-4 transition-colors", isActive ? "text-primary" : "opacity-70")} />
               }
               getActions={(d) => [
                 { label: d.isStarred ? "Unstar" : "Star design", onClick: () => toggleStarDesign({ designId: d.id, isStarred: !d.isStarred }) },
@@ -107,7 +108,7 @@ export function AppSidebar() {
 
           {showNcPanel && (
             <SidebarItemList
-              label={<span>NC Programs in <span className="text-white ml-1">{selectedProject.name}</span></span>}
+              label={<span className="text-nowrap truncate">NCs <span className="text-white ml-1">{selectedProject.name}</span></span>}
               searchPlaceholder="Search NC programs..."
               emptyMessage="No saved NC programs."
               items={ncPrograms}
@@ -117,20 +118,14 @@ export function AppSidebar() {
               getItemId={(p) => p._id}
               onAdd={() => navigate("/cnc-pipeline/new")}
               addTitle="New NC program"
-              renderIcon={(p) =>
+              renderIcon={(p, isActive) =>
                 p.isStarred
                   ? <Star className="h-4 w-4 fill-amber-400 text-amber-400 shrink-0" />
-                  : <FileStack className="h-4 w-4 opacity-70 shrink-0" />
+                  : <FileStack className={cn("h-4 w-4 shrink-0 transition-colors", isActive ? "text-primary " : "opacity-70")} />
               }
-              renderItemMeta={(p) => (
-                <div className="flex gap-1 shrink-0 ml-2">
-                  <span className="text-[9px] border border-white/10 rounded px-1 bg-white/5 opacity-60 uppercase font-mono">{p.algorithm}</span>
-                  <span className="text-[9px] border border-white/10 rounded px-1 bg-white/5 opacity-60 uppercase font-mono">
-                    {SCENARIO_LABELS[p.scenario] || p.scenario}
-                  </span>
-                </div>
-              )}
               getActions={(p) => [
+                { label: p.algorithm },
+                { label: SCENARIO_LABELS[p.scenario] || p.scenario },
                 { label: p.isStarred ? "Unstar" : "Star program", onClick: () => toggleStarNcProgram({ projectId: selectedProject.id, ncProgramId: p._id }) },
                 { label: "Rename", onClick: () => ncProgramRename.openDialog({ id: p._id, name: p.name }) },
                 { label: "Delete program", onClick: () => setNcProgramToDelete({ id: p._id, name: p.name }), destructive: true },
@@ -179,7 +174,7 @@ export function AppSidebar() {
         title="Delete NC Program"
         description={`Are you sure you want to delete "${ncProgramToDelete?.name ?? ""}"? This action cannot be undone.`}
         value=""
-        onChange={() => {}}
+        onChange={() => { }}
         onConfirm={async () => {
           if (ncProgramToDelete && selectedProject) {
             await deleteNcProgram({ projectId: selectedProject.id, ncProgramId: ncProgramToDelete.id });
