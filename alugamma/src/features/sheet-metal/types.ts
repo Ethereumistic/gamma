@@ -3,7 +3,7 @@ export const cornerKeys = ["topLeft", "topRight", "bottomRight", "bottomLeft"] a
 
 export type SideKey = (typeof sideKeys)[number];
 export type CornerKey = (typeof cornerKeys)[number];
-export type Layer = "CUT" | "FREZ" | "0";
+export type Layer = "CUT" | "FREZ" | "0" | "HOLES";
 export type FrezMode = "inner" | "outer";
 export type CornerReliefAxis = "horizontal" | "vertical";
 export type FrezNotchPosition = "start" | "end";
@@ -11,6 +11,18 @@ export type FrezNotchPosition = "start" | "end";
 export type Measurement = {
   id: string;
   amount: number;
+};
+
+export type HoleSettings = {
+  placement: "inner" | "outer";
+  orientation: "horizontal" | "vertical";
+  sideOffset: number;
+  endOffset: number;
+  length: number;
+};
+
+export type HoleData = HoleSettings & {
+  enabled: boolean;
 };
 
 export type FrezLineNotches = {
@@ -24,6 +36,7 @@ export type FrezMeasurement = Measurement & {
   spanStart?: boolean;
   /** Whether the inner frez line extends into the end-side adjacent flange area */
   spanEnd?: boolean;
+  holes?: HoleData;
 };
 
 export type FlangeReliefs = {
@@ -39,6 +52,7 @@ export type FlangeFlaps = {
 export type FlangeMeasurement = Measurement & {
   reliefs: FlangeReliefs;
   flaps: FlangeFlaps;
+  holes?: HoleData;
 };
 
 export type SideConfig = {
@@ -105,6 +119,16 @@ let measurementCounter = Date.now();
 function nextMeasurementId() {
   measurementCounter += 1;
   return `m-${measurementCounter}`;
+}
+
+export function createDefaultHoleSettings(): HoleSettings {
+  return {
+    placement: "inner",
+    orientation: "horizontal",
+    sideOffset: 25,
+    endOffset: 25,
+    length: 25,
+  };
 }
 
 export function createFlangeMeasurement(amount = 20, reliefs?: Partial<FlangeReliefs>, flaps?: Partial<FlangeFlaps>): FlangeMeasurement {
@@ -200,6 +224,23 @@ function normalizeMeasurement(value: unknown, fallbackAmount = 0): Measurement {
   };
 }
 
+export function normalizeHoleData(value: unknown): HoleData | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if ("enabled" in record) {
+      return {
+        enabled: record.enabled === true,
+        placement: record.placement === "outer" ? "outer" : "inner",
+        orientation: record.orientation === "vertical" ? "vertical" : "horizontal",
+        sideOffset: typeof record.sideOffset === "number" ? record.sideOffset : 25,
+        endOffset: typeof record.endOffset === "number" ? record.endOffset : 25,
+        length: typeof record.length === "number" ? record.length : 25,
+      };
+    }
+  }
+  return undefined;
+}
+
 export function normalizeFlangeReliefs(value: unknown, fallbackEnabled = false): FlangeReliefs {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
@@ -243,6 +284,7 @@ export function normalizeFlangeMeasurement(value: unknown): FlangeMeasurement {
       ...measurement,
       reliefs: normalizeFlangeReliefs(record.reliefs, false),
       flaps: normalizeFlangeFlaps(record.flaps, 0),
+      holes: normalizeHoleData(record.holes),
     };
   }
 
@@ -250,6 +292,7 @@ export function normalizeFlangeMeasurement(value: unknown): FlangeMeasurement {
     ...measurement,
     reliefs: normalizeFlangeReliefs(undefined, false),
     flaps: normalizeFlangeFlaps(undefined, 0),
+    holes: undefined,
   };
 }
 
@@ -280,6 +323,7 @@ export function normalizeFrezMeasurement(value: unknown): FrezMeasurement {
       notches: normalizeFrezLineNotches(record.notches, true),
       spanStart: record.spanStart === true,
       spanEnd: record.spanEnd === true,
+      holes: normalizeHoleData(record.holes),
     };
   }
 
@@ -288,6 +332,7 @@ export function normalizeFrezMeasurement(value: unknown): FrezMeasurement {
     notches: normalizeFrezLineNotches(undefined, true),
     spanStart: false,
     spanEnd: false,
+    holes: undefined,
   };
 }
 

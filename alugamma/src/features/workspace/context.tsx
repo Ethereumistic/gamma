@@ -53,6 +53,13 @@ export type ProjectSummary = {
       count2: number[];
       count3: number[];
     };
+    holeDefaults?: {
+      placement: "inner" | "outer";
+      orientation: "horizontal" | "vertical";
+      sideOffset: number;
+      endOffset: number;
+      length: number;
+    };
   };
   role: string;
   memberCount: number;

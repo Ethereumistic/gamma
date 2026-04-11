@@ -16,9 +16,10 @@ import {
   type CornerReliefAxis,
   type FrezMode,
   type FrezNotchPosition,
-  type Measurement,
   type SheetMetalModel,
   type SideKey,
+  type HoleSettings,
+  type FeatureKind,
 } from "@/features/sheet-metal/types";
 import { useWorkspace } from "@/features/workspace/context";
 
@@ -86,6 +87,8 @@ type SheetMetalContextType = {
   exportDxf: () => Promise<Id<"designs"> | null>;
   setRubberband: (value: boolean) => void;
   undo: () => void;
+  toggleHoles: (side: SideKey, featureKind: FeatureKind, index: number, settings: HoleSettings) => void;
+  removeHoles: (side: SideKey, featureKind: FeatureKind, index: number) => void;
 };
 
 const SheetMetalContext = createContext<SheetMetalContextType | null>(null);
@@ -437,6 +440,44 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     }));
   }
 
+  function toggleHoles(side: SideKey, featureKind: FeatureKind, index: number, settings: HoleSettings) {
+    patchSide(side, (draft) => {
+      const arrayKey = featureKind === "flange" ? "flanges" : "innerFrezLines";
+      const items = draft[arrayKey] as any[];
+      return {
+        ...draft,
+        [arrayKey]: items.map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          const currentlyEnabled = item.holes?.enabled ?? false;
+          return {
+            ...item,
+            holes: {
+              ...settings,
+              enabled: !currentlyEnabled,
+            },
+          };
+        }),
+      };
+    });
+  }
+
+  function removeHoles(side: SideKey, featureKind: FeatureKind, index: number) {
+    patchSide(side, (draft) => {
+      const arrayKey = featureKind === "flange" ? "flanges" : "innerFrezLines";
+      const items = draft[arrayKey] as any[];
+      return {
+        ...draft,
+        [arrayKey]: items.map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          return {
+            ...item,
+            holes: undefined,
+          };
+        }),
+      };
+    });
+  }
+
   function loadPreset(index: number) {
     const draft = buildPresetDraft(index);
     setRawModel(draft.model);
@@ -570,6 +611,8 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         exportDxf,
         setRubberband,
         undo,
+        toggleHoles,
+        removeHoles,
       }}
     >
       {children}

@@ -61,12 +61,12 @@ function focusLastFeatureInput(side: SideKey) {
 
 export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) {
   const navigate = useNavigate();
-  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, setInnerFrezSpan, undo, removeFlange, removeFrez, removeInnerFrez } = useSheetMetal();
+  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, setInnerFrezSpan, undo, removeFlange, removeFrez, removeInnerFrez, toggleHoles, removeHoles } = useSheetMetal();
   const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex, selectedInnerFrezIndex, setSelectedInnerFrezIndex } = useSelectedSide();
   const [lastQ, setLastQ] = useState(0);
   const [lastE, setLastE] = useState(0);
   const { setDesignToDelete } = useDesignDelete();
-  const { selectedProjectId } = useWorkspace();
+  const { selectedProjectId, selectedProject } = useWorkspace();
   const deleteDesign = useMutation(api.designs.deleteDesign);
   const duplicateDesign = useMutation(api.designs.duplicateDesign);
 
@@ -380,6 +380,79 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
       setLastE(now);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // H: toggle holes on focused feature
+  useHotkey("H", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const sideConfig = model.sides[selectedSide];
+    
+    let featureKind: "flange" | "innerFrez" | null = null;
+    let targetIndex: number | null = null;
+
+    if (selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length) {
+      featureKind = "flange";
+      targetIndex = selectedFlangeIndex;
+    } else if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
+      featureKind = "innerFrez";
+      targetIndex = selectedInnerFrezIndex;
+    } else if (sideConfig.flanges.length > 0) {
+      // fallback to last flange if nothing focused
+      featureKind = "flange";
+      targetIndex = sideConfig.flanges.length - 1;
+    }
+
+    if (featureKind && targetIndex !== null) {
+      // Use workspace defaults or hardcoded defaults
+      const defaults = selectedProject?.defaults?.holeDefaults ?? {
+        placement: "inner",
+        orientation: "horizontal",
+        sideOffset: 25,
+        endOffset: 25,
+        length: 25,
+      };
+      toggleHoles(selectedSide, featureKind, targetIndex, defaults);
+    }
+  }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // Shift+H: remove holes from focused feature
+  useHotkey("Shift+H", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const sideConfig = model.sides[selectedSide];
+
+    let featureKind: "flange" | "innerFrez" | null = null;
+    let targetIndex: number | null = null;
+
+    if (selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length) {
+      featureKind = "flange";
+      targetIndex = selectedFlangeIndex;
+    } else if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
+      featureKind = "innerFrez";
+      targetIndex = selectedInnerFrezIndex;
+    }
+
+    if (featureKind && targetIndex !== null) {
+      removeHoles(selectedSide, featureKind, targetIndex);
+    }
+  }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // Mod+Shift+H: remove holes from ALL features on the selected side
+  useHotkey("Mod+Shift+H", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const sideConfig = model.sides[selectedSide];
+
+    for (let i = 0; i < sideConfig.flanges.length; i++) {
+      removeHoles(selectedSide, "flange", i);
+    }
+    for (let i = 0; i < sideConfig.innerFrezLines.length; i++) {
+      removeHoles(selectedSide, "innerFrez", i);
+    }
+  });
 
   return null;
 }

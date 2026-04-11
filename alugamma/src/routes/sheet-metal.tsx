@@ -279,6 +279,7 @@ export default function SheetMetalApp() {
             <div className="flex gap-2">
               <Badge variant="cut" className="h-5 text-[10px]">CUT {countShapes(geometry.shapes, "CUT")}</Badge>
               <Badge variant="frez" className="h-5 text-[10px]">FREZ {countShapes(geometry.shapes, "FREZ")}</Badge>
+              <Badge variant="hole" className="h-5 text-[10px]">HOLES {countShapes(geometry.shapes, "HOLES")}</Badge>
               <span className="rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-0.5 font-mono text-[10px] text-muted-foreground/60">
                 {geometry.totalWidth}×{geometry.totalHeight}
               </span>

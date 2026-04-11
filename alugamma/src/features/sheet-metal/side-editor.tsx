@@ -48,7 +48,7 @@ type SideEditorProps = {
 /*  FlangeChip — horizontal inline chip (top / bottom)                */
 /* ------------------------------------------------------------------ */
 function FlangeChip({
-  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected, hasHoles
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   reliefs: { start: boolean; end: boolean };
@@ -59,6 +59,7 @@ function FlangeChip({
   onSetFlap: (pos: "start" | "end", v: number) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
+  hasHoles?: boolean;
 }) {
   const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -67,7 +68,10 @@ function FlangeChip({
 
   return (
     <div className={`${baseClass} ${stateClass}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{unifiedPosition}</span>
+      <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
+        F{unifiedPosition}
+        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
+      </span>
       <Input
         type="text" inputMode="numeric" pattern="[0-9]*"
         value={value === 0 ? "" : value.toString()}
@@ -122,7 +126,7 @@ function FlangeChip({
 /*  3-col grid: [F#  centered] [input / checkboxes stacked] [× centered] */
 /* ------------------------------------------------------------------ */
 function FlangeBlock({
-  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected, hasHoles
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   reliefs: { start: boolean; end: boolean };
@@ -133,6 +137,7 @@ function FlangeBlock({
   onSetFlap: (pos: "start" | "end", v: number) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
+  hasHoles?: boolean;
 }) {
   const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -142,7 +147,10 @@ function FlangeBlock({
   return (
     <div className={`${baseClass} ${stateClass}`}>
       {/* Col 1: label — grid items-center keeps it vertically centered */}
-      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{unifiedPosition}</span>
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{unifiedPosition}</span>
+        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
+      </div>
       {/* Col 2: input + checkboxes stacked */}
       <div className="flex flex-col gap-0.5">
         <Input
@@ -290,7 +298,7 @@ function FrezBlock({
 /*  InnerFrezChip — horizontal inline chip (top / bottom), violet      */
 /* ------------------------------------------------------------------ */
 function InnerFrezChip({
-  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected, hasHoles
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
@@ -301,6 +309,7 @@ function InnerFrezChip({
   onSetSpan: (pos: "start" | "end", v: boolean) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
+  hasHoles?: boolean;
 }) {
   const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -308,7 +317,10 @@ function InnerFrezChip({
     : "border-violet-500/20 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/10";
   return (
     <div className={`${baseClass} ${stateClass}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{unifiedPosition}</span>
+      <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-400/80">
+        Z{unifiedPosition}
+        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
+      </span>
       {/* Span-start toggle (extend into start-side flange) */}
       <button onClick={() => onSetSpan("start", !spanStart)}
         title={`Extend into ${cornerLabels[side].start} flange (QQ)`}
@@ -351,7 +363,7 @@ function InnerFrezChip({
 /*  InnerFrezBlock — left / right panels, violet                       */
 /* ------------------------------------------------------------------ */
 function InnerFrezBlock({
-  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected, hasHoles
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
@@ -362,6 +374,7 @@ function InnerFrezBlock({
   onSetSpan: (pos: "start" | "end", v: boolean) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
+  hasHoles?: boolean;
 }) {
   const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -369,7 +382,10 @@ function InnerFrezBlock({
     : "border-violet-500/20 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/10";
   return (
     <div className={`${baseClass} ${stateClass}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{unifiedPosition}</span>
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{unifiedPosition}</span>
+        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
+      </div>
       <div className="flex flex-col gap-0.5">
         <Input
           type="text" inputMode="numeric" pattern="[0-9]*"
@@ -508,6 +524,7 @@ export function SideEditor({
                         onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
                         onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
                         inputDataProps={{ "data-side": side } as any} isSelected={selectedFlangeIndex === i}
+                        hasHoles={flange.holes?.enabled}
                       />
                     );
                   } else {
@@ -524,6 +541,7 @@ export function SideEditor({
                         onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
                         inputDataProps={{ "data-side": side } as any}
                         isSelected={selectedInnerFrezIndex === i}
+                        hasHoles={frez.holes?.enabled}
                       />
                     );
                   }
@@ -617,6 +635,7 @@ export function SideEditor({
                   onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
                   inputDataProps={inputDataProps}
                   isSelected={selectedFlangeIndex === i}
+                  hasHoles={flange.holes?.enabled}
                 />
               );
             } else {
@@ -633,6 +652,7 @@ export function SideEditor({
                   onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
                   inputDataProps={inputDataProps}
                   isSelected={selectedInnerFrezIndex === i}
+                  hasHoles={frez.holes?.enabled}
                 />
               );
             }

@@ -58,6 +58,7 @@ export function buildDxf(geometry: GeometryResult, designName: string, modelConf
       "0": { color: 7 }, // white / black
       CUT: { color: 3 }, // green
       FREZ: { color: 6 }, // magenta
+      HOLES: { color: 2 }, // yellow
     },
   });
 

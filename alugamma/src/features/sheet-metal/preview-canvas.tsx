@@ -91,7 +91,12 @@ export const PreviewCanvas = forwardRef<{ centerView: () => void }, PreviewCanva
     const ordered = [...geometry.shapes].sort((left, right) => {
       if (left === hoveredLine) return 1;
       if (right === hoveredLine) return -1;
-      return left.layer === right.layer ? 0 : left.layer === "CUT" ? 1 : -1;
+      if (left.layer === right.layer) return 0;
+      if (left.layer === "CUT") return 1;
+      if (right.layer === "CUT") return -1;
+      if (left.layer === "HOLES") return 1;
+      if (right.layer === "HOLES") return -1;
+      return 0;
     });
 
     for (const shape of ordered) {
@@ -104,8 +109,8 @@ export const PreviewCanvas = forwardRef<{ centerView: () => void }, PreviewCanva
         context.strokeStyle = "#ffffff";
         context.lineWidth = 4.5;
       } else {
-        context.strokeStyle = shape.layer === "CUT" ? "#4ef08b" : "#dd4af5";
-        context.lineWidth = shape.layer === "CUT" ? 2.4 : 1.45;
+        context.strokeStyle = shape.layer === "CUT" ? "#4ef08b" : shape.layer === "HOLES" ? "#eab308" : "#dd4af5";
+        context.lineWidth = shape.layer === "CUT" ? 2.4 : shape.layer === "HOLES" ? 1.8 : 1.45;
       }
       
       context.stroke();

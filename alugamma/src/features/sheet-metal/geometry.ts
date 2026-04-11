@@ -5,6 +5,7 @@ import {
   type LineShape,
   type Layer,
   type Measurement,
+  type FlangeMeasurement,
   type SheetMetalModel,
   type SideKey,
 } from "@/features/sheet-metal/types";
@@ -368,6 +369,82 @@ function addFrezDrivenVerticalNotches(
       endEdgeNotches.push({ apexX: endTarget.apexX, apexY, shoulderX: endTarget.shoulderX });
     }
   });
+}
+
+function addHoleLines(
+  shapes: LineShape[],
+  holeData: NonNullable<FlangeMeasurement["holes"]>,
+  region: { xMin: number; xMax: number; yMin: number; yMax: number },
+  side: SideKey,
+) {
+  const { xMin, xMax, yMin, yMax } = region;
+  const { sideOffset, endOffset, length, placement, orientation } = holeData;
+
+  if (side === "top") {
+    if (orientation === "horizontal") {
+      const y = placement === "inner" ? yMin + endOffset : yMax - endOffset;
+      const lx1 = xMin + sideOffset;
+      const lx2 = xMax - sideOffset;
+      const len = Math.min(length, Math.max(0, lx2 - lx1) / 2);
+      addLine(shapes, "HOLES", lx1, y, lx1 + len, y);
+      addLine(shapes, "HOLES", lx2 - len, y, lx2, y);
+    } else {
+      const x1 = xMin + sideOffset;
+      const x2 = xMax - sideOffset;
+      const y1 = placement === "inner" ? yMin + endOffset : yMax - endOffset;
+      const y2 = placement === "inner" ? y1 + length : y1 - length;
+      addLine(shapes, "HOLES", x1, y1, x1, y2);
+      addLine(shapes, "HOLES", x2, y1, x2, y2);
+    }
+  } else if (side === "bottom") {
+    if (orientation === "horizontal") {
+      const y = placement === "inner" ? yMax - endOffset : yMin + endOffset;
+      const lx1 = xMin + sideOffset;
+      const lx2 = xMax - sideOffset;
+      const len = Math.min(length, Math.max(0, lx2 - lx1) / 2);
+      addLine(shapes, "HOLES", lx1, y, lx1 + len, y);
+      addLine(shapes, "HOLES", lx2 - len, y, lx2, y);
+    } else {
+      const x1 = xMin + sideOffset;
+      const x2 = xMax - sideOffset;
+      const y1 = placement === "inner" ? yMax - endOffset : yMin + endOffset;
+      const y2 = placement === "inner" ? y1 - length : y1 + length;
+      addLine(shapes, "HOLES", x1, y1, x1, y2);
+      addLine(shapes, "HOLES", x2, y1, x2, y2);
+    }
+  } else if (side === "left") {
+    if (orientation === "horizontal") {
+      const x = placement === "inner" ? xMax - endOffset : xMin + endOffset;
+      const y1 = yMin + sideOffset;
+      const y2 = yMax - sideOffset;
+      const len = Math.min(length, Math.max(0, y2 - y1) / 2);
+      addLine(shapes, "HOLES", x, y1, x, y1 + len);
+      addLine(shapes, "HOLES", x, y2 - len, x, y2);
+    } else {
+      const y1 = yMin + sideOffset;
+      const y2 = yMax - sideOffset;
+      const x1 = placement === "inner" ? xMax - endOffset : xMin + endOffset;
+      const x2 = placement === "inner" ? x1 - length : x1 + length;
+      addLine(shapes, "HOLES", x1, y1, x2, y1);
+      addLine(shapes, "HOLES", x1, y2, x2, y2);
+    }
+  } else if (side === "right") {
+    if (orientation === "horizontal") {
+      const x = placement === "inner" ? xMin + endOffset : xMax - endOffset;
+      const y1 = yMin + sideOffset;
+      const y2 = yMax - sideOffset;
+      const len = Math.min(length, Math.max(0, y2 - y1) / 2);
+      addLine(shapes, "HOLES", x, y1, x, y1 + len);
+      addLine(shapes, "HOLES", x, y2 - len, x, y2);
+    } else {
+      const y1 = yMin + sideOffset;
+      const y2 = yMax - sideOffset;
+      const x1 = placement === "inner" ? xMin + endOffset : xMax - endOffset;
+      const x2 = placement === "inner" ? x1 + length : x1 - length;
+      addLine(shapes, "HOLES", x1, y1, x2, y1);
+      addLine(shapes, "HOLES", x1, y2, x2, y2);
+    }
+  }
 }
 
 function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
@@ -774,6 +851,54 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
     if (outerTop > cutY1) addLine(shapes, "CUT", cutX0, cutY1, cutX0, outerTop);
   }
 
+  function processHoles(feature: FlangeMeasurement | FrezMeasurement, side: SideKey, xMin: number, xMax: number, yMin: number, yMax: number) {
+    if (feature.holes?.enabled) {
+      addHoleLines(shapes, feature.holes, { xMin, xMax, yMin, yMax }, side);
+    }
+  }
+
+  model.sides.top.flanges.forEach((flange, i) => {
+    processHoles(flange, "top", x0, x1, topFolds[i], topFolds[i] + flange.amount);
+  });
+  model.sides.bottom.flanges.forEach((flange, i) => {
+    processHoles(flange, "bottom", x0, x1, bottomFolds[i] - flange.amount, bottomFolds[i]);
+  });
+  model.sides.left.flanges.forEach((flange, i) => {
+    processHoles(flange, "left", leftFolds[i] - flange.amount, leftFolds[i], y0, y1);
+  });
+  model.sides.right.flanges.forEach((flange, i) => {
+    processHoles(flange, "right", rightFolds[i], rightFolds[i] + flange.amount, y0, y1);
+  });
+
+  {
+    let offsetAcc = 0;
+    model.sides.top.innerFrezLines.forEach((frez) => {
+      offsetAcc += frez.amount;
+      processHoles(frez, "top", x0, x1, y1 - offsetAcc, y1 - offsetAcc + frez.amount);
+    });
+  }
+  {
+    let offsetAcc = 0;
+    model.sides.bottom.innerFrezLines.forEach((frez) => {
+      offsetAcc += frez.amount;
+      processHoles(frez, "bottom", x0, x1, y0 + offsetAcc - frez.amount, y0 + offsetAcc);
+    });
+  }
+  {
+    let offsetAcc = 0;
+    model.sides.left.innerFrezLines.forEach((frez) => {
+      offsetAcc += frez.amount;
+      processHoles(frez, "left", x0 + offsetAcc - frez.amount, x0 + offsetAcc, y0, y1);
+    });
+  }
+  {
+    let offsetAcc = 0;
+    model.sides.right.innerFrezLines.forEach((frez) => {
+      offsetAcc += frez.amount;
+      processHoles(frez, "right", x1 - offsetAcc, x1 - offsetAcc + frez.amount, y0, y1);
+    });
+  }
+
   if (model.invertX) {
     shapes.forEach((shape) => {
       shape.x1 = outerRight - (shape.x1 - outerLeft);
@@ -811,12 +936,13 @@ export function computeSheetMetalGeometry(model: SheetMetalModel): GeometryResul
   const offsetResult = _computeSheetMetalGeometry(model);
 
   const frezShapes = zeroResult.shapes.filter(s => s.layer === "FREZ");
+  const holeShapes = zeroResult.shapes.filter(s => s.layer === "HOLES");
   const zeroLayerShapes = zeroResult.shapes.filter(s => s.layer === "CUT").map(s => ({ ...s, layer: "0" as Layer }));
   const cutLayerShapes = offsetResult.shapes.filter(s => s.layer === "CUT");
 
   return {
     ...offsetResult,
-    shapes: [...frezShapes, ...zeroLayerShapes, ...cutLayerShapes]
+    shapes: [...frezShapes, ...holeShapes, ...zeroLayerShapes, ...cutLayerShapes]
   };
 }
 
