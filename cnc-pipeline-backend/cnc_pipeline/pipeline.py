@@ -25,14 +25,15 @@ def run_from_contours(
     stock_bbox: dict,
     scenario: str,
     algorithm: str,
-    original_filename: str = ""
+    original_filename: str = "",
+    tool_overrides: dict | None = None,
 ) -> dict:
     from .models import Point, Contour, BBox
     from .geometry import sort_frez_outer_to_inner, sort_nearest_neighbour
     from .toolpath import generate_toolpath
     from .gcode_writer import GCodeWriter
     from .validator import validate
-    from .config import SCENARIOS, LAYER_FREZ, LAYER_FREZ_135
+    from .config import SCENARIOS, LAYER_FREZ, LAYER_FREZ_135, build_tools_dict
 
     bbox = BBox(
         stock_bbox["min_x"], stock_bbox["min_y"],
@@ -49,6 +50,7 @@ def run_from_contours(
             for rc in raw_contours
         ]
 
+    tools = build_tools_dict(tool_overrides)
     toolpath_sequence = SCENARIOS.get(scenario, [])
     
     toolpath_blocks = []
@@ -90,7 +92,7 @@ def run_from_contours(
                 })
                 seq_index += 1
 
-        moves, _ = generate_toolpath(ordered, tool_num, layer_name, start_seq_index=start_idx)
+        moves, _ = generate_toolpath(ordered, tools[tool_num], layer_name, start_seq_index=start_idx)
         toolpath_blocks.append((tool_num, layer_name, moves))
 
     if not toolpath_blocks:
@@ -125,7 +127,7 @@ def run_from_contours(
     import os
     stem = os.path.splitext(os.path.basename(original_filename or "regenerated"))[0]
     writer = GCodeWriter(program_name=stem)
-    nc_text, line_to_segment_map = writer.write(toolpath_blocks, bbox)
+    nc_text, line_to_segment_map = writer.write(toolpath_blocks, bbox, tools=tools)
 
     validation = validate(nc_text, [t for t, _, _ in toolpath_blocks], bbox)
     warnings.extend(validation.warnings)
@@ -156,7 +158,7 @@ def run_from_contours(
     }
 
 
-def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "juggler_gemini") -> PipelineResult:
+def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "juggler_gemini", tool_overrides: dict | None = None) -> PipelineResult:
     """
     Full pipeline: DXF file → PipelineResult containing NC text.
     Raises ValueError for unrecoverable errors (missing CUT layer, etc.).
@@ -222,7 +224,8 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
         stock_bbox=stock_bbox_serial,
         scenario=scenario_name,
         algorithm=algorithm,
-        original_filename=dxf_path if not original_filename else original_filename
+        original_filename=dxf_path if not original_filename else original_filename,
+        tool_overrides=tool_overrides,
     )
     result["warnings"].extend(warnings)
 

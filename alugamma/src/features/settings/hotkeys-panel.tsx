@@ -164,6 +164,18 @@ export function HotkeysPanel() {
             Side selection hotkeys only work when not typing in an input field.
           </p>
           <div className="space-y-1">
+            <HotkeyRow
+              shortcut={
+                <EnhancedKbdGroup>
+                  <EnhancedKbd>{platformSymbol}</EnhancedKbd>
+                  <PlusSeparator />
+                  <EnhancedKbd>1</EnhancedKbd>
+                  <span className="mx-1 text-xs text-muted-foreground/40">to</span>
+                  <EnhancedKbd>9</EnhancedKbd>
+                </EnhancedKbdGroup>
+              }
+              action="Select feature #1..9 (F or Z)"
+            />
             <HotkeyRow shortcut={<EnhancedKbd>W</EnhancedKbd>} action="Select Top side" />
             <HotkeyRow shortcut={<EnhancedKbd>A</EnhancedKbd>} action="Select Left side" />
             <HotkeyRow shortcut={<EnhancedKbd>S</EnhancedKbd>} action="Select Bottom side" />

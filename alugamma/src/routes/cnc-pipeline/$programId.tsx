@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { regenerate } from "@/features/cnc-pipeline/api";
 import type { GeometryResponse } from "@/features/cnc-pipeline/types";
+import { useWorkspace } from "@/features/workspace/context";
 
 const ALGORITHMS = [
   { value: "juggler_gemini", label: "Juggler G", desc: "Shapely-powered optimal path selection 4" },
@@ -41,6 +42,14 @@ export default function CNCProgramViewerPage() {
   const navigate = useNavigate();
   const program = useQuery(api.nc_programs.getById, { programId: programId as Id<"nc_programs"> });
   const updateNcProgram = useMutation(api.nc_programs.updateNcProgram);
+
+  // Fetch CNC tool overrides for the current org
+  const { selectedOrganizationId } = useWorkspace();
+  const cncSettings = useQuery(
+    api.cnc_settings.getByOrganization,
+    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip"
+  );
+  const toolOverrides = cncSettings?.toolOverrides;
 
   const [editName, setEditName] = useState<string>("");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string>("");
@@ -184,6 +193,7 @@ export default function CNCProgramViewerPage() {
         stock_bbox: program.stockBbox,
         scenario: program.scenario,
         algorithm: newAlgorithm,
+        tool_overrides: toolOverrides,
       });
 
       setCurrentGeometry(result.geometry_data);

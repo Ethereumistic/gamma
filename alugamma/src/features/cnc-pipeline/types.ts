@@ -1,5 +1,7 @@
 // src/features/cnc-pipeline/types.ts
 
+import type { Id } from "../../../convex/_generated/dataModel";
+
 export type Scenario =
   | "most_common"
   | "common"
@@ -77,6 +79,17 @@ export interface RegenerateResponse {
   nc_text: string
   contours_by_layer: Record<string, StoredContour[]>
   stock_bbox: StockBbox
+}
+
+// Summary shape returned by the listByProject query (used in sidebar)
+export interface NcProgramSummary {
+  _id: Id<"nc_programs">;
+  name: string;
+  algorithm: string;
+  scenario: string;
+  isStarred: boolean;
+  updatedAt: number;
+  createdAt: number;
 }
 
 // Page-level state machine

@@ -27,6 +27,17 @@ export const flangeReliefsValidator = v.object({
   start: v.boolean(),
   end: v.boolean(),
 });
+export const holeDataValidator = v.object({
+  enabled: v.boolean(),
+  placement: v.union(v.literal("inner"), v.literal("outer")),
+  orientation: v.union(v.literal("horizontal"), v.literal("vertical")),
+  sideOffset: v.number(),
+  endOffset: v.number(),
+  length: v.number(),
+  line1Enabled: v.optional(v.boolean()),
+  line2Enabled: v.optional(v.boolean()),
+});
+
 export const flangeMeasurementValidator = v.union(
   measurementValidator,
   v.object({
@@ -39,6 +50,7 @@ export const flangeMeasurementValidator = v.union(
         end: v.optional(v.number()),
       }),
     ),
+    holes: v.optional(holeDataValidator),
   }),
 );
 export const frezMeasurementValidator = v.union(
@@ -49,6 +61,7 @@ export const frezMeasurementValidator = v.union(
     notches: frezLineNotchesValidator,
     spanStart: v.optional(v.boolean()),
     spanEnd: v.optional(v.boolean()),
+    holes: v.optional(holeDataValidator),
   }),
 );
 
@@ -66,6 +79,13 @@ export const projectDefaultsValidator = v.object({
     count2: v.array(v.number()),
     count3: v.array(v.number()),
   }),
+  holeDefaults: v.optional(v.object({
+    placement: v.union(v.literal("inner"), v.literal("outer")),
+    orientation: v.union(v.literal("horizontal"), v.literal("vertical")),
+    sideOffset: v.number(),
+    endOffset: v.number(),
+    length: v.number(),
+  })),
 });
 
 export const sideConfigValidator = v.object({

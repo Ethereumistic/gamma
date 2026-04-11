@@ -1,8 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
+export type SettingsTab = "hotkeys" | "cnc";
+
 type SettingsContextValue = {
   settingsOpen: boolean;
-  openSettings: (tab?: "hotkeys") => void;
+  activeTab: SettingsTab;
+  openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
 };
 
@@ -18,8 +21,10 @@ export function useSettings() {
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("cnc");
 
-  const openSettings = (_tab?: "hotkeys") => {
+  const openSettings = (tab?: SettingsTab) => {
+    setActiveTab(tab ?? "cnc");
     setSettingsOpen(true);
   };
 
@@ -28,7 +33,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SettingsContext.Provider value={{ settingsOpen, openSettings, closeSettings }}>
+    <SettingsContext.Provider value={{ settingsOpen, activeTab, openSettings, closeSettings }}>
       {children}
     </SettingsContext.Provider>
   );

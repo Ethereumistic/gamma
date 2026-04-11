@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../convex/_generated/api"
 import { useWorkspace } from "@/features/workspace/context"
 import { useNavigate } from "react-router-dom"
@@ -48,6 +48,13 @@ export default function CNCPipelinePage() {
   const navigate = useNavigate()
   const { selectedProjectId, selectedOrganizationId } = useWorkspace()
   const saveNcProgram = useMutation(api.nc_programs.saveNcProgram)
+
+  // Fetch CNC tool overrides for the current org
+  const cncSettings = useQuery(
+    api.cnc_settings.getByOrganization,
+    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip"
+  )
+  const toolOverrides = cncSettings?.toolOverrides
 
   const { state, upload, generateNC, reset } = useGenerate()
 
@@ -158,7 +165,7 @@ export default function CNCPipelinePage() {
     lastDxfFileRef.current = file
     setDxfDisplayName(file.name.replace(/\.dxf$/i, ""))
     resetPlayback()
-    await upload(file, algorithm)
+    await upload(file, algorithm, toolOverrides)
   }
 
   const assembledFilename = useMemo(() => {
@@ -231,7 +238,7 @@ export default function CNCPipelinePage() {
       prevAlgorithmRef.current = algorithm
       if ((state.status === "done" || state.status === "ready") && lastDxfFileRef.current) {
         resetPlayback()
-        upload(lastDxfFileRef.current, algorithm)
+        upload(lastDxfFileRef.current, algorithm, toolOverrides)
       }
     }
   }, [algorithm, state.status, upload, resetPlayback])

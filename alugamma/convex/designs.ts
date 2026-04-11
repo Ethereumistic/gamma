@@ -41,6 +41,25 @@ function normalizeMeasurementEntry(value: unknown, fallbackAmount: number) {
     };
 }
 
+function normalizeHoleDataEntry(value: unknown) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+        const record = value as Record<string, unknown>;
+        if (record.enabled === true) {
+            return {
+                enabled: true,
+                placement: record.placement === "outer" ? "outer" : "inner",
+                orientation: record.orientation === "vertical" ? "vertical" : "horizontal",
+                sideOffset: typeof record.sideOffset === "number" ? record.sideOffset : 25,
+                endOffset: typeof record.endOffset === "number" ? record.endOffset : 25,
+                length: typeof record.length === "number" ? record.length : 25,
+                ...(typeof record.line1Enabled === "boolean" ? { line1Enabled: record.line1Enabled } : {}),
+                ...(typeof record.line2Enabled === "boolean" ? { line2Enabled: record.line2Enabled } : {}),
+            };
+        }
+    }
+    return undefined;
+}
+
 function normalizeFlangeMeasurementEntry(value: unknown) {
     const measurement = normalizeMeasurementEntry(value, 20);
 
@@ -52,6 +71,7 @@ function normalizeFlangeMeasurementEntry(value: unknown) {
         if (reliefs && typeof reliefs === "object" && !Array.isArray(reliefs)) {
             const reliefRecord = reliefs as Record<string, unknown>;
             const flapRecord = typeof flaps === "object" && flaps !== null ? (flaps as Record<string, unknown>) : {};
+            const holes = normalizeHoleDataEntry(record.holes);
             return {
                 ...measurement,
                 reliefs: {
@@ -62,6 +82,7 @@ function normalizeFlangeMeasurementEntry(value: unknown) {
                     start: typeof flapRecord.start === "number" ? flapRecord.start : 0,
                     end: typeof flapRecord.end === "number" ? flapRecord.end : 0,
                 },
+                ...(holes ? { holes } : {}),
             };
         }
     }
@@ -88,6 +109,7 @@ function normalizeFrezMeasurementEntry(value: unknown) {
 
         if (notches && typeof notches === "object" && !Array.isArray(notches)) {
             const notchRecord = notches as Record<string, unknown>;
+            const holes = normalizeHoleDataEntry(record.holes);
             return {
                 ...measurement,
                 notches: {
@@ -96,6 +118,7 @@ function normalizeFrezMeasurementEntry(value: unknown) {
                 },
                 ...(record.spanStart === true ? { spanStart: true } : {}),
                 ...(record.spanEnd === true   ? { spanEnd: true }   : {}),
+                ...(holes ? { holes } : {}),
             };
         }
     }

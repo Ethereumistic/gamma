@@ -2,13 +2,14 @@
 import unittest
 from cnc_pipeline.models import Point, Contour, Move
 from cnc_pipeline.toolpath import generate_toolpath
+from cnc_pipeline.config import TOOLS
 
 class TestToolpath(unittest.TestCase):
     def test_single_contour(self):
         c1 = Contour([Point(0,0), Point(10,0), Point(10,10), Point(0,10)], is_closed=True)
         
         # Tool 9, layer "FREZ"
-        moves = generate_toolpath([c1], 9, "FREZ")
+        moves, _ = generate_toolpath([c1], TOOLS[9], "FREZ")
         
         # Structure should be:
         # Rapid (0,0) -> Plunge -> 4 cuts -> Retract
@@ -33,7 +34,7 @@ class TestToolpath(unittest.TestCase):
         c1 = Contour([Point(0,0), Point(10,0)], is_closed=False)
         c2 = Contour([Point(20,20), Point(30,20)], is_closed=False)
         
-        moves = generate_toolpath([c1, c2], 7, "CUT")
+        moves, _ = generate_toolpath([c1, c2], TOOLS[7], "CUT")
         
         # C1: Rapid(0,0), Plunge, Cut, Retract (4)
         # C2: Rapid(20,20), RapidZ(5.0), Plunge, Cut, Retract (5)

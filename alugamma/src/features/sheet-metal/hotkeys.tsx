@@ -9,7 +9,7 @@ import { useSheetMetal } from "./context";
 import { useSelectedSide } from "./selected-side-context";
 import { useDesignDelete } from "@/features/workspace/design-delete-context";
 import { useWorkspace } from "@/features/workspace/context";
-import type { SideKey } from "./types";
+import { type SideKey, type FeatureRef, getFeatureByPosition, getUnifiedFeatures } from "./types";
 
 type SheetMetalHotkeysProps = {
   previewCanvasRef?: React.RefObject<{ centerView: () => void }>;
@@ -39,17 +39,17 @@ function getFlangeInputs(side: SideKey) {
   return document.querySelectorAll<HTMLInputElement>(`input[data-side="${side}"]`);
 }
 
-function focusFlangeInput(side: SideKey, index: number) {
+function focusFeatureInput(side: SideKey, position: number) {
   setTimeout(() => {
     const inputs = getFlangeInputs(side);
-    if (inputs.length > index) {
-      inputs[index].focus();
-      inputs[index].select();
+    if (inputs.length > position - 1) {
+      inputs[position - 1].focus();
+      inputs[position - 1].select();
     }
   }, 0);
 }
 
-function focusLastFlangeInput(side: SideKey) {
+function focusLastFeatureInput(side: SideKey) {
   setTimeout(() => {
     const inputs = getFlangeInputs(side);
     if (inputs.length > 0) {
@@ -61,17 +61,49 @@ function focusLastFlangeInput(side: SideKey) {
 
 export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) {
   const navigate = useNavigate();
-  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, setInnerFrezSpan, undo, removeFlange, removeFrez, removeInnerFrez } = useSheetMetal();
-  const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex, selectedInnerFrezIndex, setSelectedInnerFrezIndex } = useSelectedSide();
+  const { saveDesign, exportDxf, startNewDesign, model, selectedDesignId, setRubberband, addFlange, addFrez, addInnerFrez, setFlangeRelief, setFlangeFlap, setInnerFrezNotch, setInnerFrezSpan, undo, removeFlange, removeFrez, removeInnerFrez, toggleHoles, removeHoles, updateHoleField, setHoleLineEnabled } = useSheetMetal();
+  const { selectedSide, setSelectedSide, selectedFlangeIndex, setSelectedFlangeIndex, selectedInnerFrezIndex, setSelectedInnerFrezIndex, selectedHolesIndex, setSelectedHolesIndex } = useSelectedSide();
   const [lastQ, setLastQ] = useState(0);
   const [lastE, setLastE] = useState(0);
+  const [lastH, setLastH] = useState(0);
   const { setDesignToDelete } = useDesignDelete();
-  const { selectedProjectId } = useWorkspace();
+  const { selectedProjectId, selectedProject } = useWorkspace();
   const deleteDesign = useMutation(api.designs.deleteDesign);
   const duplicateDesign = useMutation(api.designs.duplicateDesign);
 
   const isSideSelected = selectedSide !== null;
   const canSave = selectedProjectId !== null;
+
+  /** Helper: get the focused feature's kind and index, including holes detection */
+  function getFocusedFeature(): { featureKind: "flange" | "innerFrez"; targetIndex: number; isHolesFocused: boolean } | null {
+    if (!isSideSelected) return null;
+    const sideConfig = model.sides[selectedSide];
+
+    // Check if a holes chip is focused
+    if (selectedHolesIndex !== null) {
+      // Determine which parent feature the holes belong to
+      if (selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length && sideConfig.flanges[selectedFlangeIndex].holes?.enabled) {
+        return { featureKind: "flange", targetIndex: selectedFlangeIndex, isHolesFocused: true };
+      }
+      if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length && sideConfig.innerFrezLines[selectedInnerFrezIndex].holes?.enabled) {
+        return { featureKind: "innerFrez", targetIndex: selectedInnerFrezIndex, isHolesFocused: true };
+      }
+    }
+
+    // Regular feature focus
+    if (selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length) {
+      return { featureKind: "flange", targetIndex: selectedFlangeIndex, isHolesFocused: false };
+    }
+    if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
+      return { featureKind: "innerFrez", targetIndex: selectedInnerFrezIndex, isHolesFocused: false };
+    }
+
+    // Fallback to last flange
+    if (sideConfig.flanges.length > 0) {
+      return { featureKind: "flange", targetIndex: sideConfig.flanges.length - 1, isHolesFocused: false };
+    }
+    return null;
+  }
 
   useHotkey("Mod+S", (e) => {
     e.preventDefault();
@@ -130,7 +162,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     await exportDxf();
   });
 
-  // Mod+1–9: jump focus to a specific flange by index
+  // Mod+1–9: jump focus to a specific feature by unified position (including holes chips)
   const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
   for (let i = 0; i < numbers.length; i++) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -139,22 +171,50 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
       e.preventDefault();
       if (isSideSelected) {
         const sideConfig = model.sides[selectedSide];
-        if (sideConfig.flanges.length > i) {
-          flushSync(() => setSelectedFlangeIndex(i));
-          focusFlangeInput(selectedSide, i);
+        const feature = getFeatureByPosition(sideConfig, i + 1);
+        if (feature) {
+          flushSync(() => {
+            if (feature.kind === "flange") {
+              setSelectedFlangeIndex(feature.arrayIndex);
+              setSelectedInnerFrezIndex(null);
+              setSelectedHolesIndex(null);
+            } else if (feature.kind === "innerFrez") {
+              setSelectedInnerFrezIndex(feature.arrayIndex);
+              setSelectedFlangeIndex(null);
+              setSelectedHolesIndex(null);
+            } else if (feature.kind === "holes" && feature.parentKind) {
+              setSelectedHolesIndex(feature.arrayIndex);
+              if (feature.parentKind === "flange") {
+                setSelectedFlangeIndex(feature.arrayIndex);
+                setSelectedInnerFrezIndex(null);
+              } else {
+                setSelectedInnerFrezIndex(feature.arrayIndex);
+                setSelectedFlangeIndex(null);
+              }
+            }
+          });
+          focusFeatureInput(selectedSide, feature.position);
         }
       }
     });
   }
 
   // WASD: select side, auto-focus last flange input if flanges exist.
-  // No ignoreInputs:false — the library's default behaviour suppresses single-key hotkeys
-  // inside any text input, which is exactly what we want: WASD types freely in the design
-  // name field and other plain inputs. Press Escape to blur a flange input first, then WASD.
   const handleSideSelect = (side: SideKey) => {
-    const count = model.sides[side].flanges.length;
+    const sideConfig = model.sides[side];
+    const unified = getUnifiedFeatures(sideConfig);
     setSelectedSide(side);
-    if (count > 0) { setSelectedFlangeIndex(count - 1); focusLastFlangeInput(side); }
+    if (unified.length > 0) { 
+        const last = unified[unified.length - 1];
+        if (last.kind === "flange") { setSelectedFlangeIndex(last.arrayIndex); setSelectedInnerFrezIndex(null); setSelectedHolesIndex(null); }
+        else if (last.kind === "innerFrez") { setSelectedInnerFrezIndex(last.arrayIndex); setSelectedFlangeIndex(null); setSelectedHolesIndex(null); }
+        else if (last.kind === "holes" && last.parentKind) {
+          setSelectedHolesIndex(last.arrayIndex);
+          if (last.parentKind === "flange") { setSelectedFlangeIndex(last.arrayIndex); setSelectedInnerFrezIndex(null); }
+          else { setSelectedInnerFrezIndex(last.arrayIndex); setSelectedFlangeIndex(null); }
+        }
+        focusLastFeatureInput(side); 
+    }
   };
 
   useHotkey("W", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("top"); }, { ignoreInputs: false });
@@ -186,8 +246,9 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
         addFlange(selectedSide);
         setSelectedFlangeIndex(newIndex);
         setSelectedInnerFrezIndex(null);
+        setSelectedHolesIndex(null);
       });
-      focusLastFlangeInput(selectedSide);
+      focusLastFeatureInput(selectedSide);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
@@ -202,8 +263,9 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
         addInnerFrez(selectedSide);
         setSelectedInnerFrezIndex(newIndex);
         setSelectedFlangeIndex(null);
+        setSelectedHolesIndex(null);
       });
-      focusLastFlangeInput(selectedSide);
+      focusLastFeatureInput(selectedSide);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
@@ -223,7 +285,12 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
       if (newCount > 0) {
         const nextIndex = Math.min(targetIndex, newCount - 1);
         setSelectedFlangeIndex(nextIndex);
-        focusFlangeInput(selectedSide, nextIndex);
+        const position = getUnifiedFeatures(sideConfig).find((f: FeatureRef) => f.kind === "flange" && f.arrayIndex === nextIndex)?.position;
+        if (position) {
+          const shift = targetIndex > nextIndex ? 0 : 1;
+          const newPos = Math.max(1, position - shift);
+          focusFeatureInput(selectedSide, newPos);
+        }
       } else {
         setSelectedFlangeIndex(null);
       }
@@ -261,40 +328,51 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   });
 
-  // Q: toggle start behaviour on focused inner frez, OR start relief on focused flange.
-  //   Single Q on inner frez  → toggle notch.start (V-notch); enabling it clears spanStart
-  //   Double Q on inner frez  → toggle spanStart (extend line); enabling it clears notch.start
-  //   notch.start and spanStart are mutually exclusive.
+  // Q: context-dependent:
+  //   When holes chip focused → toggle line1Enabled
+  //   On inner frez → single: toggle notch.start, double: toggle spanStart
+  //   On flange → single: toggle relief.start, double: focus flap input
   useHotkey("Q", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (!isSideSelected) return;
+    const focused = getFocusedFeature();
+    if (!focused) return;
     const sideConfig = model.sides[selectedSide];
 
-    if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
-      const frezLine = sideConfig.innerFrezLines[selectedInnerFrezIndex];
+    // HOLES CHIP FOCUSED → toggle line1Enabled
+    if (focused.isHolesFocused) {
+      const holes = focused.featureKind === "flange"
+        ? sideConfig.flanges[focused.targetIndex]?.holes
+        : sideConfig.innerFrezLines[focused.targetIndex]?.holes;
+      if (holes?.enabled) {
+        const current = holes.line1Enabled !== false;
+        setHoleLineEnabled(selectedSide, focused.featureKind, focused.targetIndex, "line1Enabled", !current);
+      }
+      return;
+    }
+
+    if (focused.featureKind === "innerFrez") {
+      const frezLine = sideConfig.innerFrezLines[focused.targetIndex];
       const now = Date.now();
       if (now - lastQ < 400) {
         // Double Q → toggle spanStart; enabling it forces notch.start off
         const newSpan = !frezLine.spanStart;
-        setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "start", newSpan);
-        if (newSpan) setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "start", false);
+        setInnerFrezSpan(selectedSide, focused.targetIndex, "start", newSpan);
+        if (newSpan) setInnerFrezNotch(selectedSide, focused.targetIndex, "start", false);
         setLastQ(0);
       } else {
         // Single Q → toggle notch.start; enabling it forces spanStart off
         const newNotch = !frezLine.notches.start;
-        setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "start", newNotch);
-        if (newNotch) setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "start", false);
+        setInnerFrezNotch(selectedSide, focused.targetIndex, "start", newNotch);
+        if (newNotch) setInnerFrezSpan(selectedSide, focused.targetIndex, "start", false);
         setLastQ(now);
       }
       return;
     }
 
     // Fallback: flange relief (existing double-tap logic)
-    const targetIndex =
-      selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
-        ? selectedFlangeIndex
-        : sideConfig.flanges.length - 1;
+    const targetIndex = focused.targetIndex;
     const now = Date.now();
     if (now - lastQ < 400 && targetIndex >= 0) {
       if (!sideConfig.flanges[targetIndex].reliefs.start) {
@@ -311,40 +389,51 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
-  // E: toggle end behaviour on focused inner frez, OR end relief on focused flange.
-  //   Single E on inner frez  → toggle notch.end (V-notch); enabling it clears spanEnd
-  //   Double E on inner frez  → toggle spanEnd (extend line); enabling it clears notch.end
-  //   notch.end and spanEnd are mutually exclusive.
+  // E: context-dependent:
+  //   When holes chip focused → toggle line2Enabled
+  //   On inner frez → single: toggle notch.end, double: toggle spanEnd
+  //   On flange → single: toggle relief.end, double: focus flap input
   useHotkey("E", (e) => {
     if (isPlainTextInput(e)) return;
     e.preventDefault();
     if (!isSideSelected) return;
+    const focused = getFocusedFeature();
+    if (!focused) return;
     const sideConfig = model.sides[selectedSide];
 
-    if (selectedInnerFrezIndex !== null && selectedInnerFrezIndex < sideConfig.innerFrezLines.length) {
-      const frezLine = sideConfig.innerFrezLines[selectedInnerFrezIndex];
+    // HOLES CHIP FOCUSED → toggle line2Enabled
+    if (focused.isHolesFocused) {
+      const holes = focused.featureKind === "flange"
+        ? sideConfig.flanges[focused.targetIndex]?.holes
+        : sideConfig.innerFrezLines[focused.targetIndex]?.holes;
+      if (holes?.enabled) {
+        const current = holes.line2Enabled !== false;
+        setHoleLineEnabled(selectedSide, focused.featureKind, focused.targetIndex, "line2Enabled", !current);
+      }
+      return;
+    }
+
+    if (focused.featureKind === "innerFrez") {
+      const frezLine = sideConfig.innerFrezLines[focused.targetIndex];
       const now = Date.now();
       if (now - lastE < 400) {
         // Double E → toggle spanEnd; enabling it forces notch.end off
         const newSpan = !frezLine.spanEnd;
-        setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "end", newSpan);
-        if (newSpan) setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "end", false);
+        setInnerFrezSpan(selectedSide, focused.targetIndex, "end", newSpan);
+        if (newSpan) setInnerFrezNotch(selectedSide, focused.targetIndex, "end", false);
         setLastE(0);
       } else {
         // Single E → toggle notch.end; enabling it forces spanEnd off
         const newNotch = !frezLine.notches.end;
-        setInnerFrezNotch(selectedSide, selectedInnerFrezIndex, "end", newNotch);
-        if (newNotch) setInnerFrezSpan(selectedSide, selectedInnerFrezIndex, "end", false);
+        setInnerFrezNotch(selectedSide, focused.targetIndex, "end", newNotch);
+        if (newNotch) setInnerFrezSpan(selectedSide, focused.targetIndex, "end", false);
         setLastE(now);
       }
       return;
     }
 
     // Fallback: flange relief (existing double-tap logic)
-    const targetIndex =
-      selectedFlangeIndex !== null && selectedFlangeIndex < sideConfig.flanges.length
-        ? selectedFlangeIndex
-        : sideConfig.flanges.length - 1;
+    const targetIndex = focused.targetIndex;
     const now = Date.now();
     if (now - lastE < 400 && targetIndex >= 0) {
       if (!sideConfig.flanges[targetIndex].reliefs.end) {
@@ -358,6 +447,122 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
     } else {
       if (targetIndex >= 0) setFlangeRelief(selectedSide, targetIndex, "end", !sideConfig.flanges[targetIndex].reliefs.end);
       setLastE(now);
+    }
+  }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // H: toggle holes on focused feature. Double H (400ms) → set length to 0.001 (real holes mode)
+  useHotkey("H", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const focused = getFocusedFeature();
+    if (!focused) return;
+
+    const sideConfig = model.sides[selectedSide];
+    const { featureKind, targetIndex } = focused;
+
+    // Check if holes already exist on this feature
+    const feature = featureKind === "flange"
+      ? sideConfig.flanges[targetIndex]
+      : sideConfig.innerFrezLines[targetIndex];
+
+    if (feature?.holes?.enabled) {
+      // Holes already enabled — check for double tap
+      const now = Date.now();
+      if (now - lastH < 400) {
+        // Double H → set length to 0.001 (real holes mode)
+        updateHoleField(selectedSide, featureKind, targetIndex, "length", 0.001);
+        setLastH(0);
+      } else {
+        // Single H on already-enabled holes → focus the holes chip
+        setSelectedHolesIndex(targetIndex);
+        setLastH(now);
+      }
+      return;
+    }
+
+    // No holes yet → toggle holes on with defaults
+    const defaults = selectedProject?.defaults?.holeDefaults ?? {
+      placement: "inner",
+      orientation: "horizontal",
+      sideOffset: 25,
+      endOffset: 25,
+      length: 25,
+    };
+    toggleHoles(selectedSide, featureKind, targetIndex, defaults);
+    setSelectedHolesIndex(targetIndex);
+    setLastH(Date.now());
+    // Focus the S (sideOffset) input of the newly created holes chip
+    setTimeout(() => {
+      const el = document.querySelector<HTMLInputElement>(`input[data-holes-s="${featureKind}-${targetIndex}"]`);
+      if (el) { el.focus(); el.select(); }
+    }, 0);
+  }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // Shift+H: remove holes from focused feature
+  useHotkey("Shift+H", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+
+    const focused = getFocusedFeature();
+    if (focused) {
+      removeHoles(selectedSide, focused.featureKind, focused.targetIndex);
+      setSelectedHolesIndex(null);
+    }
+  }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // Mod+Shift+H: remove holes from ALL features on the selected side
+  useHotkey("Mod+Shift+H", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const sideConfig = model.sides[selectedSide];
+
+    for (let i = 0; i < sideConfig.flanges.length; i++) {
+      removeHoles(selectedSide, "flange", i);
+    }
+    for (let i = 0; i < sideConfig.innerFrezLines.length; i++) {
+      removeHoles(selectedSide, "innerFrez", i);
+    }
+    setSelectedHolesIndex(null);
+  });
+
+  // V: toggle orientation (horizontal ↔ vertical) on focused holes chip
+  useHotkey("V", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const focused = getFocusedFeature();
+    if (!focused || !focused.isHolesFocused) return;
+
+    const sideConfig = model.sides[selectedSide];
+    const feature = focused.featureKind === "flange"
+      ? sideConfig.flanges[focused.targetIndex]
+      : sideConfig.innerFrezLines[focused.targetIndex];
+
+    if (feature?.holes?.enabled) {
+      const newOrientation = feature.holes.orientation === "horizontal" ? "vertical" : "horizontal";
+      updateHoleField(selectedSide, focused.featureKind, focused.targetIndex, "orientation", newOrientation);
+    }
+  }, { ignoreInputs: false, enabled: isSideSelected });
+
+  // O: toggle placement (inner ↔ outer) on focused holes chip
+  useHotkey("O", (e) => {
+    if (isPlainTextInput(e)) return;
+    e.preventDefault();
+    if (!isSideSelected) return;
+    const focused = getFocusedFeature();
+    if (!focused || !focused.isHolesFocused) return;
+
+    const sideConfig = model.sides[selectedSide];
+    const feature = focused.featureKind === "flange"
+      ? sideConfig.flanges[focused.targetIndex]
+      : sideConfig.innerFrezLines[focused.targetIndex];
+
+    if (feature?.holes?.enabled) {
+      const newPlacement = feature.holes.placement === "inner" ? "outer" : "inner";
+      updateHoleField(selectedSide, focused.featureKind, focused.targetIndex, "placement", newPlacement);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 

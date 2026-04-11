@@ -95,6 +95,12 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_updatedAt", ["projectId", "updatedAt"]),
+  cnc_settings: defineTable({
+    organizationId: v.id("organizations"),
+    toolOverrides: v.any(),   // sparse JSON: { "7": { "layers": { "CUT": { "depth": -4.4 } } } }
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }).index("by_organization", ["organizationId"]),
   nc_programs: defineTable({
     organizationId: v.id("organizations"),
     projectId: v.id("projects"),

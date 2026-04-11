@@ -16,9 +16,11 @@ import {
   type CornerReliefAxis,
   type FrezMode,
   type FrezNotchPosition,
-  type Measurement,
   type SheetMetalModel,
   type SideKey,
+  type HoleSettings,
+  type HoleData,
+  type FeatureKind,
 } from "@/features/sheet-metal/types";
 import { useWorkspace } from "@/features/workspace/context";
 
@@ -86,6 +88,10 @@ type SheetMetalContextType = {
   exportDxf: () => Promise<Id<"designs"> | null>;
   setRubberband: (value: boolean) => void;
   undo: () => void;
+  toggleHoles: (side: SideKey, featureKind: FeatureKind, index: number, settings: HoleSettings) => void;
+  removeHoles: (side: SideKey, featureKind: FeatureKind, index: number) => void;
+  updateHoleField: (side: SideKey, featureKind: FeatureKind, index: number, field: keyof HoleSettings, value: number | string) => void;
+  setHoleLineEnabled: (side: SideKey, featureKind: FeatureKind, index: number, line: "line1Enabled" | "line2Enabled", value: boolean) => void;
 };
 
 const SheetMetalContext = createContext<SheetMetalContextType | null>(null);
@@ -437,6 +443,85 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     }));
   }
 
+  function toggleHoles(side: SideKey, featureKind: FeatureKind, index: number, settings: HoleSettings) {
+    patchSide(side, (draft) => {
+      const arrayKey = featureKind === "flange" ? "flanges" : "innerFrezLines";
+      const items = draft[arrayKey] as any[];
+      return {
+        ...draft,
+        [arrayKey]: items.map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          const currentlyEnabled = item.holes?.enabled ?? false;
+          return {
+            ...item,
+            holes: {
+              ...settings,
+              enabled: !currentlyEnabled,
+            },
+          };
+        }),
+      };
+    });
+  }
+
+  function removeHoles(side: SideKey, featureKind: FeatureKind, index: number) {
+    patchSide(side, (draft) => {
+      const arrayKey = featureKind === "flange" ? "flanges" : "innerFrezLines";
+      const items = draft[arrayKey] as any[];
+      return {
+        ...draft,
+        [arrayKey]: items.map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          return {
+            ...item,
+            holes: undefined,
+          };
+        }),
+      };
+    });
+  }
+
+  function updateHoleField(side: SideKey, featureKind: FeatureKind, index: number, field: keyof HoleSettings, value: number | string) {
+    const numericFields: (keyof HoleSettings)[] = ["sideOffset", "endOffset", "length"];
+    patchSide(side, (draft) => {
+      const arrayKey = featureKind === "flange" ? "flanges" : "innerFrezLines";
+      const items = draft[arrayKey] as any[];
+      return {
+        ...draft,
+        [arrayKey]: items.map((item, itemIndex) => {
+          if (itemIndex !== index || !item.holes?.enabled) return item;
+          return {
+            ...item,
+            holes: {
+              ...item.holes,
+              [field]: numericFields.includes(field) ? (typeof value === "string" ? Number(value) || 0 : value) : value,
+            },
+          };
+        }),
+      };
+    });
+  }
+
+  function setHoleLineEnabled(side: SideKey, featureKind: FeatureKind, index: number, line: "line1Enabled" | "line2Enabled", value: boolean) {
+    patchSide(side, (draft) => {
+      const arrayKey = featureKind === "flange" ? "flanges" : "innerFrezLines";
+      const items = draft[arrayKey] as any[];
+      return {
+        ...draft,
+        [arrayKey]: items.map((item, itemIndex) => {
+          if (itemIndex !== index || !item.holes?.enabled) return item;
+          return {
+            ...item,
+            holes: {
+              ...item.holes,
+              [line]: value,
+            },
+          };
+        }),
+      };
+    });
+  }
+
   function loadPreset(index: number) {
     const draft = buildPresetDraft(index);
     setRawModel(draft.model);
@@ -570,6 +655,10 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         exportDxf,
         setRubberband,
         undo,
+        toggleHoles,
+        removeHoles,
+        updateHoleField,
+        setHoleLineEnabled,
       }}
     >
       {children}

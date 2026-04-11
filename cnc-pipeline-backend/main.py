@@ -3,6 +3,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import tempfile, uuid, os, pathlib
+from typing import Optional
 
 from cnc_pipeline.pipeline import run_pipeline, PipelineResult
 
@@ -32,9 +33,17 @@ def health():
 
 
 @app.post("/api/generate")
-async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemini"):
+async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemini", tool_overrides: Optional[str] = None):
     if not file.filename.lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
+
+    import json
+    overrides = None
+    if tool_overrides:
+        try:
+            overrides = json.loads(tool_overrides)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid tool_overrides JSON")
 
     contents = await file.read()
     tmp = tempfile.NamedTemporaryFile(suffix=".dxf", delete=False, mode="wb")
@@ -42,7 +51,7 @@ async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemin
     tmp.close()
 
     try:
-        result = run_pipeline(tmp.name, original_filename=file.filename, algorithm=algorithm)
+        result = run_pipeline(tmp.name, original_filename=file.filename, algorithm=algorithm, tool_overrides=overrides)
         job_id = str(uuid.uuid4())
         _jobs[job_id] = result
         return {
@@ -72,12 +81,15 @@ async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemin
 
 
 from pydantic import BaseModel
+from typing import Optional
+
 
 class RegenerateRequest(BaseModel):
     contours_by_layer: dict[str, list[dict]]
     stock_bbox: dict
     scenario: str
     algorithm: str
+    tool_overrides: Optional[dict] = None
 
 @app.post("/api/regenerate")
 async def regenerate(req: RegenerateRequest):
@@ -89,6 +101,7 @@ async def regenerate(req: RegenerateRequest):
             stock_bbox=req.stock_bbox,
             scenario=req.scenario,
             algorithm=req.algorithm,
+            tool_overrides=req.tool_overrides,
         )
 
         job_id = str(uuid.uuid4())

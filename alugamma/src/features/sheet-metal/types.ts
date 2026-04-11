@@ -3,7 +3,7 @@ export const cornerKeys = ["topLeft", "topRight", "bottomRight", "bottomLeft"] a
 
 export type SideKey = (typeof sideKeys)[number];
 export type CornerKey = (typeof cornerKeys)[number];
-export type Layer = "CUT" | "FREZ" | "0";
+export type Layer = "CUT" | "FREZ" | "0" | "HOLES";
 export type FrezMode = "inner" | "outer";
 export type CornerReliefAxis = "horizontal" | "vertical";
 export type FrezNotchPosition = "start" | "end";
@@ -11,6 +11,22 @@ export type FrezNotchPosition = "start" | "end";
 export type Measurement = {
   id: string;
   amount: number;
+};
+
+export type HoleSettings = {
+  placement: "inner" | "outer";
+  orientation: "horizontal" | "vertical";
+  sideOffset: number;
+  endOffset: number;
+  length: number;
+};
+
+export type HoleData = HoleSettings & {
+  enabled: boolean;
+  /** Whether the first hole line is rendered (Q toggles this when holes chip is focused) */
+  line1Enabled?: boolean;
+  /** Whether the second hole line is rendered (E toggles this when holes chip is focused) */
+  line2Enabled?: boolean;
 };
 
 export type FrezLineNotches = {
@@ -24,6 +40,7 @@ export type FrezMeasurement = Measurement & {
   spanStart?: boolean;
   /** Whether the inner frez line extends into the end-side adjacent flange area */
   spanEnd?: boolean;
+  holes?: HoleData;
 };
 
 export type FlangeReliefs = {
@@ -39,6 +56,7 @@ export type FlangeFlaps = {
 export type FlangeMeasurement = Measurement & {
   reliefs: FlangeReliefs;
   flaps: FlangeFlaps;
+  holes?: HoleData;
 };
 
 export type SideConfig = {
@@ -100,11 +118,21 @@ export type Preset = {
   model: SheetMetalModel;
 };
 
-let measurementCounter = 0;
+let measurementCounter = Date.now();
 
 function nextMeasurementId() {
   measurementCounter += 1;
   return `m-${measurementCounter}`;
+}
+
+export function createDefaultHoleSettings(): HoleSettings {
+  return {
+    placement: "inner",
+    orientation: "horizontal",
+    sideOffset: 25,
+    endOffset: 25,
+    length: 25,
+  };
 }
 
 export function createFlangeMeasurement(amount = 20, reliefs?: Partial<FlangeReliefs>, flaps?: Partial<FlangeFlaps>): FlangeMeasurement {
@@ -200,6 +228,25 @@ function normalizeMeasurement(value: unknown, fallbackAmount = 0): Measurement {
   };
 }
 
+export function normalizeHoleData(value: unknown): HoleData | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if ("enabled" in record) {
+      return {
+        enabled: record.enabled === true,
+        placement: record.placement === "outer" ? "outer" : "inner",
+        orientation: record.orientation === "vertical" ? "vertical" : "horizontal",
+        sideOffset: typeof record.sideOffset === "number" ? record.sideOffset : 25,
+        endOffset: typeof record.endOffset === "number" ? record.endOffset : 25,
+        length: typeof record.length === "number" ? record.length : 25,
+        line1Enabled: typeof record.line1Enabled === "boolean" ? record.line1Enabled : true,
+        line2Enabled: typeof record.line2Enabled === "boolean" ? record.line2Enabled : true,
+      };
+    }
+  }
+  return undefined;
+}
+
 export function normalizeFlangeReliefs(value: unknown, fallbackEnabled = false): FlangeReliefs {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
@@ -243,6 +290,7 @@ export function normalizeFlangeMeasurement(value: unknown): FlangeMeasurement {
       ...measurement,
       reliefs: normalizeFlangeReliefs(record.reliefs, false),
       flaps: normalizeFlangeFlaps(record.flaps, 0),
+      holes: normalizeHoleData(record.holes),
     };
   }
 
@@ -250,6 +298,7 @@ export function normalizeFlangeMeasurement(value: unknown): FlangeMeasurement {
     ...measurement,
     reliefs: normalizeFlangeReliefs(undefined, false),
     flaps: normalizeFlangeFlaps(undefined, 0),
+    holes: undefined,
   };
 }
 
@@ -280,6 +329,7 @@ export function normalizeFrezMeasurement(value: unknown): FrezMeasurement {
       notches: normalizeFrezLineNotches(record.notches, true),
       spanStart: record.spanStart === true,
       spanEnd: record.spanEnd === true,
+      holes: normalizeHoleData(record.holes),
     };
   }
 
@@ -288,6 +338,7 @@ export function normalizeFrezMeasurement(value: unknown): FrezMeasurement {
     notches: normalizeFrezLineNotches(undefined, true),
     spanStart: false,
     spanEnd: false,
+    holes: undefined,
   };
 }
 
@@ -356,4 +407,51 @@ export function normalizeSheetMetalModel(model: SheetMetalModel): SheetMetalMode
     },
     rubberband: typeof model.rubberband === "boolean" ? model.rubberband : true,
   };
+}
+
+export type FeatureKind = "flange" | "innerFrez" | "holes";
+
+export type FeatureRef = {
+  kind: FeatureKind;
+  /** Index into the respective array (flanges[] or innerFrezLines[]) */
+  arrayIndex: number;
+  /** 1-based unified position across all features on this side */
+  position: number;
+  id: string;
+  /** For holes entries: reference back to the parent feature kind */
+  parentKind?: "flange" | "innerFrez";
+};
+
+export function getUnifiedFeatures(side: SideConfig): FeatureRef[] {
+  const items: { kind: FeatureKind; arrayIndex: number; id: string; parentKind?: "flange" | "innerFrez" }[] = [];
+  for (let i = 0; i < side.flanges.length; i++) {
+    items.push({ kind: "flange", arrayIndex: i, id: side.flanges[i].id });
+    if (side.flanges[i].holes?.enabled) {
+      items.push({ kind: "holes", arrayIndex: i, id: side.flanges[i].id + "-holes", parentKind: "flange" });
+    }
+  }
+  for (let i = 0; i < side.innerFrezLines.length; i++) {
+    items.push({ kind: "innerFrez", arrayIndex: i, id: side.innerFrezLines[i].id });
+    if (side.innerFrezLines[i].holes?.enabled) {
+      items.push({ kind: "holes", arrayIndex: i, id: side.innerFrezLines[i].id + "-holes", parentKind: "innerFrez" });
+    }
+  }
+  items.sort((a, b) => {
+    const numA = parseInt(a.id.replace(/-holes$/, "").replace(/\D/g, ""), 10) || 0;
+    const numB = parseInt(b.id.replace(/-holes$/, "").replace(/\D/g, ""), 10) || 0;
+    // Same base ID: parent comes before holes
+    if (numA === numB) {
+      if (a.kind === "holes" && b.kind !== "holes") return 1;
+      if (a.kind !== "holes" && b.kind === "holes") return -1;
+    }
+    return numA - numB;
+  });
+  return items.map((item, index) => ({
+    ...item,
+    position: index + 1,
+  }));
+}
+
+export function getFeatureByPosition(side: SideConfig, position: number): FeatureRef | null {
+  return getUnifiedFeatures(side).find(f => f.position === position) ?? null;
 }

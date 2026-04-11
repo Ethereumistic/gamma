@@ -58,10 +58,14 @@ function SideEditorForSide({ side }: { side: SideKey }) {
     setInnerFrezSpan,
     setFlangeRelief,
     setFlangeFlap,
+    removeHoles,
+    updateHoleField,
+    setHoleLineEnabled,
   } = useSheetMetal();
   const {
     selectedSide, setSelectedFlangeIndex, selectedFlangeIndex,
     selectedInnerFrezIndex, setSelectedInnerFrezIndex,
+    selectedHolesIndex, setSelectedHolesIndex,
   } = useSelectedSide();
   const isSelected = selectedSide === side;
 
@@ -97,16 +101,25 @@ function SideEditorForSide({ side }: { side: SideKey }) {
       onRemoveFlange={(index) => removeFlange(side, index)}
       onRemoveFrez={(index) => removeFrez(side, index)}
       onRemoveInnerFrez={(index) => removeInnerFrez(side, index)}
-      onFocusFlange={(index) => { setSelectedFlangeIndex(index); setSelectedInnerFrezIndex(null); }}
-      onFocusInnerFrez={(index) => { setSelectedInnerFrezIndex(index); setSelectedFlangeIndex(null); }}
+      onFocusFlange={(index) => { setSelectedFlangeIndex(index); setSelectedInnerFrezIndex(null); setSelectedHolesIndex(null); }}
+      onFocusInnerFrez={(index) => { setSelectedInnerFrezIndex(index); setSelectedFlangeIndex(null); setSelectedHolesIndex(null); }}
+      onFocusHoles={(parentKind, index) => {
+        setSelectedHolesIndex(index);
+        if (parentKind === "flange") { setSelectedFlangeIndex(index); setSelectedInnerFrezIndex(null); }
+        else { setSelectedInnerFrezIndex(index); setSelectedFlangeIndex(null); }
+      }}
       selectedFlangeIndex={isSelected ? selectedFlangeIndex : null}
       selectedInnerFrezIndex={isSelected ? selectedInnerFrezIndex : null}
+      selectedHolesIndex={isSelected ? selectedHolesIndex : null}
       onSetFrezMode={(mode) => setFrezMode(side, mode)}
       onSetFrezNotch={(index, position, value) => setFrezNotch(side, index, position, value)}
       onSetInnerFrezNotch={(index, position, value) => setInnerFrezNotch(side, index, position, value)}
       onSetInnerFrezSpan={(index, position, value) => setInnerFrezSpan(side, index, position, value)}
       onSetFlangeRelief={(index, position, value) => setFlangeRelief(side, index, position, value)}
       onSetFlangeFlap={(index, position, value) => setFlangeFlap(side, index, position, value)}
+      onRemoveHoles={(parentKind, index) => removeHoles(side, parentKind, index)}
+      onUpdateHoleField={(parentKind, index, field, value) => updateHoleField(side, parentKind, index, field, value)}
+      onSetHoleLineEnabled={(parentKind, index, line, value) => setHoleLineEnabled(side, parentKind, index, line, value)}
       onClearAll={handleClearAll}
       isSelected={isSelected}
     />
@@ -279,6 +292,7 @@ export default function SheetMetalApp() {
             <div className="flex gap-2">
               <Badge variant="cut" className="h-5 text-[10px]">CUT {countShapes(geometry.shapes, "CUT")}</Badge>
               <Badge variant="frez" className="h-5 text-[10px]">FREZ {countShapes(geometry.shapes, "FREZ")}</Badge>
+              <Badge variant="hole" className="h-5 text-[10px]">HOLES {countShapes(geometry.shapes, "HOLES")}</Badge>
               <span className="rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-0.5 font-mono text-[10px] text-muted-foreground/60">
                 {geometry.totalWidth}×{geometry.totalHeight}
               </span>

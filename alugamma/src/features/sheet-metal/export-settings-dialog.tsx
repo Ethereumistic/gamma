@@ -49,6 +49,11 @@ export function ExportSettingsDialog({
   const [frez1, setFrez1] = useState("24");
   const [frez2, setFrez2] = useState("24, 24");
   const [frez3, setFrez3] = useState("24, 24, 24");
+  const [holePlacement, setHolePlacement] = useState<"inner" | "outer">("inner");
+  const [holeOrientation, setHoleOrientation] = useState<"horizontal" | "vertical">("horizontal");
+  const [holeSideOffset, setHoleSideOffset] = useState(25);
+  const [holeEndOffset, setHoleEndOffset] = useState(25);
+  const [holeLength, setHoleLength] = useState(25);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -63,6 +68,11 @@ export function ExportSettingsDialog({
       setFrez1(d.frezDefaults?.count1?.join(", ") ?? "24");
       setFrez2(d.frezDefaults?.count2?.join(", ") ?? "24, 24");
       setFrez3(d.frezDefaults?.count3?.join(", ") ?? "24, 24, 24");
+      setHolePlacement(d.holeDefaults?.placement ?? "inner");
+      setHoleOrientation(d.holeDefaults?.orientation ?? "horizontal");
+      setHoleSideOffset(d.holeDefaults?.sideOffset ?? 25);
+      setHoleEndOffset(d.holeDefaults?.endOffset ?? 25);
+      setHoleLength(d.holeDefaults?.length ?? 25);
     }
   }, [selectedProject?.defaults, open]);
 
@@ -90,6 +100,13 @@ export function ExportSettingsDialog({
             count1: parseList(frez1, [24]),
             count2: parseList(frez2, [24, 24]),
             count3: parseList(frez3, [24, 24, 24]),
+          },
+          holeDefaults: {
+            placement: holePlacement,
+            orientation: holeOrientation,
+            sideOffset: holeSideOffset,
+            endOffset: holeEndOffset,
+            length: holeLength,
           },
         }
       });
@@ -175,6 +192,62 @@ export function ExportSettingsDialog({
                 <div className="grid grid-cols-3 items-center gap-2">
                   <span className="text-xs text-muted-foreground">3 Frez</span>
                   <Input value={frez3} onChange={(e) => setFrez3(e.target.value)} className="col-span-2 h-7 bg-black/40 text-xs font-mono" placeholder="24, 24, 24" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-white/6 bg-black/20 p-3">
+              <h4 className="text-xs font-medium text-yellow-500">HOLES Defaults</h4>
+              <div className="grid gap-3 mt-2 grid-cols-2">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Placement</span>
+                  <div className="flex h-8 w-full rounded-md bg-black/40 p-1">
+                    <button
+                      type="button"
+                      className={`flex-1 rounded-sm text-[10px] font-medium transition-colors ${holePlacement === "inner" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white"}`}
+                      onClick={() => setHolePlacement("inner")}
+                    >
+                      INNER
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 rounded-sm text-[10px] font-medium transition-colors ${holePlacement === "outer" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white"}`}
+                      onClick={() => setHolePlacement("outer")}
+                    >
+                      OUTER
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Orientation</span>
+                  <div className="flex h-8 w-full rounded-md bg-black/40 p-1">
+                    <button
+                      type="button"
+                      className={`flex-1 rounded-sm text-[10px] font-medium transition-colors ${holeOrientation === "horizontal" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white"}`}
+                      onClick={() => setHoleOrientation("horizontal")}
+                    >
+                      HORIZ
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 rounded-sm text-[10px] font-medium transition-colors ${holeOrientation === "vertical" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white"}`}
+                      onClick={() => setHoleOrientation("vertical")}
+                    >
+                      VERT
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Side Offset</span>
+                  <Input type="number" value={holeSideOffset} onChange={(e) => setHoleSideOffset(Number(e.target.value))} className="h-8 bg-black/40 text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">End Offset</span>
+                  <Input type="number" value={holeEndOffset} onChange={(e) => setHoleEndOffset(Number(e.target.value))} className="h-8 bg-black/40 text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Length</span>
+                  <Input type="number" value={holeLength} onChange={(e) => setHoleLength(Number(e.target.value))} className="h-8 bg-black/40 text-xs" />
                 </div>
               </div>
             </div>

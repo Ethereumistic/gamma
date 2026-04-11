@@ -16,13 +16,17 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 // Upload DXF → get job_id + analysis + geometry in one shot
-export async function uploadDXF(file: File, algorithm: string = "raptor"): Promise<{
+export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>): Promise<{
   generate: GenerateResponse
   geometry: GeometryResponse
 }> {
   const form = new FormData()
   form.append("file", file)
-  const res = await fetch(`${BASE}/api/generate?algorithm=${encodeURIComponent(algorithm)}`, { method: "POST", body: form })
+  const params = new URLSearchParams({ algorithm })
+  if (toolOverrides && Object.keys(toolOverrides).length > 0) {
+    params.set("tool_overrides", JSON.stringify(toolOverrides))
+  }
+  const res = await fetch(`${BASE}/api/generate?${params.toString()}`, { method: "POST", body: form })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? "Upload failed")
@@ -46,6 +50,7 @@ export interface RegeneratePayload {
   stock_bbox: StockBbox
   scenario: string
   algorithm: string
+  tool_overrides?: Record<string, any>
 }
 
 export async function regenerate(payload: RegeneratePayload): Promise<RegenerateResponse> {
