@@ -9,7 +9,7 @@ import { useSheetMetal } from "./context";
 import { useSelectedSide } from "./selected-side-context";
 import { useDesignDelete } from "@/features/workspace/design-delete-context";
 import { useWorkspace } from "@/features/workspace/context";
-import type { SideKey } from "./types";
+import { type SideKey, type FeatureRef, getFeatureByPosition, getUnifiedFeatures } from "./types";
 
 type SheetMetalHotkeysProps = {
   previewCanvasRef?: React.RefObject<{ centerView: () => void }>;
@@ -39,17 +39,17 @@ function getFlangeInputs(side: SideKey) {
   return document.querySelectorAll<HTMLInputElement>(`input[data-side="${side}"]`);
 }
 
-function focusFlangeInput(side: SideKey, index: number) {
+function focusFeatureInput(side: SideKey, position: number) {
   setTimeout(() => {
     const inputs = getFlangeInputs(side);
-    if (inputs.length > index) {
-      inputs[index].focus();
-      inputs[index].select();
+    if (inputs.length > position - 1) {
+      inputs[position - 1].focus();
+      inputs[position - 1].select();
     }
   }, 0);
 }
 
-function focusLastFlangeInput(side: SideKey) {
+function focusLastFeatureInput(side: SideKey) {
   setTimeout(() => {
     const inputs = getFlangeInputs(side);
     if (inputs.length > 0) {
@@ -139,9 +139,18 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
       e.preventDefault();
       if (isSideSelected) {
         const sideConfig = model.sides[selectedSide];
-        if (sideConfig.flanges.length > i) {
-          flushSync(() => setSelectedFlangeIndex(i));
-          focusFlangeInput(selectedSide, i);
+        const feature = getFeatureByPosition(sideConfig, i + 1);
+        if (feature) {
+          flushSync(() => {
+            if (feature.kind === "flange") {
+              setSelectedFlangeIndex(feature.arrayIndex);
+              setSelectedInnerFrezIndex(null);
+            } else {
+              setSelectedInnerFrezIndex(feature.arrayIndex);
+              setSelectedFlangeIndex(null);
+            }
+          });
+          focusFeatureInput(selectedSide, feature.position);
         }
       }
     });
@@ -152,9 +161,15 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
   // inside any text input, which is exactly what we want: WASD types freely in the design
   // name field and other plain inputs. Press Escape to blur a flange input first, then WASD.
   const handleSideSelect = (side: SideKey) => {
-    const count = model.sides[side].flanges.length;
+    const sideConfig = model.sides[side];
+    const unified = getUnifiedFeatures(sideConfig);
     setSelectedSide(side);
-    if (count > 0) { setSelectedFlangeIndex(count - 1); focusLastFlangeInput(side); }
+    if (unified.length > 0) { 
+        const last = unified[unified.length - 1];
+        if (last.kind === "flange") { setSelectedFlangeIndex(last.arrayIndex); setSelectedInnerFrezIndex(null); }
+        else { setSelectedInnerFrezIndex(last.arrayIndex); setSelectedFlangeIndex(null); }
+        focusLastFeatureInput(side); 
+    }
   };
 
   useHotkey("W", (e) => { if (isPlainTextInput(e)) return; e.preventDefault(); handleSideSelect("top"); }, { ignoreInputs: false });
@@ -187,7 +202,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
         setSelectedFlangeIndex(newIndex);
         setSelectedInnerFrezIndex(null);
       });
-      focusLastFlangeInput(selectedSide);
+      focusLastFeatureInput(selectedSide);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
@@ -203,7 +218,7 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
         setSelectedInnerFrezIndex(newIndex);
         setSelectedFlangeIndex(null);
       });
-      focusLastFlangeInput(selectedSide);
+      focusLastFeatureInput(selectedSide);
     }
   }, { ignoreInputs: false, enabled: isSideSelected });
 
@@ -223,7 +238,12 @@ export function SheetMetalHotkeys({ previewCanvasRef }: SheetMetalHotkeysProps) 
       if (newCount > 0) {
         const nextIndex = Math.min(targetIndex, newCount - 1);
         setSelectedFlangeIndex(nextIndex);
-        focusFlangeInput(selectedSide, nextIndex);
+        const position = getUnifiedFeatures(sideConfig).find((f: FeatureRef) => f.kind === "flange" && f.arrayIndex === nextIndex)?.position;
+        if (position) {
+          const shift = targetIndex > nextIndex ? 0 : 1;
+          const newPos = Math.max(1, position - shift);
+          focusFeatureInput(selectedSide, newPos);
+        }
       } else {
         setSelectedFlangeIndex(null);
       }

@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { sumMeasurements } from "@/features/sheet-metal/geometry";
-import type { FrezMode, FrezNotchPosition, SideConfig, SideKey } from "@/features/sheet-metal/types";
+import { getUnifiedFeatures, type FrezMode, type FrezNotchPosition, type SideConfig, type SideKey } from "@/features/sheet-metal/types";
 
 const cornerLabels: Record<SideKey, { start: string; end: string }> = {
   top: { start: "L", end: "R" },
@@ -48,9 +48,9 @@ type SideEditorProps = {
 /*  FlangeChip — horizontal inline chip (top / bottom)                */
 /* ------------------------------------------------------------------ */
 function FlangeChip({
-  index, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected,
 }: {
-  index: number; value: number; side: SideKey;
+  index: number; unifiedPosition: number; value: number; side: SideKey;
   reliefs: { start: boolean; end: boolean };
   flaps: { start: number; end: number };
   onChange: (v: number) => void; onRemove: () => void;
@@ -67,7 +67,7 @@ function FlangeChip({
 
   return (
     <div className={`${baseClass} ${stateClass}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{index + 1}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{unifiedPosition}</span>
       <Input
         type="text" inputMode="numeric" pattern="[0-9]*"
         value={value === 0 ? "" : value.toString()}
@@ -122,9 +122,9 @@ function FlangeChip({
 /*  3-col grid: [F#  centered] [input / checkboxes stacked] [× centered] */
 /* ------------------------------------------------------------------ */
 function FlangeBlock({
-  index, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected,
 }: {
-  index: number; value: number; side: SideKey;
+  index: number; unifiedPosition: number; value: number; side: SideKey;
   reliefs: { start: boolean; end: boolean };
   flaps: { start: number; end: number };
   onChange: (v: number) => void; onRemove: () => void;
@@ -142,7 +142,7 @@ function FlangeBlock({
   return (
     <div className={`${baseClass} ${stateClass}`}>
       {/* Col 1: label — grid items-center keeps it vertically centered */}
-      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{index + 1}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{unifiedPosition}</span>
       {/* Col 2: input + checkboxes stacked */}
       <div className="flex flex-col gap-0.5">
         <Input
@@ -290,9 +290,9 @@ function FrezBlock({
 /*  InnerFrezChip — horizontal inline chip (top / bottom), violet      */
 /* ------------------------------------------------------------------ */
 function InnerFrezChip({
-  index, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
 }: {
-  index: number; value: number; side: SideKey;
+  index: number; unifiedPosition: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
   spanStart?: boolean; spanEnd?: boolean;
   onChange: (v: number) => void; onRemove: () => void;
@@ -308,7 +308,7 @@ function InnerFrezChip({
     : "border-violet-500/20 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/10";
   return (
     <div className={`${baseClass} ${stateClass}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{index + 1}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{unifiedPosition}</span>
       {/* Span-start toggle (extend into start-side flange) */}
       <button onClick={() => onSetSpan("start", !spanStart)}
         title={`Extend into ${cornerLabels[side].start} flange (QQ)`}
@@ -351,9 +351,9 @@ function InnerFrezChip({
 /*  InnerFrezBlock — left / right panels, violet                       */
 /* ------------------------------------------------------------------ */
 function InnerFrezBlock({
-  index, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
+  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected,
 }: {
-  index: number; value: number; side: SideKey;
+  index: number; unifiedPosition: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
   spanStart?: boolean; spanEnd?: boolean;
   onChange: (v: number) => void; onRemove: () => void;
@@ -369,7 +369,7 @@ function InnerFrezBlock({
     : "border-violet-500/20 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/10";
   return (
     <div className={`${baseClass} ${stateClass}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{index + 1}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{unifiedPosition}</span>
       <div className="flex flex-col gap-0.5">
         <Input
           type="text" inputMode="numeric" pattern="[0-9]*"
@@ -494,31 +494,40 @@ export function SideEditor({
             <ScrollArea className="h-full w-full">
               {/* Inner div also h-[30px] so it never makes the row taller */}
               <div className="flex h-[30px] items-center gap-1 px-1.5">
-                {config.flanges.map((flange, i) => (
-                  <FlangeChip
-                    index={i} value={flange.amount} side={side}
-                    reliefs={flange.reliefs} flaps={flange.flaps}
-                    onChange={(v) => onChangeFlange(i, v)}
-                    onRemove={() => onRemoveFlange(i)}
-                    onFocus={() => onFocusFlange?.(i)}
-                    onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
-                    onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
-                    inputDataProps={{ "data-side": side } as any} isSelected={selectedFlangeIndex === i}
-                  />
-                ))}
-                {config.innerFrezLines.map((frez, i) => (
-                  <InnerFrezChip
-                    key={frez.id} index={i} value={frez.amount} side={side}
-                    notches={frez.notches} spanStart={frez.spanStart} spanEnd={frez.spanEnd}
-                    onChange={(v) => onChangeInnerFrez(i, v)}
-                    onRemove={() => onRemoveInnerFrez(i)}
-                    onFocus={() => onFocusInnerFrez?.(i)}
-                    onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
-                    onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
-                    inputDataProps={{ "data-side": side } as any}
-                    isSelected={selectedInnerFrezIndex === i}
-                  />
-                ))}
+                {getUnifiedFeatures(config).map((feature) => {
+                  if (feature.kind === "flange") {
+                    const i = feature.arrayIndex;
+                    const flange = config.flanges[i];
+                    return (
+                      <FlangeChip
+                        key={flange.id} index={i} unifiedPosition={feature.position} value={flange.amount} side={side}
+                        reliefs={flange.reliefs} flaps={flange.flaps}
+                        onChange={(v) => onChangeFlange(i, v)}
+                        onRemove={() => onRemoveFlange(i)}
+                        onFocus={() => onFocusFlange?.(i)}
+                        onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
+                        onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
+                        inputDataProps={{ "data-side": side } as any} isSelected={selectedFlangeIndex === i}
+                      />
+                    );
+                  } else {
+                    const i = feature.arrayIndex;
+                    const frez = config.innerFrezLines[i];
+                    return (
+                      <InnerFrezChip
+                        key={frez.id} index={i} unifiedPosition={feature.position} value={frez.amount} side={side}
+                        notches={frez.notches} spanStart={frez.spanStart} spanEnd={frez.spanEnd}
+                        onChange={(v) => onChangeInnerFrez(i, v)}
+                        onRemove={() => onRemoveInnerFrez(i)}
+                        onFocus={() => onFocusInnerFrez?.(i)}
+                        onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
+                        onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
+                        inputDataProps={{ "data-side": side } as any}
+                        isSelected={selectedInnerFrezIndex === i}
+                      />
+                    );
+                  }
+                })}
               </div>
               <ScrollBar orientation="horizontal" className="h-1" />
             </ScrollArea>
@@ -593,32 +602,41 @@ export function SideEditor({
       {/* Flange + inner-frez list — flex-1 min-h-0 fills remaining height, always scrollable */}
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-1 px-1.5 py-1.5">
-          {config.flanges.map((flange, i) => (
-            <FlangeBlock
-              key={flange.id} index={i} value={flange.amount} side={side}
-              reliefs={flange.reliefs} flaps={flange.flaps}
-              onChange={(v) => onChangeFlange(i, v)}
-              onRemove={() => onRemoveFlange(i)}
-              onFocus={() => onFocusFlange?.(i)}
-              onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
-              onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
-              inputDataProps={inputDataProps}
-              isSelected={selectedFlangeIndex === i}
-            />
-          ))}
-          {config.innerFrezLines.map((frez, i) => (
-            <InnerFrezBlock
-              key={frez.id} index={i} value={frez.amount} side={side}
-              notches={frez.notches} spanStart={frez.spanStart} spanEnd={frez.spanEnd}
-              onChange={(v) => onChangeInnerFrez(i, v)}
-              onRemove={() => onRemoveInnerFrez(i)}
-              onFocus={() => onFocusInnerFrez?.(i)}
-              onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
-              onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
-              inputDataProps={inputDataProps}
-              isSelected={selectedInnerFrezIndex === i}
-            />
-          ))}
+          {getUnifiedFeatures(config).map((feature) => {
+            if (feature.kind === "flange") {
+              const i = feature.arrayIndex;
+              const flange = config.flanges[i];
+              return (
+                <FlangeBlock
+                  key={flange.id} index={i} unifiedPosition={feature.position} value={flange.amount} side={side}
+                  reliefs={flange.reliefs} flaps={flange.flaps}
+                  onChange={(v) => onChangeFlange(i, v)}
+                  onRemove={() => onRemoveFlange(i)}
+                  onFocus={() => onFocusFlange?.(i)}
+                  onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
+                  onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
+                  inputDataProps={inputDataProps}
+                  isSelected={selectedFlangeIndex === i}
+                />
+              );
+            } else {
+              const i = feature.arrayIndex;
+              const frez = config.innerFrezLines[i];
+              return (
+                <InnerFrezBlock
+                  key={frez.id} index={i} unifiedPosition={feature.position} value={frez.amount} side={side}
+                  notches={frez.notches} spanStart={frez.spanStart} spanEnd={frez.spanEnd}
+                  onChange={(v) => onChangeInnerFrez(i, v)}
+                  onRemove={() => onRemoveInnerFrez(i)}
+                  onFocus={() => onFocusInnerFrez?.(i)}
+                  onSetNotch={(pos, v) => onSetInnerFrezNotch(i, pos, v)}
+                  onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
+                  inputDataProps={inputDataProps}
+                  isSelected={selectedInnerFrezIndex === i}
+                />
+              );
+            }
+          })}
         </div>
       </ScrollArea>
 

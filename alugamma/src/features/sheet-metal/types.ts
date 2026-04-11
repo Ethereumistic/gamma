@@ -100,7 +100,7 @@ export type Preset = {
   model: SheetMetalModel;
 };
 
-let measurementCounter = 0;
+let measurementCounter = Date.now();
 
 function nextMeasurementId() {
   measurementCounter += 1;
@@ -356,4 +356,38 @@ export function normalizeSheetMetalModel(model: SheetMetalModel): SheetMetalMode
     },
     rubberband: typeof model.rubberband === "boolean" ? model.rubberband : true,
   };
+}
+
+export type FeatureKind = "flange" | "innerFrez";
+
+export type FeatureRef = {
+  kind: FeatureKind;
+  /** Index into the respective array (flanges[] or innerFrezLines[]) */
+  arrayIndex: number;
+  /** 1-based unified position across all features on this side */
+  position: number;
+  id: string;
+};
+
+export function getUnifiedFeatures(side: SideConfig): FeatureRef[] {
+  const items: { kind: FeatureKind; arrayIndex: number; id: string }[] = [];
+  for (let i = 0; i < side.flanges.length; i++) {
+    items.push({ kind: "flange", arrayIndex: i, id: side.flanges[i].id });
+  }
+  for (let i = 0; i < side.innerFrezLines.length; i++) {
+    items.push({ kind: "innerFrez", arrayIndex: i, id: side.innerFrezLines[i].id });
+  }
+  items.sort((a, b) => {
+    const numA = parseInt(a.id.replace(/\D/g, ""), 10) || 0;
+    const numB = parseInt(b.id.replace(/\D/g, ""), 10) || 0;
+    return numA - numB;
+  });
+  return items.map((item, index) => ({
+    ...item,
+    position: index + 1,
+  }));
+}
+
+export function getFeatureByPosition(side: SideConfig, position: number): FeatureRef | null {
+  return getUnifiedFeatures(side).find(f => f.position === position) ?? null;
 }
