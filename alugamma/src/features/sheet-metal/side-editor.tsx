@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { sumMeasurements } from "@/features/sheet-metal/geometry";
-import { getUnifiedFeatures, type FrezMode, type FrezNotchPosition, type SideConfig, type SideKey } from "@/features/sheet-metal/types";
+import { getUnifiedFeatures, type FrezMode, type FrezNotchPosition, type HoleData, type SideConfig, type SideKey } from "@/features/sheet-metal/types";
 
 const cornerLabels: Record<SideKey, { start: string; end: string }> = {
   top: { start: "L", end: "R" },
@@ -32,23 +32,28 @@ type SideEditorProps = {
   onRemoveInnerFrez: (index: number) => void;
   onFocusFlange?: (index: number) => void;
   onFocusInnerFrez?: (index: number) => void;
+  onFocusHoles?: (parentKind: "flange" | "innerFrez", index: number) => void;
   onSetFrezMode: (mode: FrezMode) => void;
   onSetFrezNotch: (index: number, position: FrezNotchPosition, value: boolean) => void;
   onSetInnerFrezNotch: (index: number, position: FrezNotchPosition, value: boolean) => void;
   onSetInnerFrezSpan: (index: number, position: "start" | "end", value: boolean) => void;
   onSetFlangeRelief: (index: number, position: "start" | "end", value: boolean) => void;
   onSetFlangeFlap: (index: number, position: "start" | "end", value: number) => void;
+  onRemoveHoles: (parentKind: "flange" | "innerFrez", index: number) => void;
+  onUpdateHoleField: (parentKind: "flange" | "innerFrez", index: number, field: "sideOffset" | "endOffset" | "length" | "placement" | "orientation", value: number | string) => void;
+  onSetHoleLineEnabled: (parentKind: "flange" | "innerFrez", index: number, line: "line1Enabled" | "line2Enabled", value: boolean) => void;
   onClearAll: () => void;
   isSelected?: boolean;
   selectedFlangeIndex?: number | null;
   selectedInnerFrezIndex?: number | null;
+  selectedHolesIndex?: number | null;
 };
 
 /* ------------------------------------------------------------------ */
 /*  FlangeChip — horizontal inline chip (top / bottom)                */
 /* ------------------------------------------------------------------ */
 function FlangeChip({
-  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected, hasHoles
+  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   reliefs: { start: boolean; end: boolean };
@@ -59,7 +64,6 @@ function FlangeChip({
   onSetFlap: (pos: "start" | "end", v: number) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
-  hasHoles?: boolean;
 }) {
   const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -70,7 +74,6 @@ function FlangeChip({
     <div className={`${baseClass} ${stateClass}`}>
       <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
         F{unifiedPosition}
-        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
       </span>
       <Input
         type="text" inputMode="numeric" pattern="[0-9]*"
@@ -126,7 +129,7 @@ function FlangeChip({
 /*  3-col grid: [F#  centered] [input / checkboxes stacked] [× centered] */
 /* ------------------------------------------------------------------ */
 function FlangeBlock({
-  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected, hasHoles
+  index, unifiedPosition, value, side, reliefs, flaps, onChange, onRemove, onFocus, onSetRelief, onSetFlap, inputDataProps, isSelected
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   reliefs: { start: boolean; end: boolean };
@@ -137,7 +140,6 @@ function FlangeBlock({
   onSetFlap: (pos: "start" | "end", v: number) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
-  hasHoles?: boolean;
 }) {
   const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -149,7 +151,6 @@ function FlangeBlock({
       {/* Col 1: label — grid items-center keeps it vertically centered */}
       <div className="flex flex-col items-center gap-0.5">
         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">F{unifiedPosition}</span>
-        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
       </div>
       {/* Col 2: input + checkboxes stacked */}
       <div className="flex flex-col gap-0.5">
@@ -298,7 +299,7 @@ function FrezBlock({
 /*  InnerFrezChip — horizontal inline chip (top / bottom), violet      */
 /* ------------------------------------------------------------------ */
 function InnerFrezChip({
-  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected, hasHoles
+  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
@@ -309,7 +310,6 @@ function InnerFrezChip({
   onSetSpan: (pos: "start" | "end", v: boolean) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
-  hasHoles?: boolean;
 }) {
   const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -319,7 +319,6 @@ function InnerFrezChip({
     <div className={`${baseClass} ${stateClass}`}>
       <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-400/80">
         Z{unifiedPosition}
-        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
       </span>
       {/* Span-start toggle (extend into start-side flange) */}
       <button onClick={() => onSetSpan("start", !spanStart)}
@@ -363,7 +362,7 @@ function InnerFrezChip({
 /*  InnerFrezBlock — left / right panels, violet                       */
 /* ------------------------------------------------------------------ */
 function InnerFrezBlock({
-  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected, hasHoles
+  index, unifiedPosition, value, side, notches, spanStart, spanEnd, onChange, onRemove, onFocus, onSetNotch, onSetSpan, inputDataProps, isSelected
 }: {
   index: number; unifiedPosition: number; value: number; side: SideKey;
   notches: { start: boolean; end: boolean };
@@ -374,7 +373,6 @@ function InnerFrezBlock({
   onSetSpan: (pos: "start" | "end", v: boolean) => void;
   inputDataProps?: { "data-side": SideKey };
   isSelected?: boolean;
-  hasHoles?: boolean;
 }) {
   const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
   const stateClass = isSelected
@@ -384,7 +382,6 @@ function InnerFrezBlock({
     <div className={`${baseClass} ${stateClass}`}>
       <div className="flex flex-col items-center gap-0.5">
         <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Z{unifiedPosition}</span>
-        {hasHoles && <span className="flex h-[13px] w-[13px] items-center justify-center rounded-[3px] bg-yellow-500/20 text-[8px] text-yellow-500">H</span>}
       </div>
       <div className="flex flex-col gap-0.5">
         <Input
@@ -430,14 +427,212 @@ function InnerFrezBlock({
 }
 
 /* ------------------------------------------------------------------ */
+/*  HolesChip — horizontal inline chip (top / bottom), yellow          */
+/*  Displays S, E, L inputs + O (inner/outer) + V (horiz/vert) buttons */
+/*  Q/E toggle line1/line2 enabled                                      */
+/* ------------------------------------------------------------------ */
+function HolesChip({
+  unifiedPosition, side, holes, parentKind, arrayIndex, onRemove, onUpdateField, onSetLineEnabled, onFocus, isSelected,
+}: {
+  unifiedPosition: number; side: SideKey; holes: HoleData;
+  parentKind: "flange" | "innerFrez"; arrayIndex: number;
+  onRemove: () => void;
+  onUpdateField: (field: "sideOffset" | "endOffset" | "length" | "placement" | "orientation", value: number | string) => void;
+  onSetLineEnabled: (line: "line1Enabled" | "line2Enabled", value: boolean) => void;
+  onFocus?: () => void;
+  isSelected?: boolean;
+}) {
+  const baseClass = "group flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 transition-colors";
+  const stateClass = isSelected
+    ? "border-yellow-500/50 bg-yellow-500/15 ring-1 ring-yellow-500/50"
+    : "border-yellow-500/20 bg-yellow-500/[0.06] hover:border-yellow-500/40 hover:bg-yellow-500/10";
+
+  const line1 = holes.line1Enabled !== false;
+  const line2 = holes.line2Enabled !== false;
+
+  return (
+    <div className={`${baseClass} ${stateClass}`} onClick={onFocus}>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400/80">H{unifiedPosition}</span>
+      {/* Line1 toggle (Q) */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onSetLineEnabled("line1Enabled", !line1); }}
+        title={`Toggle ${cornerLabels[side].start} hole line (Q)`}
+        className={`rounded px-0.5 text-[9px] font-bold transition-colors ${
+          line1 ? "text-yellow-300" : "text-white/20 hover:text-yellow-400/60"
+        }`}>{cornerLabels[side].start}</button>
+      {/* S input */}
+      <div className="flex items-center gap-0">
+        <span className="text-[8px] text-yellow-400/50">S</span>
+        <Input
+          type="text" inputMode="numeric" pattern="[0-9]*"
+          data-side={side}
+          data-holes-s={`${parentKind}-${arrayIndex}`}
+          value={holes.sideOffset === 0 ? "" : holes.sideOffset.toString()}
+          onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onUpdateField("sideOffset", r === "" ? 0 : Number(r)); }}
+          onFocus={(e) => { onFocus?.(); e.target.select(); }}
+          className="h-4 w-[26px] border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[9px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-yellow-500/50"
+        />
+      </div>
+      {/* E input */}
+      <div className="flex items-center gap-0">
+        <span className="text-[8px] text-yellow-400/50">E</span>
+        <Input
+          type="text" inputMode="numeric" pattern="[0-9]*"
+          data-side={side}
+          value={holes.endOffset === 0 ? "" : holes.endOffset.toString()}
+          onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onUpdateField("endOffset", r === "" ? 0 : Number(r)); }}
+          onFocus={(e) => { onFocus?.(); e.target.select(); }}
+          className="h-4 w-[26px] border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[9px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-yellow-500/50"
+        />
+      </div>
+      {/* L input */}
+      <div className="flex items-center gap-0">
+        <span className="text-[8px] text-yellow-400/50">L</span>
+        <Input
+          type="text" inputMode="numeric" pattern="[0-9]*"
+          data-side={side}
+          value={holes.length === 0 ? "" : holes.length.toString()}
+          onChange={(e) => { const r = e.target.value.replace(/[^0-9.]/g, ""); onUpdateField("length", r === "" ? 0 : Number(r)); }}
+          onFocus={(e) => { onFocus?.(); e.target.select(); }}
+          className="h-4 w-[26px] border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[9px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-yellow-500/50"
+        />
+      </div>
+      {/* O button: inner/outer toggle */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onUpdateField("placement", holes.placement === "inner" ? "outer" : "inner"); }}
+        title="Toggle inner/outer (O)"
+        className="rounded px-0.5 text-[9px] font-bold text-yellow-400/70 transition-colors hover:text-yellow-300"
+      >{holes.placement === "inner" ? "I" : "O"}</button>
+      {/* V button: horizontal/vertical toggle */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onUpdateField("orientation", holes.orientation === "horizontal" ? "vertical" : "horizontal"); }}
+        title="Toggle horizontal/vertical (V)"
+        className="rounded px-0.5 text-[9px] font-bold text-yellow-400/70 transition-colors hover:text-yellow-300"
+      >{holes.orientation === "horizontal" ? "H" : "V"}</button>
+      {/* Line2 toggle (E) */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onSetLineEnabled("line2Enabled", !line2); }}
+        title={`Toggle ${cornerLabels[side].end} hole line (E)`}
+        className={`rounded px-0.5 text-[9px] font-bold transition-colors ${
+          line2 ? "text-yellow-300" : "text-white/20 hover:text-yellow-400/60"
+        }`}>{cornerLabels[side].end}</button>
+      <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-destructive/40 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100">
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  HolesBlock — left / right panels, yellow                           */
+/* ------------------------------------------------------------------ */
+function HolesBlock({
+  unifiedPosition, side, holes, parentKind, arrayIndex, onRemove, onUpdateField, onSetLineEnabled, onFocus, isSelected,
+}: {
+  unifiedPosition: number; side: SideKey; holes: HoleData;
+  parentKind: "flange" | "innerFrez"; arrayIndex: number;
+  onRemove: () => void;
+  onUpdateField: (field: "sideOffset" | "endOffset" | "length" | "placement" | "orientation", value: number | string) => void;
+  onSetLineEnabled: (line: "line1Enabled" | "line2Enabled", value: boolean) => void;
+  onFocus?: () => void;
+  isSelected?: boolean;
+}) {
+  const baseClass = "group grid grid-cols-[auto,1fr,auto] items-center gap-x-1.5 rounded-lg border px-2 py-1 transition-colors";
+  const stateClass = isSelected
+    ? "border-yellow-500/50 bg-yellow-500/15 ring-1 ring-yellow-500/50"
+    : "border-yellow-500/20 bg-yellow-500/[0.06] hover:border-yellow-500/40 hover:bg-yellow-500/10";
+
+  const line1 = holes.line1Enabled !== false;
+  const line2 = holes.line2Enabled !== false;
+
+  return (
+    <div className={`${baseClass} ${stateClass}`} onClick={onFocus}>
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400/80">H{unifiedPosition}</span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {/* S, E, L inputs row */}
+        <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0">
+            <span className="text-[7px] text-yellow-400/50">S</span>
+            <Input
+              type="text" inputMode="numeric" pattern="[0-9]*"
+              data-side={side}
+              data-holes-s={`${parentKind}-${arrayIndex}`}
+              value={holes.sideOffset === 0 ? "" : holes.sideOffset.toString()}
+              onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onUpdateField("sideOffset", r === "" ? 0 : Number(r)); }}
+              onFocus={(e) => { onFocus?.(); e.target.select(); }}
+              className="h-4 w-[22px] border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-yellow-500/50"
+            />
+          </div>
+          <div className="flex items-center gap-0">
+            <span className="text-[7px] text-yellow-400/50">E</span>
+            <Input
+              type="text" inputMode="numeric" pattern="[0-9]*"
+              data-side={side}
+              value={holes.endOffset === 0 ? "" : holes.endOffset.toString()}
+              onChange={(e) => { const r = e.target.value.replace(/[^0-9]/g, ""); onUpdateField("endOffset", r === "" ? 0 : Number(r)); }}
+              onFocus={(e) => { onFocus?.(); e.target.select(); }}
+              className="h-4 w-[22px] border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-yellow-500/50"
+            />
+          </div>
+          <div className="flex items-center gap-0">
+            <span className="text-[7px] text-yellow-400/50">L</span>
+            <Input
+              type="text" inputMode="numeric" pattern="[0-9]*"
+              data-side={side}
+              value={holes.length === 0 ? "" : holes.length.toString()}
+              onChange={(e) => { const r = e.target.value.replace(/[^0-9.]/g, ""); onUpdateField("length", r === "" ? 0 : Number(r)); }}
+              onFocus={(e) => { onFocus?.(); e.target.select(); }}
+              className="h-4 w-[22px] border-0 bg-white/[0.04] px-0.5 text-center font-mono text-[8px] transition-colors focus-visible:bg-white/[0.08] focus-visible:ring-1 focus-visible:ring-yellow-500/50"
+            />
+          </div>
+        </div>
+        {/* O, V buttons + line toggles */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdateField("placement", holes.placement === "inner" ? "outer" : "inner"); }}
+            title="Toggle inner/outer (O)"
+            className="rounded px-0.5 text-[8px] font-bold text-yellow-400/70 transition-colors hover:text-yellow-300"
+          >{holes.placement === "inner" ? "I" : "O"}</button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdateField("orientation", holes.orientation === "horizontal" ? "vertical" : "horizontal"); }}
+            title="Toggle horizontal/vertical (V)"
+            className="rounded px-0.5 text-[8px] font-bold text-yellow-400/70 transition-colors hover:text-yellow-300"
+          >{holes.orientation === "horizontal" ? "H" : "V"}</button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSetLineEnabled("line1Enabled", !line1); }}
+            title={`Toggle ${cornerLabels[side].start} hole line (Q)`}
+            className={`rounded px-0.5 text-[8px] font-bold transition-colors ${
+              line1 ? "text-yellow-300" : "text-white/20 hover:text-yellow-400/60"
+            }`}>{cornerLabels[side].start}</button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSetLineEnabled("line2Enabled", !line2); }}
+            title={`Toggle ${cornerLabels[side].end} hole line (E)`}
+            className={`rounded px-0.5 text-[8px] font-bold transition-colors ${
+              line2 ? "text-yellow-300" : "text-white/20 hover:text-yellow-400/60"
+            }`}>{cornerLabels[side].end}</button>
+        </div>
+      </div>
+      <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-destructive/40 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100">
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main SideEditor                                                    */
 /* ------------------------------------------------------------------ */
 export function SideEditor({
   side, label, accentClass, config, inwardLimit, outwardLimit,
   onAddFlange, onAddFrez, onAddInnerFrez, onChangeFlange, onChangeFrez, onChangeInnerFrez,
-  onRemoveFlange, onRemoveFrez, onRemoveInnerFrez, onFocusFlange, onFocusInnerFrez,
+  onRemoveFlange, onRemoveFrez, onRemoveInnerFrez, onFocusFlange, onFocusInnerFrez, onFocusHoles,
   onSetFrezMode, onSetFrezNotch, onSetInnerFrezNotch, onSetInnerFrezSpan, onSetFlangeRelief, onSetFlangeFlap,
-  onClearAll, isSelected, selectedFlangeIndex, selectedInnerFrezIndex,
+  onRemoveHoles, onUpdateHoleField, onSetHoleLineEnabled,
+  onClearAll, isSelected, selectedFlangeIndex, selectedInnerFrezIndex, selectedHolesIndex,
 }: SideEditorProps) {
   const [frezOpen, setFrezOpen] = useState(false);
 
@@ -488,13 +683,14 @@ export function SideEditor({
     </div>
   );
 
+  /* Helper: get holes data for a feature */
+  const getHoles = (kind: "flange" | "innerFrez", idx: number): HoleData | undefined => {
+    if (kind === "flange") return config.flanges[idx]?.holes;
+    return config.innerFrezLines[idx]?.holes;
+  };
+
   /* ══════════════════════════════════════════════════════════════════
      HORIZONTAL — top / bottom
-     ┌──────────────┬─────────── h-[30px] scroll area ────────────┐
-     │ T [+F][+Z][🗑]│  F1  │  F2  │  F3  │ ...                   │
-     └──────────────┴────────────────────────────────────────────-──┘
-     The outer row has no padding — height comes purely from h-[30px]
-     on both the header and the chip row inner div. Height is constant.
     ══════════════════════════════════════════════════════════════════ */
   if (isHorizontal) {
     return (
@@ -524,10 +720,9 @@ export function SideEditor({
                         onSetRelief={(pos, v) => onSetFlangeRelief(i, pos, v)}
                         onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
                         inputDataProps={{ "data-side": side } as any} isSelected={selectedFlangeIndex === i}
-                        hasHoles={flange.holes?.enabled}
                       />
                     );
-                  } else {
+                  } else if (feature.kind === "innerFrez") {
                     const i = feature.arrayIndex;
                     const frez = config.innerFrezLines[i];
                     return (
@@ -541,10 +736,32 @@ export function SideEditor({
                         onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
                         inputDataProps={{ "data-side": side } as any}
                         isSelected={selectedInnerFrezIndex === i}
-                        hasHoles={frez.holes?.enabled}
+                      />
+                    );
+                  } else if (feature.kind === "holes" && feature.parentKind) {
+                    const holes = getHoles(feature.parentKind, feature.arrayIndex);
+                    if (!holes) return null;
+                    const holesKey = `${feature.parentKind}-${feature.arrayIndex}-holes`;
+                    const isHolesSelected = selectedHolesIndex === feature.arrayIndex &&
+                      ((feature.parentKind === "flange" && selectedFlangeIndex === feature.arrayIndex) ||
+                       (feature.parentKind === "innerFrez" && selectedInnerFrezIndex === feature.arrayIndex));
+                    return (
+                      <HolesChip
+                        key={holesKey}
+                        unifiedPosition={feature.position}
+                        side={side}
+                        holes={holes}
+                        parentKind={feature.parentKind}
+                        arrayIndex={feature.arrayIndex}
+                        onRemove={() => onRemoveHoles(feature.parentKind!, feature.arrayIndex)}
+                        onUpdateField={(field, value) => onUpdateHoleField(feature.parentKind!, feature.arrayIndex, field, value)}
+                        onSetLineEnabled={(line, value) => onSetHoleLineEnabled(feature.parentKind!, feature.arrayIndex, line, value)}
+                        onFocus={() => onFocusHoles?.(feature.parentKind!, feature.arrayIndex)}
+                        isSelected={isHolesSelected}
                       />
                     );
                   }
+                  return null;
                 })}
               </div>
               <ScrollBar orientation="horizontal" className="h-1" />
@@ -596,19 +813,6 @@ export function SideEditor({
 
   /* ══════════════════════════════════════════════════════════════════
      VERTICAL — left / right
-     Card is w-[116px] fixed — never shifts width.
-     Flange list uses ScrollArea that fills remaining height (flex-1
-     min-h-0) so it always occupies the full preview height and scrolls
-     at any count. No >15 threshold — always in ScrollArea.
-
-       ┌──────────────┐  ← h-[30px] header
-       ├──────────────┤  ← 1px separator
-       │ F1  [25]   × │  ↑
-       │  []T   []B   │  │ flex-1 ScrollArea
-       ├──────────────┤  │ fills remaining
-       │ F2  [20]   × │  │ grid row height
-       │  []T   []B   │  ↓
-       └──────────────┘
     ══════════════════════════════════════════════════════════════════ */
   return (
     <div className={`side-editor-panel flex h-full w-[116px] flex-col rounded-xl border border-white/[0.07] bg-card/70 backdrop-blur-sm ${isSelected ? "ring-1 ring-emerald-500/40" : ""}`}>
@@ -635,10 +839,9 @@ export function SideEditor({
                   onSetFlap={(pos, v) => onSetFlangeFlap(i, pos, v)}
                   inputDataProps={inputDataProps}
                   isSelected={selectedFlangeIndex === i}
-                  hasHoles={flange.holes?.enabled}
                 />
               );
-            } else {
+            } else if (feature.kind === "innerFrez") {
               const i = feature.arrayIndex;
               const frez = config.innerFrezLines[i];
               return (
@@ -652,10 +855,32 @@ export function SideEditor({
                   onSetSpan={(pos, v) => onSetInnerFrezSpan(i, pos, v)}
                   inputDataProps={inputDataProps}
                   isSelected={selectedInnerFrezIndex === i}
-                  hasHoles={frez.holes?.enabled}
+                />
+              );
+            } else if (feature.kind === "holes" && feature.parentKind) {
+              const holes = getHoles(feature.parentKind, feature.arrayIndex);
+              if (!holes) return null;
+              const holesKey = `${feature.parentKind}-${feature.arrayIndex}-holes`;
+              const isHolesSelected = selectedHolesIndex === feature.arrayIndex &&
+                ((feature.parentKind === "flange" && selectedFlangeIndex === feature.arrayIndex) ||
+                 (feature.parentKind === "innerFrez" && selectedInnerFrezIndex === feature.arrayIndex));
+              return (
+                <HolesBlock
+                  key={holesKey}
+                  unifiedPosition={feature.position}
+                  side={side}
+                  holes={holes}
+                  parentKind={feature.parentKind}
+                  arrayIndex={feature.arrayIndex}
+                  onRemove={() => onRemoveHoles(feature.parentKind!, feature.arrayIndex)}
+                  onUpdateField={(field, value) => onUpdateHoleField(feature.parentKind!, feature.arrayIndex, field, value)}
+                  onSetLineEnabled={(line, value) => onSetHoleLineEnabled(feature.parentKind!, feature.arrayIndex, line, value)}
+                  onFocus={() => onFocusHoles?.(feature.parentKind!, feature.arrayIndex)}
+                  isSelected={isHolesSelected}
                 />
               );
             }
+            return null;
           })}
         </div>
       </ScrollArea>

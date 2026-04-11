@@ -23,6 +23,10 @@ export type HoleSettings = {
 
 export type HoleData = HoleSettings & {
   enabled: boolean;
+  /** Whether the first hole line is rendered (Q toggles this when holes chip is focused) */
+  line1Enabled?: boolean;
+  /** Whether the second hole line is rendered (E toggles this when holes chip is focused) */
+  line2Enabled?: boolean;
 };
 
 export type FrezLineNotches = {
@@ -235,6 +239,8 @@ export function normalizeHoleData(value: unknown): HoleData | undefined {
         sideOffset: typeof record.sideOffset === "number" ? record.sideOffset : 25,
         endOffset: typeof record.endOffset === "number" ? record.endOffset : 25,
         length: typeof record.length === "number" ? record.length : 25,
+        line1Enabled: typeof record.line1Enabled === "boolean" ? record.line1Enabled : true,
+        line2Enabled: typeof record.line2Enabled === "boolean" ? record.line2Enabled : true,
       };
     }
   }
@@ -403,7 +409,7 @@ export function normalizeSheetMetalModel(model: SheetMetalModel): SheetMetalMode
   };
 }
 
-export type FeatureKind = "flange" | "innerFrez";
+export type FeatureKind = "flange" | "innerFrez" | "holes";
 
 export type FeatureRef = {
   kind: FeatureKind;
@@ -412,19 +418,32 @@ export type FeatureRef = {
   /** 1-based unified position across all features on this side */
   position: number;
   id: string;
+  /** For holes entries: reference back to the parent feature kind */
+  parentKind?: "flange" | "innerFrez";
 };
 
 export function getUnifiedFeatures(side: SideConfig): FeatureRef[] {
-  const items: { kind: FeatureKind; arrayIndex: number; id: string }[] = [];
+  const items: { kind: FeatureKind; arrayIndex: number; id: string; parentKind?: "flange" | "innerFrez" }[] = [];
   for (let i = 0; i < side.flanges.length; i++) {
     items.push({ kind: "flange", arrayIndex: i, id: side.flanges[i].id });
+    if (side.flanges[i].holes?.enabled) {
+      items.push({ kind: "holes", arrayIndex: i, id: side.flanges[i].id + "-holes", parentKind: "flange" });
+    }
   }
   for (let i = 0; i < side.innerFrezLines.length; i++) {
     items.push({ kind: "innerFrez", arrayIndex: i, id: side.innerFrezLines[i].id });
+    if (side.innerFrezLines[i].holes?.enabled) {
+      items.push({ kind: "holes", arrayIndex: i, id: side.innerFrezLines[i].id + "-holes", parentKind: "innerFrez" });
+    }
   }
   items.sort((a, b) => {
-    const numA = parseInt(a.id.replace(/\D/g, ""), 10) || 0;
-    const numB = parseInt(b.id.replace(/\D/g, ""), 10) || 0;
+    const numA = parseInt(a.id.replace(/-holes$/, "").replace(/\D/g, ""), 10) || 0;
+    const numB = parseInt(b.id.replace(/-holes$/, "").replace(/\D/g, ""), 10) || 0;
+    // Same base ID: parent comes before holes
+    if (numA === numB) {
+      if (a.kind === "holes" && b.kind !== "holes") return 1;
+      if (a.kind !== "holes" && b.kind === "holes") return -1;
+    }
     return numA - numB;
   });
   return items.map((item, index) => ({

@@ -379,6 +379,8 @@ function addHoleLines(
 ) {
   const { xMin, xMax, yMin, yMax } = region;
   const { sideOffset, endOffset, length, placement, orientation } = holeData;
+  const line1 = holeData.line1Enabled !== false;
+  const line2 = holeData.line2Enabled !== false;
 
   if (side === "top") {
     if (orientation === "horizontal") {
@@ -386,15 +388,15 @@ function addHoleLines(
       const lx1 = xMin + sideOffset;
       const lx2 = xMax - sideOffset;
       const len = Math.min(length, Math.max(0, lx2 - lx1) / 2);
-      addLine(shapes, "HOLES", lx1, y, lx1 + len, y);
-      addLine(shapes, "HOLES", lx2 - len, y, lx2, y);
+      if (line1) addLine(shapes, "HOLES", lx1, y, lx1 + len, y);
+      if (line2) addLine(shapes, "HOLES", lx2 - len, y, lx2, y);
     } else {
       const x1 = xMin + sideOffset;
       const x2 = xMax - sideOffset;
       const y1 = placement === "inner" ? yMin + endOffset : yMax - endOffset;
       const y2 = placement === "inner" ? y1 + length : y1 - length;
-      addLine(shapes, "HOLES", x1, y1, x1, y2);
-      addLine(shapes, "HOLES", x2, y1, x2, y2);
+      if (line1) addLine(shapes, "HOLES", x1, y1, x1, y2);
+      if (line2) addLine(shapes, "HOLES", x2, y1, x2, y2);
     }
   } else if (side === "bottom") {
     if (orientation === "horizontal") {
@@ -402,15 +404,15 @@ function addHoleLines(
       const lx1 = xMin + sideOffset;
       const lx2 = xMax - sideOffset;
       const len = Math.min(length, Math.max(0, lx2 - lx1) / 2);
-      addLine(shapes, "HOLES", lx1, y, lx1 + len, y);
-      addLine(shapes, "HOLES", lx2 - len, y, lx2, y);
+      if (line1) addLine(shapes, "HOLES", lx1, y, lx1 + len, y);
+      if (line2) addLine(shapes, "HOLES", lx2 - len, y, lx2, y);
     } else {
       const x1 = xMin + sideOffset;
       const x2 = xMax - sideOffset;
       const y1 = placement === "inner" ? yMax - endOffset : yMin + endOffset;
       const y2 = placement === "inner" ? y1 - length : y1 + length;
-      addLine(shapes, "HOLES", x1, y1, x1, y2);
-      addLine(shapes, "HOLES", x2, y1, x2, y2);
+      if (line1) addLine(shapes, "HOLES", x1, y1, x1, y2);
+      if (line2) addLine(shapes, "HOLES", x2, y1, x2, y2);
     }
   } else if (side === "left") {
     if (orientation === "horizontal") {
@@ -418,15 +420,15 @@ function addHoleLines(
       const y1 = yMin + sideOffset;
       const y2 = yMax - sideOffset;
       const len = Math.min(length, Math.max(0, y2 - y1) / 2);
-      addLine(shapes, "HOLES", x, y1, x, y1 + len);
-      addLine(shapes, "HOLES", x, y2 - len, x, y2);
+      if (line1) addLine(shapes, "HOLES", x, y1, x, y1 + len);
+      if (line2) addLine(shapes, "HOLES", x, y2 - len, x, y2);
     } else {
       const y1 = yMin + sideOffset;
       const y2 = yMax - sideOffset;
       const x1 = placement === "inner" ? xMax - endOffset : xMin + endOffset;
       const x2 = placement === "inner" ? x1 - length : x1 + length;
-      addLine(shapes, "HOLES", x1, y1, x2, y1);
-      addLine(shapes, "HOLES", x1, y2, x2, y2);
+      if (line1) addLine(shapes, "HOLES", x1, y1, x2, y1);
+      if (line2) addLine(shapes, "HOLES", x1, y2, x2, y2);
     }
   } else if (side === "right") {
     if (orientation === "horizontal") {
@@ -434,15 +436,15 @@ function addHoleLines(
       const y1 = yMin + sideOffset;
       const y2 = yMax - sideOffset;
       const len = Math.min(length, Math.max(0, y2 - y1) / 2);
-      addLine(shapes, "HOLES", x, y1, x, y1 + len);
-      addLine(shapes, "HOLES", x, y2 - len, x, y2);
+      if (line1) addLine(shapes, "HOLES", x, y1, x, y1 + len);
+      if (line2) addLine(shapes, "HOLES", x, y2 - len, x, y2);
     } else {
       const y1 = yMin + sideOffset;
       const y2 = yMax - sideOffset;
       const x1 = placement === "inner" ? xMin + endOffset : xMax - endOffset;
       const x2 = placement === "inner" ? x1 + length : x1 - length;
-      addLine(shapes, "HOLES", x1, y1, x2, y1);
-      addLine(shapes, "HOLES", x1, y2, x2, y2);
+      if (line1) addLine(shapes, "HOLES", x1, y1, x2, y1);
+      if (line2) addLine(shapes, "HOLES", x1, y2, x2, y2);
     }
   }
 }
