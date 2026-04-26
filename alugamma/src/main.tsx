@@ -4,15 +4,18 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { BrowserRouter } from "react-router-dom";
 
 import App from "@/app";
+import { ErrorBoundary } from "@/components/error-boundary";
 import "@/index.css";
 import { convex } from "@/lib/convex";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ConvexAuthProvider client={convex}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </ConvexAuthProvider>
+    <ErrorBoundary>
+      <ConvexAuthProvider client={convex}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </ConvexAuthProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );
