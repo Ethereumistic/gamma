@@ -80,9 +80,21 @@ export type SheetMetalModel = {
   includeName: boolean;
   includeArrow: boolean;
   arrowDirection: SideKey;
+  /** When true, export filename includes direction & count suffix: name_T_x18.dxf */
+  includeMetadata: boolean;
+  /** How many copies of this sheet part (used in filename suffix when includeMetadata is on) */
+  metadataCount: number;
   sides: Record<SideKey, SideConfig>;
   cornerReliefs: Record<CornerKey, CornerReliefAxes>;
   rubberband: boolean;
+};
+
+/** Map from sheet-metal SideKey to nesting direction code for filenames */
+export const SIDE_KEY_TO_DIR: Record<SideKey, string> = {
+  top: "T",
+  right: "R",
+  bottom: "B",
+  left: "L",
 };
 
 export type Rect = {
@@ -197,6 +209,8 @@ export function createEmptyModel(): SheetMetalModel {
     includeName: true,
     includeArrow: true,
     arrowDirection: "top",
+    includeMetadata: false,
+    metadataCount: 1,
     sides: {
       top: createEmptySide(),
       right: createEmptySide(),
@@ -393,6 +407,8 @@ export function normalizeSheetMetalModel(model: SheetMetalModel): SheetMetalMode
     includeName: typeof model.includeName === "boolean" ? model.includeName : true,
     includeArrow: typeof model.includeArrow === "boolean" ? model.includeArrow : true,
     arrowDirection: sideKeys.includes(model.arrowDirection) ? model.arrowDirection : "top",
+    includeMetadata: typeof model.includeMetadata === "boolean" ? model.includeMetadata : false,
+    metadataCount: typeof model.metadataCount === "number" && model.metadataCount >= 1 ? Math.round(model.metadataCount) : 1,
     sides: {
       top: normalizeSideConfig(model.sides.top),
       right: normalizeSideConfig(model.sides.right),

@@ -160,6 +160,8 @@ function normalizeSheetModel(model: any) {
         includeName: typeof model.includeName === "boolean" ? model.includeName : true,
         includeArrow: typeof model.includeArrow === "boolean" ? model.includeArrow : true,
         arrowDirection: ["top", "right", "bottom", "left"].includes(model.arrowDirection) ? model.arrowDirection : "top",
+        includeMetadata: typeof model.includeMetadata === "boolean" ? model.includeMetadata : false,
+        metadataCount: typeof model.metadataCount === "number" && model.metadataCount >= 1 ? Math.round(model.metadataCount) : 1,
         sides: {
             top: normalizeSideConfig(model.sides?.top),
             right: normalizeSideConfig(model.sides?.right),

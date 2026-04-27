@@ -27,6 +27,7 @@ import { useWorkspace } from "@/features/workspace/context";
 import { api } from "../../convex/_generated/api";
 import { buildDxf } from "@/features/sheet-metal/dxf";
 import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
+import { SIDE_KEY_TO_DIR, normalizeSheetMetalModel } from "@/features/sheet-metal/types";
 import { Id } from "../../convex/_generated/dataModel";
 
 function BatchExportDialog({
@@ -103,12 +104,21 @@ function BatchExportDialog({
             for (const design of designs) {
                 if (!selectedIds.has(design.id)) continue;
                 try {
+                    const m = normalizeSheetMetalModel(design.model);
                     const geometry = computeSheetMetalGeometry(design.model as any);
                     const dxfString = buildDxf(geometry, design.exportName, design.model as any);
-                    const filename = design.exportName.toLowerCase().endsWith(".dxf")
-                        ? design.exportName
-                        : `${design.exportName}.dxf`;
-                    zip.file(filename, dxfString);
+
+                    let filename = design.exportName.toLowerCase().endsWith(".dxf")
+                        ? design.exportName.replace(/\.dxf$/i, "")
+                        : design.exportName;
+
+                    if (m.includeMetadata) {
+                        const dir = SIDE_KEY_TO_DIR[m.arrowDirection] ?? "T";
+                        const count = m.metadataCount || 1;
+                        filename = `${filename}_${dir}_x${count}`;
+                    }
+
+                    zip.file(`${filename}.dxf`, dxfString);
                     successCount++;
                 } catch (e) {
                     console.error(`Failed to export ${design.name}`, e);

@@ -38,6 +38,8 @@ describe("Bottom-left V-notch trimming edge case", () => {
       includeName: true,
       includeArrow: true,
       arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
       sides: {
         top: emptySide(),
         right: emptySide(),
@@ -123,6 +125,8 @@ describe("Bottom-left V-notch trimming edge case", () => {
       includeName: true,
       includeArrow: true,
       arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
       sides: {
         top: emptySide(),
         right: emptySide(),
@@ -184,6 +188,8 @@ describe("Bottom-left V-notch trimming edge case", () => {
       includeName: true,
       includeArrow: true,
       arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
       sides: {
         top: {
           flanges: [{

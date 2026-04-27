@@ -1,24 +1,41 @@
 // ────────────────────────────────────────────────────────────────────────────────
 // Nesting Feature — Part List Panel
-// Left sidebar: drag-and-drop import, add/remove/configure parts
+// Left sidebar: drag-and-drop import, project import, add/remove/configure parts
 // ────────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useState, useCallback } from "react";
-import { Plus, Trash2, X, FileUp, Upload } from "lucide-react";
+import { Plus, Trash2, X, FileUp, Upload, FolderOpen } from "lucide-react";
+import { useQuery } from "convex/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useNesting } from "./context";
-import { createNestPartFromFile } from "./dxf-reader";
+import { createNestPartFromFile, createNestPartFromDesign } from "./dxf-reader";
 import { createNestPart } from "./types";
 import type { NestPart, PartDirection } from "./types";
+import { useWorkspace } from "@/features/workspace/context";
+import { api } from "../../../convex/_generated/api";
+import { normalizeSheetMetalModel } from "@/features/sheet-metal/types";
 
 export function PartListPanel() {
   const { job, addPart, removePart, updatePartCount, clearParts } = useNesting();
+  const { selectedProjectId } = useWorkspace();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [selectedDesignIds, setSelectedDesignIds] = useState<Set<string>>(new Set());
+  const [importingFromProject, setImportingFromProject] = useState(false);
   const dragCounterRef = useRef(0);
+
+  // Query designs for the current project
+  const projectDesigns = useQuery(
+    api.designs.listByProject,
+    selectedProjectId ? { projectId: selectedProjectId } : "skip",
+  );
 
   // ── File Import Handler ──────────────────────────────────────────────────
 
@@ -84,6 +101,57 @@ export function PartListPanel() {
     }
   }, [importFiles]);
 
+  // ── Project Import Handler ────────────────────────────────────────────────
+
+  const handleOpenProjectDialog = () => {
+    setSelectedDesignIds(new Set());
+    setProjectDialogOpen(true);
+  };
+
+  const handleToggleDesign = (designId: string) => {
+    setSelectedDesignIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(designId)) {
+        next.delete(designId);
+      } else {
+        next.add(designId);
+      }
+      return next;
+    });
+  };
+
+  const handleImportFromProject = async () => {
+    if (!projectDesigns || projectDesigns.length === 0 || !selectedProjectId) return;
+
+    setImportingFromProject(true);
+    let imported = 0;
+
+    try {
+      for (const design of projectDesigns) {
+        if (!selectedDesignIds.has(design.id)) continue;
+        try {
+          const part = createNestPartFromDesign({
+            id: design.id,
+            name: design.name,
+            exportName: design.exportName,
+            model: normalizeSheetMetalModel(design.model),
+          });
+          addPart(part);
+          imported++;
+        } catch (e) {
+          console.error(`Failed to import design ${design.name}:`, e);
+        }
+      }
+
+      if (imported > 0) {
+        toast.success(`Imported ${imported} design${imported > 1 ? "s" : ""} from project.`);
+      }
+    } finally {
+      setImportingFromProject(false);
+      setProjectDialogOpen(false);
+    }
+  };
+
   // ── Demo Part ────────────────────────────────────────────────────────────
 
   const handleAddDemoPart = () => {
@@ -123,6 +191,18 @@ export function PartListPanel() {
           Parts
         </h3>
         <div className="flex items-center gap-1">
+          {selectedProjectId && projectDesigns && projectDesigns.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleOpenProjectDialog}
+              disabled={importing}
+              title="Import from project designs"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -207,6 +287,20 @@ export function PartListPanel() {
               <p className="mt-3 text-[10px] text-muted-foreground/40">
                 Filename patterns: name_B_x50 · name_x8 · name_R · name.dxf
               </p>
+              {selectedProjectId && projectDesigns && projectDesigns.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 h-7 text-[10px]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenProjectDialog();
+                  }}
+                >
+                  <FolderOpen className="mr-1.5 h-3 w-3" />
+                  Import {projectDesigns.length} design{projectDesigns.length !== 1 ? "s" : ""} from project
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -233,6 +327,96 @@ export function PartListPanel() {
           </p>
         </div>
       )}
+
+      {/* ── Project Design Import Dialog ── */}
+      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+        <DialogContent className="border-white/10 bg-card/95 backdrop-blur-xl sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">Import from Project</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Select sheet-metal designs to add as nesting parts. Direction and count are read from each design's metadata settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 max-h-[340px] overflow-y-auto rounded-md border border-white/[0.06] bg-black/20">
+            {!projectDesigns || projectDesigns.length === 0 ? (
+              <div className="flex items-center justify-center p-6 text-xs text-muted-foreground">
+                No designs in this project.
+              </div>
+            ) : (
+              <div className="divide-y divide-white/[0.04]">
+                {projectDesigns.map((design) => {
+                  const isSelected = selectedDesignIds.has(design.id);
+                  const m = normalizeSheetMetalModel(design.model);
+                  const dir = m.includeMetadata ? { top: "↑T", right: "→R", bottom: "↓B", left: "←L" }[m.arrowDirection] : null;
+                  const count = m.includeMetadata ? m.metadataCount : 1;
+
+                  return (
+                    <label
+                      key={design.id}
+                      className={`flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-white/[0.03] ${isSelected ? "bg-white/[0.04]" : ""}`}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => handleToggleDesign(design.id)}
+                        className="mt-0.5 h-4 w-4 border-white/20 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-xs font-medium text-foreground">
+                            {design.name}
+                          </span>
+                          {dir && (
+                            <Badge variant="outline" className="h-4 px-1 text-[9px]">
+                              {dir}
+                            </Badge>
+                          )}
+                          {m.includeMetadata && count > 1 && (
+                            <Badge variant="outline" className="h-4 px-1 text-[9px] text-amber-400">
+                              ×{count}
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="h-4 bg-emerald-500/10 px-1 text-[9px] text-emerald-400">
+                            SM
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                          {m.baseWidth}×{m.baseHeight} mm · offset {m.offsetCut}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-[10px] text-muted-foreground">
+              {selectedDesignIds.size} selected
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setProjectDialogOpen(false)}
+                disabled={importingFromProject}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleImportFromProject}
+                disabled={selectedDesignIds.size === 0 || importingFromProject}
+              >
+                {importingFromProject ? "Importing…" : `Import ${selectedDesignIds.size || ""} Part${selectedDesignIds.size !== 1 ? "s" : ""}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -250,6 +434,17 @@ function PartCard({
   onUpdateCount: (count: number) => void;
   onRemove: () => void;
 }) {
+  const sourceBadge =
+    part.source === "sheet-metal" ? (
+      <Badge variant="outline" className="h-4 bg-emerald-500/10 px-1 text-[9px] text-emerald-400">
+        SM
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="h-4 bg-blue-500/10 px-1 text-[9px] text-blue-400">
+        DXF
+      </Badge>
+    );
+
   return (
     <div className="group relative rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 transition-colors hover:border-white/10 hover:bg-white/[0.04]">
       <div className="flex items-start justify-between gap-2">
@@ -263,9 +458,10 @@ function PartCard({
                 {directionLabels[part.direction] ?? part.direction}
               </Badge>
             )}
-            {part.source === "custom-dxf" && (
-              <Badge variant="outline" className="h-4 bg-blue-500/10 px-1 text-[9px] text-blue-400">
-                DXF
+            {sourceBadge}
+            {part.designId && (
+              <Badge variant="outline" className="h-4 px-1 text-[9px] text-muted-foreground">
+                linked
               </Badge>
             )}
           </div>

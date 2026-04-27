@@ -12,6 +12,7 @@ import {
   createFlangeMeasurement,
   createInnerFrezMeasurement,
   normalizeSheetMetalModel,
+  SIDE_KEY_TO_DIR,
   type CornerKey,
   type CornerReliefAxis,
   type FrezMode,
@@ -64,6 +65,8 @@ type SheetMetalContextType = {
   setIncludeName: (value: boolean) => void;
   setIncludeArrow: (value: boolean) => void;
   setArrowDirection: (direction: SideKey) => void;
+  setIncludeMetadata: (value: boolean) => void;
+  setMetadataCount: (count: number) => void;
   setInvert: (axis: "invertX" | "invertY", value: boolean) => void;
   addFlange: (side: SideKey) => void;
   addFrez: (side: SideKey) => void;
@@ -225,6 +228,20 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     setModel((current) => ({
       ...current,
       arrowDirection: direction,
+    }));
+  }
+
+  function setIncludeMetadata(value: boolean) {
+    setModel((current) => ({
+      ...current,
+      includeMetadata: value,
+    }));
+  }
+
+  function setMetadataCount(count: number) {
+    setModel((current) => ({
+      ...current,
+      metadataCount: Math.max(1, Math.round(count)),
     }));
   }
 
@@ -613,8 +630,15 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     const blob = new Blob([contents], { type: "application/dxf" });
     const link = document.createElement("a");
 
+    let filename = sanitizeFileName(designName);
+    if (model.includeMetadata) {
+      const dir = SIDE_KEY_TO_DIR[model.arrowDirection] ?? "T";
+      const count = model.metadataCount || 1;
+      filename = `${filename}_${dir}_x${count}`;
+    }
+
     link.href = URL.createObjectURL(blob);
-    link.download = `${sanitizeFileName(designName)}.dxf`;
+    link.download = `${filename}.dxf`;
     link.click();
     URL.revokeObjectURL(link.href);
 
@@ -636,6 +660,8 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         setIncludeName,
         setIncludeArrow,
         setArrowDirection,
+        setIncludeMetadata,
+        setMetadataCount,
         setInvert,
         addFlange,
         addFrez,

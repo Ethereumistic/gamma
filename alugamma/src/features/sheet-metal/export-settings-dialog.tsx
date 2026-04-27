@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SheetMetalModel, SideKey } from "@/features/sheet-metal/types";
+import { SIDE_KEY_TO_DIR } from "@/features/sheet-metal/types";
 import { useWorkspace } from "@/features/workspace/context";
 
 const allSideKeys: SideKey[] = ["top", "right", "bottom", "left"];
@@ -26,6 +27,8 @@ type ExportSettingsDialogProps = {
   onSetIncludeName: (value: boolean) => void;
   onSetIncludeArrow: (value: boolean) => void;
   onSetArrowDirection: (direction: SideKey) => void;
+  onSetIncludeMetadata: (value: boolean) => void;
+  onSetMetadataCount: (count: number) => void;
   onSetRubberband: (value: boolean) => void;
 };
 
@@ -34,6 +37,8 @@ export function ExportSettingsDialog({
   onSetIncludeName,
   onSetIncludeArrow,
   onSetArrowDirection,
+  onSetIncludeMetadata,
+  onSetMetadataCount,
   onSetRubberband,
 }: ExportSettingsDialogProps) {
   const [open, setOpen] = useState(false);
@@ -304,6 +309,46 @@ export function ExportSettingsDialog({
                         {dir}
                       </Button>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-white/6 bg-black/20 p-3">
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-medium text-foreground">Include sheet part metadata</span>
+                    <p className="text-[10px] text-muted-foreground">
+                      Filename with direction & count:
+                      <br />
+                      <span className="font-mono text-emerald-400/80">
+                        {model.includeMetadata
+                          ? `${model.metadataCount <= 0 ? 1 : model.metadataCount} part${model.metadataCount !== 1 ? "s" : ""} → name_${SIDE_KEY_TO_DIR[model.arrowDirection]}_x${model.metadataCount <= 0 ? 1 : model.metadataCount}.dxf`
+                          : "name.dxf"
+                        }
+                      </span>
+                    </p>
+                  </div>
+                  <Checkbox
+                    checked={model.includeMetadata}
+                    onCheckedChange={(checked) => onSetIncludeMetadata(checked === true)}
+                    className="h-4 w-4 border-white/20 data-[state=checked]:border-amber-500 data-[state=checked]:bg-amber-500"
+                  />
+                </label>
+
+                {model.includeMetadata && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Count</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={9999}
+                      value={model.metadataCount}
+                      onChange={(e) => onSetMetadataCount(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="h-7 w-20 bg-black/40 text-xs font-mono"
+                    />
+                    <span className="text-[10px] text-muted-foreground">
+                      copies of this sheet part
+                    </span>
                   </div>
                 )}
               </div>

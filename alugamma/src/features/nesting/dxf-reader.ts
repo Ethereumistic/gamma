@@ -9,6 +9,9 @@
 import { LAYER_CUT, LAYER_ZERO, CUT_OFFSET } from "./constants";
 import type { Segment, Rect, NestPart, PartDirection } from "./types";
 import { parseFilename, computeCutDimensions, createNestPart } from "./types";
+import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
+import { buildDxf } from "@/features/sheet-metal/dxf";
+import { SIDE_KEY_TO_DIR, type SheetMetalModel } from "@/features/sheet-metal/types";
 
 // ── DXF Entity Representation ─────────────────────────────────────────────
 // Unlike a simple Map, we need to support multiple values with the same
@@ -465,4 +468,68 @@ export function createNestPartFromGeometry(
     dxfContent,
     designId,
   });
+}
+
+// ── Create NestPart from a saved sheet-metal design ──────────────────────
+//
+// This bridges the sheet-metal design system to the nesting system.
+// It regenerates the DXF geometry from the parametric model on the fly
+// (no file storage needed — the model IS the source of truth).
+
+export function createNestPartFromDesign(
+  design: {
+    id: string;
+    name: string;
+    exportName: string;
+    model: SheetMetalModel;
+  },
+  overrides?: {
+    count?: number;
+    direction?: PartDirection;
+  },
+): NestPart {
+  // Regenerate geometry from the parametric model — pure deterministic function
+  const geometry = computeSheetMetalGeometry(design.model);
+  const dxfContent = buildDxf(geometry, design.exportName, design.model);
+
+  // The geometry bounds include offsetCut (e.g. 3mm margin on all sides).
+  // Nesting expects l0Width/l0Height = the Layer 0 outline WITHOUT that margin, so
+  // we subtract 2 * offsetCut to get the nominal part dimensions.
+  const offsetCut = design.model.offsetCut ?? 3;
+  const l0Width = geometry.totalWidth - 2 * offsetCut;
+  const l0Height = geometry.totalHeight - 2 * offsetCut;
+
+  // Extract CUT line segments from geometry.
+  // In the geometry coordinate system, the L0 outline starts at (0, 0),
+  // so no coordinate shift is needed — absolute coordinates are already
+  // local-relative-to-L0-origin. CUT lines extend offsetCut beyond L0.
+  const cutLines: Segment[] = geometry.shapes
+    .filter((s) => s.layer === "CUT")
+    .map((s) => ({
+      x1: s.x1,
+      y1: s.y1,
+      x2: s.x2,
+      y2: s.y2,
+    }));
+
+  // Determine direction from model metadata or arrow
+  const direction: PartDirection =
+    overrides?.direction ??
+    (design.model.includeMetadata
+      ? (SIDE_KEY_TO_DIR[design.model.arrowDirection] as PartDirection)
+      : null);
+
+  // Determine count from model metadata or override
+  const count = overrides?.count ?? (design.model.includeMetadata ? (design.model.metadataCount || 1) : 1);
+
+  return createNestPartFromGeometry(
+    design.exportName,
+    direction,
+    count,
+    l0Width,
+    l0Height,
+    cutLines,
+    design.id,
+    dxfContent,
+  );
 }

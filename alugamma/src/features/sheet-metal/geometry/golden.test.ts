@@ -82,6 +82,8 @@ const BLANK_PANEL: SheetMetalModel = {
   includeName: true,
   includeArrow: true,
   arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
   sides: { top: emptySide(), right: emptySide(), bottom: emptySide(), left: emptySide() },
   cornerReliefs: emptyCorners(),
   rubberband: true,
@@ -97,6 +99,8 @@ const SIMPLE_FLANGES: SheetMetalModel = {
   includeName: true,
   includeArrow: true,
   arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
   sides: {
     top: { flanges: [makeFlange(60)], frezLines: [], frezMode: "inner", innerFrezLines: [] },
     right: { flanges: [makeFlange(40)], frezLines: [], frezMode: "inner", innerFrezLines: [] },
@@ -117,6 +121,8 @@ const FLANGES_WITH_RELIEFS: SheetMetalModel = {
   includeName: true,
   includeArrow: true,
   arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
   sides: {
     top: { flanges: [makeFlange(60, { start: true, end: true })], frezLines: [], frezMode: "inner", innerFrezLines: [] },
     right: { flanges: [makeFlange(40, { start: true })], frezLines: [], frezMode: "inner", innerFrezLines: [] },
@@ -137,6 +143,8 @@ const WITH_OUTER_FREZ: SheetMetalModel = {
   includeName: true,
   includeArrow: true,
   arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
   sides: {
     top: { flanges: [makeFlange(60)], frezLines: [makeFrez(20, { start: true, end: true })], frezMode: "inner", innerFrezLines: [] },
     right: { flanges: [makeFlange(40)], frezLines: [], frezMode: "inner", innerFrezLines: [] },
@@ -157,6 +165,8 @@ const COMPLEX_MODEL: SheetMetalModel = {
   includeName: true,
   includeArrow: true,
   arrowDirection: "top",
+  includeMetadata: false,
+  metadataCount: 1,
   sides: {
     top: {
       flanges: [makeFlange(26)],

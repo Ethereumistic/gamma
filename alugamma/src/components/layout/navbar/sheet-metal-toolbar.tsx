@@ -22,6 +22,8 @@ export function SheetMetalToolbar() {
     setIncludeName,
     setIncludeArrow,
     setArrowDirection,
+    setIncludeMetadata,
+    setMetadataCount,
     setInvert,
     setRubberband,
     replaceModel,
@@ -190,6 +192,8 @@ export function SheetMetalToolbar() {
           onSetIncludeName={setIncludeName}
           onSetIncludeArrow={setIncludeArrow}
           onSetArrowDirection={setArrowDirection}
+          onSetIncludeMetadata={setIncludeMetadata}
+          onSetMetadataCount={setMetadataCount}
           onSetRubberband={setRubberband}
         />
         <Button

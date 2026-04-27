@@ -104,6 +104,8 @@ export const sheetModelValidator = v.object({
   includeName: v.optional(v.boolean()),
   includeArrow: v.optional(v.boolean()),
   arrowDirection: v.optional(v.union(v.literal("top"), v.literal("right"), v.literal("bottom"), v.literal("left"))),
+  includeMetadata: v.optional(v.boolean()),
+  metadataCount: v.optional(v.number()),
   sides: v.object({
     top: sideConfigValidator,
     right: sideConfigValidator,
