@@ -81,6 +81,7 @@ type SheetMetalContextType = {
   setFlangeRelief: (side: SideKey, index: number, position: "start" | "end", value: boolean) => void;
   setFlangeFlap: (side: SideKey, index: number, position: "start" | "end", value: number) => void;
   setCornerRelief: (corner: CornerKey, axis: CornerReliefAxis, value: boolean) => void;
+  replaceModel: (model: SheetMetalModel) => void;
   loadPreset: (index: number) => void;
   startNewDesign: () => void;
   loadSavedDesign: (designId: Id<"designs">) => void;
@@ -436,6 +437,10 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     }));
   }
 
+  function replaceModel(newModel: SheetMetalModel) {
+    setModel(normalizeSheetMetalModel(newModel));
+  }
+
   function setRubberband(value: boolean) {
     setModel((current) => ({
       ...current,
@@ -648,6 +653,7 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         setFlangeRelief,
         setFlangeFlap,
         setCornerRelief,
+        replaceModel,
         loadPreset,
         startNewDesign,
         loadSavedDesign,

@@ -1,16 +1,13 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useHotkey } from "@tanstack/react-hotkeys";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ExportSettingsDialog } from "@/features/sheet-metal/export-settings-dialog";
-import { presetLibrary } from "@/features/sheet-metal/presets";
+import { FormulaBar } from "@/features/sheet-metal/formula-bar";
+import { type ParseError, parseFormula, serializeFormula } from "@/features/sheet-metal/formula";
 import { useSheetMetal } from "@/features/sheet-metal/context";
 import { useWorkspace } from "@/features/workspace/context";
 import { NavNumberField } from "./nav-number-field";
@@ -27,12 +24,82 @@ export function SheetMetalToolbar() {
     setArrowDirection,
     setInvert,
     setRubberband,
-    loadPreset,
+    replaceModel,
     exportDxf,
     saveDesign,
     isSaving,
   } = useSheetMetal();
   const { selectedProject } = useWorkspace();
+
+  // ---------------------------------------------------------------------------
+  // Formula bar state — bidirectional sync with model
+  // ---------------------------------------------------------------------------
+
+  const formulaInputRef = useRef<HTMLInputElement>(null);
+  const skipSyncRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const [formulaText, setFormulaText] = useState(() => serializeFormula(model));
+  const [formulaErrors, setFormulaErrors] = useState<ParseError[]>([]);
+
+  // Sync: context model → formula string (skip when update originated from formula)
+  useEffect(() => {
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
+    // Don't overwrite formula while user is actively editing
+    if (document.activeElement === formulaInputRef.current) return;
+    setFormulaText(serializeFormula(model));
+    setFormulaErrors([]);
+  }, [model]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
+
+  // Handler: user types in formula bar (debounced)
+  const handleFormulaChange = useCallback((raw: string) => {
+    setFormulaText(raw);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      const result = parseFormula(raw);
+      setFormulaErrors(result.errors);
+      if (result.errors.length === 0) {
+        skipSyncRef.current = true;
+        replaceModel(result.model);
+      }
+    }, 150);
+  }, [replaceModel]);
+
+  // Handler: user selects a recent formula (immediate — no debounce)
+  const handleSelectPreset = useCallback((raw: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = undefined;
+    }
+    setFormulaText(raw);
+    const result = parseFormula(raw);
+    setFormulaErrors(result.errors);
+    if (result.errors.length === 0) {
+      skipSyncRef.current = true;
+      replaceModel(result.model);
+    }
+  }, [replaceModel]);
+
+  // Mod+K: focus the formula bar
+  useHotkey("Mod+K", (e) => {
+    e.preventDefault();
+    formulaInputRef.current?.focus();
+    formulaInputRef.current?.select();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Save / Export handlers
+  // ---------------------------------------------------------------------------
 
   async function handleSave() {
     const designId = await saveDesign();
@@ -48,10 +115,14 @@ export function SheetMetalToolbar() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
     <div className="flex flex-1 items-center gap-4 overflow-x-auto">
       {/* Design name */}
-      <div className="min-w-[240px] max-w-[340px] flex-1 items-center gap-2 md:flex">
+      <div className="min-w-[200px] max-w-[280px] flex-1 items-center gap-2 md:flex">
         <span className="hidden text-[10px] font-semibold uppercase tracking-wider text-muted-foreground md:block">
           Design
         </span>
@@ -68,31 +139,18 @@ export function SheetMetalToolbar() {
         />
       </div>
 
-      {/* Preset selector */}
-      <div className="hidden items-center gap-2 lg:flex">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Preset
-        </span>
-        <Select
-          onValueChange={(value) => {
-            loadPreset(Number(value));
-            navigate("/sheet-metal");
-          }}
-        >
-          <SelectTrigger className="h-8 w-[170px] border-white/10 bg-black/20 text-xs hover:bg-white/5 focus:ring-1 focus:ring-emerald-500">
-            <SelectValue placeholder="Select preset..." />
-          </SelectTrigger>
-          <SelectContent>
-            {presetLibrary.map((preset, index) => (
-              <SelectItem key={preset.name} value={index.toString()}>
-                {preset.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Formula bar (replaces preset dropdown) */}
+      <div className="min-w-[320px] max-w-[560px] flex-1">
+        <FormulaBar
+          formula={formulaText}
+          errors={formulaErrors}
+          onFormulaChange={handleFormulaChange}
+          onSelectPreset={handleSelectPreset}
+          inputRef={formulaInputRef}
+        />
       </div>
 
-      <div className="hidden h-4 w-px bg-white/10 lg:block" />
+      <div className="hidden h-4 w-px bg-white/10 xl:block" />
 
       {/* Dimension fields */}
       <div className="hidden items-center gap-4 xl:flex">
@@ -101,7 +159,7 @@ export function SheetMetalToolbar() {
         <NavNumberField label="H" value={model.baseHeight} onChange={(v) => setBaseValue("baseHeight", v)} />
       </div>
 
-      <div className="hidden h-4 w-px bg-white/10 xl:block" />
+      <div className="hidden h-4 w-px bg-white/10 2xl:block" />
 
       {/* Invert toggles */}
       <div className="hidden items-center gap-4 2xl:flex">
