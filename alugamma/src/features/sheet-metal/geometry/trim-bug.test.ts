@@ -103,34 +103,9 @@ describe("Bottom-left V-notch trimming edge case", () => {
       Math.abs(s.x2 - outerLeft) < 0.1
     );
 
-    console.log("\n=== Left outer edge vertical lines (x ≈ -3) ===");
-    for (const s of leftEdgeShapes) {
-      console.log(`  Layer=${s.layer} y: ${s.y1.toFixed(2)} → ${s.y2.toFixed(2)}`);
-    }
-
-    // The V-notch at bottomLeft means: shoulderOff = |bottomShoulderY - y0|
-    // bottomShoulderY = y0 - getCornerShoulderOffset(bottom.flanges) = 100 - 100 = 0
-    // So shoulderOff = |0 - 100| = 100
-    // The notch apex is at (x0=20, y0=100).
-    // At x = outerLeft = -3, the diagonal boundary is:
-    //   boundaryY = apexY - (|x - apexX| + D) = 100 - (|(-3) - 20| + 0) = 100 - 23 = 77
-    //
-    // So: left vertical line at x=-3 should stop at y=77 (not go below).
-    // After offset, the numbers shift slightly, but the principle is the same.
-
     // Find the lowest y coordinate on any left-edge vertical line
     const allLeftEdgeYs = leftEdgeShapes.flatMap(s => [s.y1, s.y2]);
     const lowestY = Math.min(...allLeftEdgeYs);
-
-    // Dump ALL CUT shapes to trace the source of the spurious line
-    console.log("\n=== ALL CUT shapes ===");
-    const cutShapes = result.shapes.filter(s => s.layer === "CUT");
-    for (const s of cutShapes) {
-      console.log(`  (${s.x1.toFixed(2)}, ${s.y1.toFixed(2)}) → (${s.x2.toFixed(2)}, ${s.y2.toFixed(2)})`);
-    }
-
-    console.log(`\nLowest Y on left edge: ${lowestY.toFixed(2)}`);
-    console.log(`Expected: should be around 77 or higher (not -3)`);
 
     // The vertical left-edge line should NOT extend below the V-notch boundary
     // At x=-3, the boundary is at y ≈ 77. So the lowest point on the left edge
