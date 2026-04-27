@@ -1,4 +1,4 @@
-import { FileStack, LayoutDashboard, ScissorsLineDashed, UserRound } from "lucide-react";
+import { FileStack, LayoutDashboard, ScissorsLineDashed, UserRound, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type NavItem = {
@@ -30,6 +30,11 @@ export const toolItems: NavItem[] = [
     title: "Sheets",
     url: "/sheet-metal",
     icon: ScissorsLineDashed,
+  },
+  {
+    title: "Nesting",
+    url: "/nesting",
+    icon: Layers,
   },
   {
     title: "CNC",

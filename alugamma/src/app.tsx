@@ -18,6 +18,7 @@ import ProjectPage from "@/routes/project";
 import ProjectDetailPage from "@/routes/project-detail";
 import DesignDetailPage from "@/routes/design-detail";
 import SheetMetalApp from "@/routes/sheet-metal";
+import NestingApp from "@/routes/nesting";
 import CNCPipelineDashboardPage from "@/routes/cnc-pipeline/index";
 import CNCPipelineNewRoute from "@/routes/cnc-pipeline/new";
 import CNCProgramViewerPage from "@/routes/cnc-pipeline/$programId";
@@ -46,6 +47,7 @@ function AppLayout() {
             {/* Allow direct access to sheet-metal preview without auth */}
             <Route path="/sheet-metal" element={<SheetMetalApp />} />
             <Route path="/sheet-metal/:designId" element={<SheetMetalApp />} />
+            <Route path="/nesting" element={<NestingApp />} />
             {/* Catch-all: redirect to landing */}
             <Route path="*" element={<LandingPage />} />
           </Routes>
@@ -78,6 +80,7 @@ function AppLayout() {
                     <Route path="/project/:projectId/:designId" element={<DesignDetailPage />} />
                     <Route path="/sheet-metal" element={<SheetMetalApp />} />
                     <Route path="/sheet-metal/:designId" element={<SheetMetalApp />} />
+                    <Route path="/nesting" element={<NestingApp />} />
                     <Route path="/cnc-pipeline" element={<CNCPipelineDashboardPage />} />
                     <Route path="/cnc-pipeline/new" element={<CNCPipelineNewRoute />} />
                     <Route path="/cnc-pipeline/:programId" element={<CNCProgramViewerPage />} />

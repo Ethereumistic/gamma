@@ -27,6 +27,7 @@ export function AppSidebar() {
   const { setDesignToDelete } = useDesignDelete();
 
   const pathIsSheetMetal = location.pathname.startsWith("/sheet-metal");
+  const pathIsNesting = location.pathname.startsWith("/nesting");
   const pathIsCNCPipeline = location.pathname.startsWith("/cnc-pipeline");
 
   // --- Design mutations ---
