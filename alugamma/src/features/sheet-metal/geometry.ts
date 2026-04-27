@@ -206,8 +206,21 @@ function addHorizontalCutEdge(
     const yA = activeNotch ? getInnerNotchY(activeNotch, xA) : yEdge;
     const yB = activeNotch ? getInnerNotchY(activeNotch, xB) : yEdge;
 
+    // Suppress the vertical connector at span boundaries (startX / endX).
+    // When a notch shoulder extends beyond the span start/end, the
+    // perpendicular edge's CUT line already covers the path from the
+    // edge junction down to the notch boundary. Drawing a connector here
+    // would produce a spurious vertical segment outside the metal region.
+    const atSpanStart = Math.abs(xA - startX) < 1e-5;
+    const atSpanEnd = i === uniqueXCrits.length - 2 && Math.abs(xB - endX) < 1e-5;
+
     if (Math.abs(currentY - yA) > 1e-5) {
-      addLine(shapes, "CUT", xA, currentY, xA, yA);
+      if (atSpanStart && activeNotch) {
+        // At span start inside a notch: skip the connector, just start at the notch boundary
+        currentY = yA;
+      } else {
+        addLine(shapes, "CUT", xA, currentY, xA, yA);
+      }
     }
 
     addLine(shapes, "CUT", xA, yA, xB, yB);
@@ -215,7 +228,20 @@ function addHorizontalCutEdge(
   }
 
   if (Math.abs(currentY - yEdge) > 1e-5) {
-    addLine(shapes, "CUT", endX, currentY, endX, yEdge);
+    // Check if we're ending inside a notch that extends beyond endX.
+    // If so, the perpendicular edge already handles the connector.
+    const endActiveNotch = getActiveNotch(endX - 1e-3);
+    if (endActiveNotch) {
+      const shoulderOff = Math.abs(endActiveNotch.shoulderY - endActiveNotch.apexY);
+      const notchEnd = endActiveNotch.apexX + shoulderOff;
+      if (notchEnd > endX + 1e-5) {
+        // Notch extends beyond endX: suppress the closing connector
+      } else {
+        addLine(shapes, "CUT", endX, currentY, endX, yEdge);
+      }
+    } else {
+      addLine(shapes, "CUT", endX, currentY, endX, yEdge);
+    }
   }
 }
 
@@ -300,8 +326,21 @@ function addVerticalCutEdge(
     const xA = activeNotch ? getInnerNotchX(activeNotch, yA) : xEdge;
     const xB = activeNotch ? getInnerNotchX(activeNotch, yB) : xEdge;
 
+    // Suppress the horizontal connector at span boundaries (startY / endY).
+    // When a notch shoulder extends beyond the span start/end, the
+    // perpendicular edge's CUT line already covers the path from the
+    // edge junction to the notch boundary. Drawing a connector here
+    // would produce a spurious horizontal segment outside the metal region.
+    const atSpanStart = Math.abs(yA - startY) < 1e-5;
+    const atSpanEnd = i === uniqueYCrits.length - 2 && Math.abs(yB - endY) < 1e-5;
+
     if (Math.abs(currentX - xA) > 1e-5) {
-      addLine(shapes, "CUT", currentX, yA, xA, yA);
+      if (atSpanStart && activeNotch) {
+        // At span start inside a notch: skip the connector, just start at the notch boundary
+        currentX = xA;
+      } else {
+        addLine(shapes, "CUT", currentX, yA, xA, yA);
+      }
     }
 
     addLine(shapes, "CUT", xA, yA, xB, yB);
@@ -309,7 +348,20 @@ function addVerticalCutEdge(
   }
 
   if (Math.abs(currentX - xEdge) > 1e-5) {
-    addLine(shapes, "CUT", currentX, endY, xEdge, endY);
+    // Check if we're ending inside a notch that extends beyond endY.
+    // If so, the perpendicular edge already handles the connector.
+    const endActiveNotch = getActiveNotch(endY + 1e-3);
+    if (endActiveNotch) {
+      const shoulderOff = Math.abs(endActiveNotch.shoulderX - endActiveNotch.apexX);
+      const notchEnd = endActiveNotch.apexY - shoulderOff;
+      if (notchEnd < endY - 1e-5) {
+        // Notch extends beyond endY: suppress the closing connector
+      } else {
+        addLine(shapes, "CUT", currentX, endY, xEdge, endY);
+      }
+    } else {
+      addLine(shapes, "CUT", currentX, endY, xEdge, endY);
+    }
   }
 }
 
@@ -711,8 +763,6 @@ function addTrimmableHorizontalLine(
     return;
   }
 
-  console.log('[TRIM] Horizontal line y=' + fixedY.toFixed(2) + ' x=[' + startX.toFixed(2) + ',' + endX.toFixed(2) + '] notches: T=' + topNotches.length + ' B=' + bottomNotches.length + ' L=' + leftNotches.length + ' R=' + rightNotches.length);
-
   const critXs = getHorizontalCritXs(fixedY, startX, endX, topNotches, bottomNotches, leftNotches, rightNotches);
 
   for (let i = 0; i < critXs.length - 1; i++) {
@@ -722,8 +772,6 @@ function addTrimmableHorizontalLine(
 
     if (isInsideMetalHorizontal(xMid, fixedY, topNotches, bottomNotches, leftNotches, rightNotches)) {
       addLine(shapes, layer, xA, fixedY, xB, fixedY);
-    } else {
-      console.log('[TRIM]   REMOVED segment [' + xA.toFixed(2) + ',' + xB.toFixed(2) + ']');
     }
   }
 }
@@ -748,8 +796,6 @@ function addTrimmableVerticalLine(
     return;
   }
 
-  console.log('[TRIM] Vertical line x=' + fixedX.toFixed(2) + ' y=[' + startY.toFixed(2) + ',' + endY.toFixed(2) + '] notches: T=' + topNotches.length + ' B=' + bottomNotches.length + ' L=' + leftNotches.length + ' R=' + rightNotches.length);
-
   const critYs = getVerticalCritYs(fixedX, startY, endY, topNotches, bottomNotches, leftNotches, rightNotches);
 
   for (let i = 0; i < critYs.length - 1; i++) {
@@ -759,8 +805,6 @@ function addTrimmableVerticalLine(
 
     if (isInsideMetalVertical(fixedX, yMid, topNotches, bottomNotches, leftNotches, rightNotches)) {
       addLine(shapes, layer, fixedX, yA, fixedX, yB);
-    } else {
-      console.log('[TRIM]   REMOVED segment [' + yA.toFixed(2) + ',' + yB.toFixed(2) + ']');
     }
   }
 }
