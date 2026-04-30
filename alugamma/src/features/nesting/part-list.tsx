@@ -29,6 +29,7 @@ export function PartListPanel() {
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [selectedDesignIds, setSelectedDesignIds] = useState<Set<string>>(new Set());
   const [importingFromProject, setImportingFromProject] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const dragCounterRef = useRef(0);
 
   // Query designs for the current project
@@ -105,6 +106,7 @@ export function PartListPanel() {
 
   const handleOpenProjectDialog = () => {
     setSelectedDesignIds(new Set());
+    setSearchQuery("");
     setProjectDialogOpen(true);
   };
 
@@ -115,6 +117,30 @@ export function PartListPanel() {
         next.delete(designId);
       } else {
         next.add(designId);
+      }
+      return next;
+    });
+  };
+
+  const filteredDesigns = projectDesigns
+    ? projectDesigns.filter((d) =>
+        d.name.toLowerCase().includes(searchQuery.trim().toLowerCase()),
+      )
+    : [];
+
+  const allFilteredSelected =
+    filteredDesigns.length > 0 &&
+    filteredDesigns.every((d) => selectedDesignIds.has(d.id));
+
+  const handleSelectAllFiltered = () => {
+    setSelectedDesignIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        // Deselect all visible
+        for (const d of filteredDesigns) next.delete(d.id);
+      } else {
+        // Select all visible
+        for (const d of filteredDesigns) next.add(d.id);
       }
       return next;
     });
@@ -338,14 +364,37 @@ export function PartListPanel() {
             </DialogDescription>
           </DialogHeader>
 
+          <div className="mt-2 flex items-center gap-2">
+            <Input
+              placeholder="Search designs…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 flex-1 text-xs"
+            />
+            {filteredDesigns.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 whitespace-nowrap text-[10px]"
+                onClick={handleSelectAllFiltered}
+              >
+                {allFilteredSelected ? "Deselect All" : "Select All"}
+              </Button>
+            )}
+          </div>
+
           <div className="mt-2 max-h-[340px] overflow-y-auto rounded-md border border-white/[0.06] bg-black/20">
             {!projectDesigns || projectDesigns.length === 0 ? (
               <div className="flex items-center justify-center p-6 text-xs text-muted-foreground">
                 No designs in this project.
               </div>
+            ) : filteredDesigns.length === 0 ? (
+              <div className="flex items-center justify-center p-6 text-xs text-muted-foreground">
+                No designs match “{searchQuery}”.
+              </div>
             ) : (
               <div className="divide-y divide-white/[0.04]">
-                {projectDesigns.map((design) => {
+                {filteredDesigns.map((design) => {
                   const isSelected = selectedDesignIds.has(design.id);
                   const m = normalizeSheetMetalModel(design.model);
                   const dir = m.includeMetadata ? { top: "↑T", right: "→R", bottom: "↓B", left: "←L" }[m.arrowDirection] : null;

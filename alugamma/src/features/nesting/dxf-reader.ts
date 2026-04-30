@@ -12,6 +12,7 @@ import { parseFilename, computeCutDimensions, createNestPart } from "./types";
 import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
 import { buildDxf } from "@/features/sheet-metal/dxf";
 import { SIDE_KEY_TO_DIR, type SheetMetalModel } from "@/features/sheet-metal/types";
+import makerjs from "makerjs";
 
 // ── DXF Entity Representation ─────────────────────────────────────────────
 // Unlike a simple Map, we need to support multiple values with the same
@@ -532,4 +533,178 @@ export function createNestPartFromDesign(
     design.id,
     dxfContent,
   );
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Export-friendly DXF model extraction
+// Converts raw DXF entities into a Maker.js model so that the nesting
+// DXF writer can emit non‑CUT geometry ( Layer 0, FREZ, FREZ_135, HOLES )
+// using the same makerjs.exporter.toDXF pipeline as the sheet‑metal feature.
+// ────────────────────────────────────────────────────────────────────────────────
+
+export function extractDxfModel(dxfContent: string): makerjs.IModel | null {
+  try {
+    const entities = parseDxfEntities(dxfContent);
+    if (entities.length === 0) return null;
+
+    const model: makerjs.IModel = { paths: {} };
+    let pathIndex = 0;
+    const nextId = () => `p${pathIndex++}`;
+
+    for (const entity of entities) {
+      const layer = String(entity.firstValue.get(8) ?? "").trim();
+      // Skip entities without a usable layer or anything we don't want in the cut-program
+      if (layer === LAYER_CUT || layer === "DEFPOINTS" || layer === "") continue;
+
+      const cv = entity.firstValue;
+
+      switch (entity.type) {
+        case "LINE": {
+          const x1 = Number(cv.get(10)) || 0;
+          const y1 = Number(cv.get(20)) || 0;
+          const x2 = Number(cv.get(11)) || 0;
+          const y2 = Number(cv.get(21)) || 0;
+          const line = new makerjs.paths.Line([x1, y1], [x2, y2]) as makerjs.IPath;
+          line.layer = layer;
+          model.paths![nextId()] = line;
+          break;
+        }
+
+        case "CIRCLE": {
+          const cx = Number(cv.get(10)) || 0;
+          const cy = Number(cv.get(20)) || 0;
+          const r = Number(cv.get(40)) || 0;
+          if (r <= 0) break;
+          const circle = new makerjs.paths.Circle([cx, cy], r) as makerjs.IPath;
+          circle.layer = layer;
+          model.paths![nextId()] = circle;
+          break;
+        }
+
+        case "ARC": {
+          const cx = Number(cv.get(10)) || 0;
+          const cy = Number(cv.get(20)) || 0;
+          const r = Number(cv.get(40)) || 0;
+          const startAngle = Number(cv.get(50)) || 0;
+          const endAngle = Number(cv.get(51)) || 0;
+          if (r <= 0) break;
+          const arc = new makerjs.paths.Arc([cx, cy], r, startAngle, endAngle) as makerjs.IPath;
+          arc.layer = layer;
+          model.paths![nextId()] = arc;
+          break;
+        }
+
+        case "LWPOLYLINE": {
+          const verts = getLwVertices(entity);
+          if (verts.length < 2) break;
+          const closed = (Number(cv.get(70)) || 0) & 1;
+          const count = verts.length;
+          for (let i = 0; i < count - 1; i++) {
+            addLwPolylineSegment(
+              verts[i], verts[i + 1], layer, model, nextId
+            );
+          }
+          if (closed && count > 1) {
+            addLwPolylineSegment(
+              verts[count - 1], verts[0], layer, model, nextId
+            );
+          }
+          break;
+        }
+
+        // Skip TEXT / MTEXT / DIMENSION / SPLINE / etc.
+        default:
+          break;
+      }
+    }
+
+    return Object.keys(model.paths || {}).length > 0 ? model : null;
+  } catch (e) {
+    console.error("Error extracting DXF model:", e);
+    return null;
+  }
+}
+
+// ── LWPOLYLINE vertex helper ──
+
+interface LwVertex {
+  x: number;
+  y: number;
+  bulge: number;
+}
+
+function getLwVertices(entity: DxfEntity): LwVertex[] {
+  const verts: LwVertex[] = [];
+  let current: LwVertex = { x: 0, y: 0, bulge: 0 };
+  let hasCoords = false;
+
+  for (const pair of entity.pairs) {
+    if (pair.code === 10) {
+      if (hasCoords) verts.push({ ...current });
+      current = { x: Number(pair.value) || 0, y: current.y, bulge: 0 };
+      hasCoords = true;
+    } else if (pair.code === 20) {
+      current.y = Number(pair.value) || 0;
+    } else if (pair.code === 42) {
+      current.bulge = Number(pair.value) || 0;
+    }
+  }
+  if (hasCoords) verts.push({ ...current });
+  return verts;
+}
+
+// ── Convert a single LWPOLYLINE segment (with optional bulge) to Maker.js path ──
+
+function addLwPolylineSegment(
+  v1: LwVertex,
+  v2: LwVertex,
+  layer: string,
+  model: makerjs.IModel,
+  nextId: () => string,
+): void {
+  const bulge = v1.bulge ?? 0;
+  if (Math.abs(bulge) < 1e-10) {
+    const line = new makerjs.paths.Line([v1.x, v1.y], [v2.x, v2.y]) as makerjs.IPath;
+    line.layer = layer;
+    model.paths![nextId()] = line;
+    return;
+  }
+
+  const dx = v2.x - v1.x;
+  const dy = v2.y - v1.y;
+  const chord = Math.sqrt(dx * dx + dy * dy);
+  if (chord < 1e-10) return;
+
+  const b = Math.abs(bulge);
+  const R = (chord * (1 + b * b)) / (4 * b);
+
+  const mx = (v1.x + v2.x) / 2;
+  const my = (v1.y + v2.y) / 2;
+
+  // Unit perpendicular to the chord, pointing to the left (CCW side)
+  const ux = -dy / chord;
+  const uy = dx / chord;
+
+  const d = Math.sqrt(Math.max(0, R * R - (chord / 2) * (chord / 2)));
+  const sign = bulge > 0 ? 1 : -1;
+
+  const cx = mx + sign * d * ux;
+  const cy = my + sign * d * uy;
+
+  let startAngle = MakerJs.angle.toDegrees(Math.atan2(v1.y - cy, v1.x - cx));
+  let endAngle = MakerJs.angle.toDegrees(Math.atan2(v2.y - cy, v2.x - cx));
+
+  if (bulge > 0) {
+    if (endAngle <= startAngle) endAngle += 360;
+  } else {
+    // Swap to represent the same minor arc via a CCW Maker.js Arc
+    const tmp = startAngle;
+    startAngle = endAngle;
+    endAngle = tmp;
+    if (endAngle <= startAngle) endAngle += 360;
+  }
+
+  const arc = new makerjs.paths.Arc([cx, cy], R, startAngle, endAngle) as makerjs.IPath;
+  arc.layer = layer;
+  model.paths![nextId()] = arc;
 }

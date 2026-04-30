@@ -133,6 +133,7 @@ export const viewerWorkspace = query({
         slug: string;
         description: string;
         defaults?: Infer<typeof projectDefaultsValidator>;
+        ncProgramCount?: number;
         role: string;
         updatedAt: number;
         _creationTime: number;
@@ -158,6 +159,7 @@ export const viewerWorkspace = query({
         slug: project.slug,
         description: project.description ?? "",
         defaults: project.defaults,
+        ncProgramCount: project.ncProgramCount,
         role: membership.role,
         updatedAt: project.updatedAt,
         _creationTime: project._creationTime,
@@ -184,6 +186,7 @@ export const viewerWorkspace = query({
           slug: project.slug,
           description: project.description ?? "",
           defaults: project.defaults,
+          ncProgramCount: project.ncProgramCount,
           role: existing?.role ?? membership.role,
           updatedAt: project.updatedAt,
           _creationTime: project._creationTime,
@@ -207,12 +210,7 @@ export const viewerWorkspace = query({
               .collect()
           ).length;
 
-          const ncProgramCount = (
-            await ctx.db
-              .query("nc_programs")
-              .withIndex("by_project", (query) => query.eq("projectId", project.id))
-              .collect()
-          ).length;
+          const ncProgramCount = project.ncProgramCount ?? 0;
 
           const organization = await ctx.db.get(project.organizationId);
 

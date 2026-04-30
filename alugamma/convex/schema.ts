@@ -35,6 +35,7 @@ export default defineSchema({
     slug: v.string(),
     description: v.optional(v.string()),
     defaults: v.optional(projectDefaultsValidator),
+    ncProgramCount: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.number(),

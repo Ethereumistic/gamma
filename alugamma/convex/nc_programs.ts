@@ -71,6 +71,14 @@ export const saveNcProgram = mutation({
       });
       return existing._id;
     } else {
+      // Increment ncProgramCount on the project
+      const project = await ctx.db.get(args.projectId);
+      if (project) {
+        await ctx.db.patch(args.projectId, {
+          ncProgramCount: (project.ncProgramCount ?? 0) + 1,
+        });
+      }
+
       const id = await ctx.db.insert("nc_programs", {
         organizationId: args.organizationId,
         projectId: args.projectId,
@@ -221,6 +229,16 @@ export const deleteNcProgram = mutation({
   },
   handler: async (ctx, args) => {
     await requireProjectManager(ctx, args.projectId);
+    const existing = await ctx.db.get(args.ncProgramId);
+    // Decrement ncProgramCount on the project
+    if (existing) {
+      const project = await ctx.db.get(args.projectId);
+      if (project) {
+        await ctx.db.patch(args.projectId, {
+          ncProgramCount: Math.max(0, (project.ncProgramCount ?? 1) - 1),
+        });
+      }
+    }
     await ctx.db.delete(args.ncProgramId);
   },
 });
@@ -235,5 +253,27 @@ export const toggleStar = mutation({
     const existing = await ctx.db.get(args.ncProgramId);
     if (!existing) throw new Error("NC program not found");
     await ctx.db.patch(args.ncProgramId, { isStarred: !existing.isStarred });
+  },
+});
+
+export const backfillNcProgramCounts = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const projects = await ctx.db.query("projects").collect();
+    for (const project of projects) {
+      let count = 0;
+      let cursor = null as string | null;
+      let isDone = false;
+      while (!isDone) {
+        const page = await ctx.db
+          .query("nc_programs")
+          .withIndex("by_project", (q) => q.eq("projectId", project._id))
+          .paginate({ cursor, numItems: 100 });
+        count += page.page.length;
+        cursor = page.continueCursor;
+        isDone = page.isDone;
+      }
+      await ctx.db.patch(project._id, { ncProgramCount: count });
+    }
   },
 });

@@ -1,10 +1,19 @@
 // ────────────────────────────────────────────────────────────────────────────────
 // Nesting Feature — Preview Canvas
-// HTML5 Canvas renderer for sheet layouts with pan/zoom
+// HTML5 Canvas renderer for sheet layouts with pan/zoom.
+// Draws all part layers (0, FREZ, FREZ_135, HOLES, CUT, SHEETS).
 // ────────────────────────────────────────────────────────────────────────────────
 
-import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
+import {
+  useRef,
+  useEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+} from "react";
 
+import makerjs from "makerjs";
 import {
   SHEET_WIDTH,
   SHEET_HEIGHT,
@@ -15,8 +24,9 @@ import {
   LAYER_ZERO,
   LAYER_CUT,
 } from "./constants";
-import type { SheetLayout, NestPart, Placement, Segment } from "./types";
+import type { SheetLayout, NestPart } from "./types";
 import { collectAndDeduplicate } from "./deduplicator";
+import { extractDxfModel } from "./dxf-reader";
 
 // ── Canvas Ref API ─────────────────────────────────────────────────────────
 
@@ -82,6 +92,31 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     const isDraggingRef = useRef(false);
     const lastMouseRef = useRef({ x: 0, y: 0 });
 
+    // Pre-extract Maker.js models for every unique part
+    const partModelMap = useMemo(() => {
+      const map = new Map<string, makerjs.IModel | null>();
+      for (const part of parts) {
+        let model = part.dxfContent ? extractDxfModel(part.dxfContent) : null;
+        // Fallback: simple Layer-0 rectangle from l0Bbox
+        if (!model && part.l0Bbox) {
+          const { x0, y0, x1, y1 } = part.l0Bbox;
+          const fb: makerjs.IModel = { paths: {} };
+          const l1 = new makerjs.paths.Line([x0, y0], [x1, y0]) as makerjs.IPath;
+          l1.layer = LAYER_ZERO;
+          const l2 = new makerjs.paths.Line([x1, y0], [x1, y1]) as makerjs.IPath;
+          l2.layer = LAYER_ZERO;
+          const l3 = new makerjs.paths.Line([x1, y1], [x0, y1]) as makerjs.IPath;
+          l3.layer = LAYER_ZERO;
+          const l4 = new makerjs.paths.Line([x0, y1], [x0, y0]) as makerjs.IPath;
+          l4.layer = LAYER_ZERO;
+          fb.paths = { l1, l2, l3, l4 };
+          model = fb;
+        }
+        map.set(part.id, model);
+      }
+      return map;
+    }, [parts]);
+
     // ── Transform ────────────────────────────────────────────────────────────
 
     const getTransform = useCallback(() => {
@@ -134,7 +169,11 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.fillStyle = "#6b7280";
         ctx.font = `${14}px sans-serif`;
         ctx.textAlign = "center";
-        ctx.fillText("Add parts and run packing", sx(SHEET_WIDTH / 2), sy(SHEET_HEIGHT / 2));
+        ctx.fillText(
+          "Add parts and run packing",
+          sx(SHEET_WIDTH / 2),
+          sy(SHEET_HEIGHT / 2),
+        );
         return;
       }
 
@@ -146,42 +185,116 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.strokeStyle = CANVAS_COLORS.marginFill;
         ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
-        ctx.strokeRect(sx(m), sy(m), (SHEET_WIDTH - 2 * m) * scale, (SHEET_HEIGHT - 2 * m) * scale);
+        ctx.strokeRect(
+          sx(m),
+          sy(m),
+          (SHEET_WIDTH - 2 * m) * scale,
+          (SHEET_HEIGHT - 2 * m) * scale,
+        );
         ctx.setLineDash([]);
       } else {
         // Mode B: draw centering guide
         const guideX1 = layout.offsetX;
         const guideY1 = layout.offsetY;
-        const maxX = Math.max(...layout.placements.map((p) => p.packX + p.packWidth));
-        const maxY = Math.max(...layout.placements.map((p) => p.packY + p.packHeight));
+        const maxX = Math.max(
+          ...layout.placements.map((p) => p.packX + p.packWidth),
+        );
+        const maxY = Math.max(
+          ...layout.placements.map((p) => p.packY + p.packHeight),
+        );
         const guideX2 = layout.offsetX + maxX;
         const guideY2 = layout.offsetY + maxY;
         ctx.strokeStyle = CANVAS_COLORS.marginFill;
         ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
-        ctx.strokeRect(sx(guideX1), sy(guideY1), (guideX2 - guideX1) * scale, (guideY2 - guideY1) * scale);
+        ctx.strokeRect(
+          sx(guideX1),
+          sy(guideY1),
+          (guideX2 - guideX1) * scale,
+          (guideY2 - guideY1) * scale,
+        );
         ctx.setLineDash([]);
       }
 
-      // ── Draw placed parts (Layer 0 outlines) ──
+      // ── Draw placed parts (DXF geometry: 0, FREZ, FREZ_135, HOLES) ──
       for (const placement of layout.placements) {
         const part = partMap.get(placement.partId);
         if (!part) continue;
 
-        const insertX = placement.packX + layout.offsetX + CUT_OFFSET;
-        const insertY = placement.packY + layout.offsetY + CUT_OFFSET;
+        const baseModel = partModelMap.get(part.id);
+        if (baseModel) {
+          // Deep-clone so rotation/movement don't mutate the cached base model
+          const instance: makerjs.IModel = JSON.parse(JSON.stringify(baseModel));
 
-        // Draw part bounding box (Layer 0)
-        ctx.strokeStyle = CANVAS_COLORS[LAYER_ZERO] ?? "#ffffff";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(
-          sx(insertX),
-          sy(insertY),
-          part.l0Width * scale,
-          part.l0Height * scale,
-        );
+          // Normalise raw DXF coordinates so the part's l0 lower-left sits at (0,0)
+          makerjs.model.moveRelative(instance, [
+            -part.l0Bbox.x0,
+            -part.l0Bbox.y0,
+          ]);
+          // Rotate around local (0,0)
+          makerjs.model.rotate(instance, placement.rotation, [0, 0]);
+          // Translate to packed sheet position
+          const insertX = placement.packX + layout.offsetX + CUT_OFFSET;
+          const insertY = placement.packY + layout.offsetY + CUT_OFFSET;
+          makerjs.model.moveRelative(instance, [insertX, insertY]);
 
-        // Draw CUT boundary (slightly larger, dashed)
+          // Walk all paths (including nested sub-models) and draw them
+          makerjs.model.walk(instance, {
+            onPath: (walked) => {
+              const path = walked.pathContext;
+              const offset = walked.offset;
+              const layer = walked.layer;
+              const color = CANVAS_COLORS[layer] ?? "#ffffff";
+              ctx.strokeStyle = color;
+              ctx.lineWidth = layer === LAYER_CUT ? 1.5 : 1;
+
+              switch (path.type) {
+                case "line": {
+                  const line = path as makerjs.IPathLine;
+                  ctx.beginPath();
+                  ctx.moveTo(
+                    sx(line.origin[0] + offset[0]),
+                    sy(line.origin[1] + offset[1]),
+                  );
+                  ctx.lineTo(
+                    sx(line.end[0] + offset[0]),
+                    sy(line.end[1] + offset[1]),
+                  );
+                  ctx.stroke();
+                  break;
+                }
+                case "arc": {
+                  const arc = path as makerjs.IPathArc;
+                  const cx = arc.origin[0] + offset[0];
+                  const cy = arc.origin[1] + offset[1];
+                  const r = arc.radius * scale;
+                  const startRad = (arc.startAngle * Math.PI) / 180;
+                  const endRad = (arc.endAngle * Math.PI) / 180;
+                  ctx.beginPath();
+                  // In canvas (Y-down), angles increase clockwise.
+                  // Maker.js angles increase CCW.  Since we don't flip Y,
+                  // mapping the angles directly with anticlockwise=false
+                  // sweeps in the CW screen direction, matching the mirrored geometry.
+                  ctx.arc(sx(cx), sy(cy), r, startRad, endRad, false);
+                  ctx.stroke();
+                  break;
+                }
+                case "circle": {
+                  const circle = path as makerjs.IPathCircle;
+                  const cx = circle.origin[0] + offset[0];
+                  const cy = circle.origin[1] + offset[1];
+                  const r = circle.radius * scale;
+                  ctx.beginPath();
+                  ctx.arc(sx(cx), sy(cy), r, 0, 2 * Math.PI);
+                  ctx.stroke();
+                  break;
+                }
+              }
+            },
+          });
+        }
+
+        // CUT boundary guide (packing box)
         ctx.strokeStyle = CANVAS_COLORS[LAYER_CUT] ?? "#ef4444";
         ctx.lineWidth = 0.5;
         ctx.setLineDash([3, 3]);
@@ -193,21 +306,28 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         );
         ctx.setLineDash([]);
 
-        // Draw part label
+        // Part label (centered on Layer 0 bbox)
+        const labelX =
+          placement.packX + layout.offsetX + CUT_OFFSET + part.l0Width / 2;
+        const labelY =
+          placement.packY + layout.offsetY + CUT_OFFSET + part.l0Height / 2;
         ctx.fillStyle = CANVAS_COLORS.label;
         ctx.font = `${Math.max(8, 10 * scale)}px monospace`;
         ctx.textAlign = "center";
-        ctx.fillText(
-          part.name,
-          sx(insertX + part.l0Width / 2),
-          sy(insertY + part.l0Height / 2),
-        );
+        ctx.fillText(part.name, sx(labelX), sy(labelY));
       }
 
       // ── Draw deduplicated CUT lines ──
-      const dedupedCut = layout.dedupedCutSegments.length > 0
-        ? layout.dedupedCutSegments
-        : collectAndDeduplicate(layout.placements, parts, layout.mode, layout.offsetX, layout.offsetY);
+      const dedupedCut =
+        layout.dedupedCutSegments.length > 0
+          ? layout.dedupedCutSegments
+          : collectAndDeduplicate(
+              layout.placements,
+              parts,
+              layout.mode,
+              layout.offsetX,
+              layout.offsetY,
+            );
 
       for (const seg of dedupedCut) {
         ctx.beginPath();
@@ -218,7 +338,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.stroke();
       }
 
-      // ── Draw label ──
+      // ── Draw sheet label ──
       const labelText = `${layout.sheetName}_x${layout.repeatCount}`;
       ctx.fillStyle = CANVAS_COLORS.label;
       ctx.font = `bold ${Math.max(12, 14 * scale)}px sans-serif`;
@@ -238,7 +358,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         sx(10),
         sy(SHEET_HEIGHT + 60),
       );
-    }, [layout, parts, getTransform]);
+    }, [layout, parts, getTransform, partModelMap]);
 
     // ── Canvas resize ───────────────────────────────────────────────────────
 
@@ -272,27 +392,33 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
 
     // ── Mouse Handlers ──────────────────────────────────────────────────────
 
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      zoomRef.current = Math.max(0.2, Math.min(5, zoomRef.current * delta));
-      draw();
-    }, [draw]);
+    const handleWheel = useCallback(
+      (e: React.WheelEvent) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        zoomRef.current = Math.max(0.2, Math.min(5, zoomRef.current * delta));
+        draw();
+      },
+      [draw],
+    );
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
       isDraggingRef.current = true;
       lastMouseRef.current = { x: e.clientX, y: e.clientY };
     }, []);
 
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      const dx = e.clientX - lastMouseRef.current.x;
-      const dy = e.clientY - lastMouseRef.current.y;
-      panRef.current.x += dx;
-      panRef.current.y += dy;
-      lastMouseRef.current = { x: e.clientX, y: e.clientY };
-      draw();
-    }, [draw]);
+    const handleMouseMove = useCallback(
+      (e: React.MouseEvent) => {
+        if (!isDraggingRef.current) return;
+        const dx = e.clientX - lastMouseRef.current.x;
+        const dy = e.clientY - lastMouseRef.current.y;
+        panRef.current.x += dx;
+        panRef.current.y += dy;
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+        draw();
+      },
+      [draw],
+    );
 
     const handleMouseUp = useCallback(() => {
       isDraggingRef.current = false;
