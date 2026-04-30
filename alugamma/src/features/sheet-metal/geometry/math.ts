@@ -10,6 +10,11 @@ import { type SideKey, sideKeys } from "@/features/sheet-metal/types";
 /** Numerical epsilon used for coordinate comparisons throughout the geometry engine. */
 export const EPS = 1e-5;
 
+/** Diagonal length of a V-notch flap (flap × √2). Returns 0 for undefined/zero. */
+export function flapDiagonal(flap: number | undefined): number {
+  return (flap ?? 0) * Math.SQRT2;
+}
+
 /** Clamp a value to [min, max]. */
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
