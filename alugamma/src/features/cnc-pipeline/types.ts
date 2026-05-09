@@ -9,6 +9,9 @@ export type Scenario =
   | "very_rare"
   | "cut_only"
 
+/** Serializable form sent to backend: array of [layer, toolNumber] pairs */
+export type CustomSequence = [string, number][]
+
 export interface ContoursPoint {
   x: number
   y: number
@@ -79,6 +82,8 @@ export interface RegenerateResponse {
   nc_text: string
   contours_by_layer: Record<string, StoredContour[]>
   stock_bbox: StockBbox
+  tools_used: number[]
+  lift_count: number
 }
 
 // Summary shape returned by the listByProject query (used in sidebar)

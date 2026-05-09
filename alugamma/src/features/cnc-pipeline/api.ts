@@ -1,6 +1,6 @@
 // src/features/cnc-pipeline/api.ts
 
-import type { GenerateResponse, GeometryResponse, PreviewResponse, RegenerateResponse, StoredContour, StockBbox } from "./types"
+import type { GenerateResponse, GeometryResponse, PreviewResponse, RegenerateResponse, StoredContour, StockBbox, CustomSequence } from "./types"
 
 const BASE = import.meta.env.VITE_CNC_API_URL || "https://cnc.alubeta.com"
 
@@ -16,17 +16,20 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 // Upload DXF → get job_id + analysis + geometry in one shot
-export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>): Promise<{
+export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence): Promise<{
   generate: GenerateResponse
   geometry: GeometryResponse
 }> {
   const form = new FormData()
   form.append("file", file)
-  const params = new URLSearchParams({ algorithm })
+  form.append("algorithm", algorithm)
   if (toolOverrides && Object.keys(toolOverrides).length > 0) {
-    params.set("tool_overrides", JSON.stringify(toolOverrides))
+    form.append("tool_overrides", JSON.stringify(toolOverrides))
   }
-  const res = await fetch(`${BASE}/api/generate?${params.toString()}`, { method: "POST", body: form })
+  if (customSequence && customSequence.length > 0) {
+    form.append("custom_sequence", JSON.stringify(customSequence))
+  }
+  const res = await fetch(`${BASE}/api/generate`, { method: "POST", body: form })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? "Upload failed")
@@ -51,6 +54,7 @@ export interface RegeneratePayload {
   scenario: string
   algorithm: string
   tool_overrides?: Record<string, any>
+  custom_sequence?: CustomSequence
 }
 
 export async function regenerate(payload: RegeneratePayload): Promise<RegenerateResponse> {

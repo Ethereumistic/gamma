@@ -1,9 +1,16 @@
 # main.py
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-import tempfile, uuid, os, pathlib
+import tempfile, uuid, os, pathlib, logging
 from typing import Optional
+
+logger = logging.getLogger("cnc_pipeline")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter('%(levelname)s - %(name)s - %(message)s'))
+    logger.addHandler(_handler)
 
 from cnc_pipeline.pipeline import run_pipeline, PipelineResult
 
@@ -33,7 +40,12 @@ def health():
 
 
 @app.post("/api/generate")
-async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemini", tool_overrides: Optional[str] = None):
+async def generate(
+    file: UploadFile = File(...),
+    algorithm: str = Form("juggler_gemini"),
+    tool_overrides: Optional[str] = Form(None),
+    custom_sequence: Optional[str] = Form(None),
+):
     if not file.filename.lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
 
@@ -45,13 +57,22 @@ async def generate(file: UploadFile = File(...), algorithm: str = "juggler_gemin
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid tool_overrides JSON")
 
+    parsed_custom_sequence = None
+    if custom_sequence:
+        try:
+            parsed_custom_sequence = json.loads(custom_sequence)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid custom_sequence JSON")
+
+    logger.info(f"custom_sequence received: {parsed_custom_sequence}")
+
     contents = await file.read()
     tmp = tempfile.NamedTemporaryFile(suffix=".dxf", delete=False, mode="wb")
     tmp.write(contents)
     tmp.close()
 
     try:
-        result = run_pipeline(tmp.name, original_filename=file.filename, algorithm=algorithm, tool_overrides=overrides)
+        result = run_pipeline(tmp.name, original_filename=file.filename, algorithm=algorithm, tool_overrides=overrides, custom_sequence=parsed_custom_sequence)
         job_id = str(uuid.uuid4())
         _jobs[job_id] = result
         return {
@@ -90,10 +111,13 @@ class RegenerateRequest(BaseModel):
     scenario: str
     algorithm: str
     tool_overrides: Optional[dict] = None
+    custom_sequence: Optional[list[list]] = None
 
 @app.post("/api/regenerate")
 async def regenerate(req: RegenerateRequest):
     from cnc_pipeline.pipeline import run_from_contours
+
+    logger.info(f"regenerate custom_sequence: {req.custom_sequence}")
 
     try:
         result = run_from_contours(
@@ -102,6 +126,7 @@ async def regenerate(req: RegenerateRequest):
             scenario=req.scenario,
             algorithm=req.algorithm,
             tool_overrides=req.tool_overrides,
+            custom_sequence=req.custom_sequence,
         )
 
         job_id = str(uuid.uuid4())
@@ -134,6 +159,8 @@ async def regenerate(req: RegenerateRequest):
             "nc_text": result["nc_text"],
             "contours_by_layer": req.contours_by_layer,
             "stock_bbox": req.stock_bbox,
+            "tools_used": result["tools_used"],
+            "lift_count": result["lift_count"],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Regenerate error: {str(e)}")

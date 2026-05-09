@@ -1,12 +1,12 @@
 // src/features/cnc-pipeline/CNCPipelinePage.tsx
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { RefreshCw, Settings2, Save } from "lucide-react"
+import { Settings2, Save, ArrowUp, ArrowDown, RotateCcw } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -25,14 +25,8 @@ import { NCPreview } from "./components/NCPreview"
 import { PlaybackControls } from "./components/PlaybackControls"
 import { useGenerate } from "./hooks/useGenerate"
 import { usePlayback } from "./hooks/usePlayback"
-
-const SCENARIO_LABELS: Record<string, string> = {
-  most_common: "FREZ → CUT",
-  common: "HOLES → FREZ → CUT",
-  rare: "FREZ → FREZ_135 → CUT",
-  very_rare: "HOLES → FREZ → FREZ_135 → CUT",
-  cut_only: "CUT only",
-}
+import { deriveDefaultSequence } from "./tool-defaults"
+import type { CustomSequence } from "./types"
 
 const ALGORITHMS: { value: string; label: string; desc: string }[] = [
   { value: "juggler_gemini", label: "Juggler G", desc: "Shapely-powered optimal path selection 4" },
@@ -87,6 +81,16 @@ export default function CNCPipelinePage() {
 
   const lastDxfFileRef = useRef<File | null>(null)
   const prevAlgorithmRef = useRef(algorithm)
+
+  // ── Layer sequence state ──────────────────────────────────────────────────
+  const [layerSequence, setLayerSequence] = useState<CustomSequence>([])
+
+  const isCustomOrder = useMemo(() => {
+    if (state.status !== "done" && state.status !== "ready" && state.status !== "generating") return false
+    if (!state.geometry) return false
+    const defaultSeq = deriveDefaultSequence(state.generate.scenario, state.geometry.layers)
+    return JSON.stringify(layerSequence) !== JSON.stringify(defaultSeq)
+  }, [layerSequence, state])
 
   const handleTraceModeToggle = (layer: string) => {
     setTraceMode(prev => ({ ...prev, [layer]: !prev[layer] }))
@@ -162,6 +166,7 @@ export default function CNCPipelinePage() {
 
   const handleFile = async (file: File) => {
     setVisible({})
+    setLayerSequence([])
     lastDxfFileRef.current = file
     setDxfDisplayName(file.name.replace(/\.dxf$/i, ""))
     resetPlayback()
@@ -209,6 +214,7 @@ export default function CNCPipelinePage() {
         lineToSegmentMap: state.generate.line_to_segment_map || undefined,
         contoursByLayer: state.generate.contours_by_layer || undefined,
         stockBbox: state.generate.stock_bbox || undefined,
+        customSequence: isCustomOrder ? layerSequence : undefined,
       })
       toast.success("NC program saved", { description: assembledFilename + ".nc" })
       navigate(`/cnc-pipeline/${id}`)
@@ -238,12 +244,25 @@ export default function CNCPipelinePage() {
       prevAlgorithmRef.current = algorithm
       if ((state.status === "done" || state.status === "ready") && lastDxfFileRef.current) {
         resetPlayback()
-        upload(lastDxfFileRef.current, algorithm, toolOverrides)
+        const customSeq = isCustomOrder ? layerSequence : undefined
+        upload(lastDxfFileRef.current, algorithm, toolOverrides, customSeq)
       }
     }
-  }, [algorithm, state.status, upload, resetPlayback])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [algorithm, state.status, upload, resetPlayback, isCustomOrder, layerSequence, toolOverrides])
 
-  // Initialise layer visibility when geometry loads
+  // ── Layer change handler ──────────────────────────────────────────────────
+  const handleLayerSequenceChange = useCallback(async (newSequence: CustomSequence) => {
+    setLayerSequence(newSequence)
+    if ((state.status === "done" || state.status === "ready") && lastDxfFileRef.current) {
+      resetPlayback()
+      const defaultSeq = deriveDefaultSequence(state.generate.scenario, state.geometry.layers)
+      const customSeq = JSON.stringify(newSequence) === JSON.stringify(defaultSeq) ? undefined : newSequence
+      await upload(lastDxfFileRef.current, algorithm, toolOverrides, customSeq)
+    }
+  }, [state, algorithm, toolOverrides, upload, resetPlayback])
+
+  // Initialise layer visibility and sequence when geometry loads
   if (
     (state.status === "ready" || state.status === "done") &&
     state.geometry.layers.some((l) => !(l in visible))
@@ -252,6 +271,24 @@ export default function CNCPipelinePage() {
     state.geometry.layers.forEach((l) => { init[l] = true })
     setVisible(init)
   }
+
+  // Initialize layer sequence from detected scenario when geometry first loads
+  useEffect(() => {
+    if (
+      (state.status === "ready" || state.status === "done") &&
+      layerSequence.length === 0
+    ) {
+      const gen = state.generate;
+      const geo = state.geometry;
+      if (gen && geo) {
+        const defaultSeq = deriveDefaultSequence(gen.scenario, geo.layers)
+        if (defaultSeq.length > 0) {
+          setLayerSequence(defaultSeq)
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, layerSequence.length])
 
   const currentAlgorithm = (state.status === "ready" || state.status === "done" || state.status === "generating")
     ? state.generate.algorithm
@@ -304,12 +341,55 @@ export default function CNCPipelinePage() {
                 className="font-semibold text-slate-200 tracking-wide truncate max-w-[200px] bg-transparent border-none outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1 -mx-1"
               />
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
-              <span className="flex items-center gap-1 font-medium whitespace-nowrap">
-                {(SCENARIO_LABELS[state.generate.scenario] ?? state.generate.scenario).split(" ").map((word, i) => {
-                  if (word === "→" || word === "only") return <span key={i} className="text-slate-500">{word}</span>
-                  return <span key={i} style={{ color: LAYER_COLORS[word] ?? "#cbd5e1" }}>{word}</span>
-                })}
-              </span>
+              <div className="flex items-center gap-1 font-medium whitespace-nowrap">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+                  Sequence
+                </span>
+                {layerSequence.map(([layer, toolNum], idx) => (
+                  <div key={layer} className="flex items-center gap-0.5">
+                    {idx > 0 && (
+                      <span className="text-slate-600 mx-0.5">→</span>
+                    )}
+                    <Select
+                      value={String(idx)}
+                      onValueChange={(val) => {
+                        const newIdx = parseInt(val, 10)
+                        if (newIdx !== idx) {
+                          const newSeq = [...layerSequence]
+                          const [moved] = newSeq.splice(idx, 1)
+                          newSeq.splice(newIdx, 0, moved)
+                          handleLayerSequenceChange(newSeq)
+                        }
+                      }}
+                      disabled={state.status === "generating"}
+                    >
+                      <SelectTrigger
+                        className="h-6 w-auto min-w-[48px] bg-black/20 border-none text-[10px] font-bold uppercase tracking-wider px-1.5 hover:bg-white/5 focus:ring-1 focus:ring-emerald-500"
+                        style={{ color: LAYER_COLORS[layer] ?? "#cbd5e1" }}
+                      >
+                        {layer}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {layerSequence.map((_, optionIdx) => (
+                          <SelectItem key={optionIdx} value={String(optionIdx)}>
+                            <span className="text-[10px] font-mono text-slate-400">{optionIdx + 1}.</span>{" "}
+                            <span className="text-xs font-medium uppercase">{layer}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span
+                      className="text-[9px] font-mono text-slate-600 tabular-nums"
+                      title={`Tool T${toolNum}`}
+                    >
+                      T{toolNum}
+                    </span>
+                  </div>
+                ))}
+                {isCustomOrder && (
+                  <span className="text-[9px] text-amber-400/70 ml-1 italic">custom</span>
+                )}
+              </div>
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
               <span className="text-slate-400 whitespace-nowrap">
                 Tools: <span className="text-slate-200 font-mono tracking-wider ml-1">T{state.generate.tools_used.join(" → T")}</span>
@@ -351,6 +431,88 @@ export default function CNCPipelinePage() {
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {/* ── Layer Sequence ── */}
+                      {layerSequence.length > 0 && (
+                        <div className="grid gap-2 pt-4 border-t border-white/10">
+                          <div className="flex items-center justify-between">
+                            <Label className="font-semibold">Layer Sequence</Label>
+                            {isCustomOrder && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[10px] text-slate-400 hover:text-white"
+                                onClick={() => {
+                                  const defaultSeq = deriveDefaultSequence(
+                                    state.generate.scenario,
+                                    state.geometry.layers,
+                                  )
+                                  handleLayerSequenceChange(defaultSeq)
+                                }}
+                              >
+                                <RotateCcw className="h-3 w-3 mr-1" />
+                                Reset Order
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500">
+                            Reorder layers to change CNC execution order. This affects tool change sequence in the NC program.
+                          </p>
+                          <div className="space-y-1">
+                            {layerSequence.map(([layer, toolNum], idx) => {
+                              const color = LAYER_COLORS[layer] ?? "#cbd5e1"
+                              return (
+                                <div
+                                  key={layer}
+                                  className="flex items-center gap-2 rounded-md border border-white/5 bg-white/[0.02] px-3 py-2"
+                                >
+                                  <span className="text-[10px] font-mono text-slate-500 tabular-nums w-4">
+                                    {idx + 1}
+                                  </span>
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-sm shrink-0"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
+                                    {layer}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-500 ml-auto">
+                                    T{toolNum}
+                                  </span>
+                                  <div className="flex items-center gap-0.5 ml-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-5 w-5 p-0 text-slate-500 hover:text-white disabled:opacity-20"
+                                      disabled={idx === 0 || state.status === "generating"}
+                                      onClick={() => {
+                                        const newSeq = [...layerSequence]
+                                        ;[newSeq[idx - 1], newSeq[idx]] = [newSeq[idx], newSeq[idx - 1]]
+                                        handleLayerSequenceChange(newSeq)
+                                      }}
+                                    >
+                                      <ArrowUp className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-5 w-5 p-0 text-slate-500 hover:text-white disabled:opacity-20"
+                                      disabled={idx === layerSequence.length - 1 || state.status === "generating"}
+                                      onClick={() => {
+                                        const newSeq = [...layerSequence]
+                                        ;[newSeq[idx], newSeq[idx + 1]] = [newSeq[idx + 1], newSeq[idx]]
+                                        handleLayerSequenceChange(newSeq)
+                                      }}
+                                    >
+                                      <ArrowDown className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="grid gap-4 pt-4 border-t border-white/10">
                         <div className="flex flex-col gap-1">

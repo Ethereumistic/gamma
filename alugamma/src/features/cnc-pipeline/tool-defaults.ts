@@ -202,3 +202,60 @@ export function computeOverrides(
 
   return overrides;
 }
+
+// ── Layer Sequence Configuration ────────────────────────────────────────────────
+
+/** Frontend mirror of Python SCENARIOS dict in cnc_pipeline/config.py */
+export const SCENARIOS: Record<string, [string, number][]> = {
+  most_common: [
+    ["FREZ", 9],
+    ["CUT", 7],
+  ],
+  common: [
+    ["HOLES", 7],
+    ["FREZ", 9],
+    ["CUT", 7],
+  ],
+  rare: [
+    ["FREZ", 9],
+    ["FREZ_135", 11],
+    ["CUT", 7],
+  ],
+  very_rare: [
+    ["HOLES", 7],
+    ["FREZ", 9],
+    ["FREZ_135", 11],
+    ["CUT", 7],
+  ],
+  cut_only: [
+    ["CUT", 7],
+  ],
+};
+
+/** Fixed layer → tool assignment (frontend mirror of config.LAYER_TOOL_MAP) */
+export const LAYER_TOOL_MAP: Record<string, number> = {
+  CUT: 7,
+  HOLES: 7,
+  FREZ: 9,
+  FREZ_135: 11,
+};
+
+/** CNC layers that participate in toolpath generation (orderable) */
+export const CNC_LAYERS = ["HOLES", "FREZ", "FREZ_135", "CUT"] as const;
+export type CNCLayer = (typeof CNC_LAYERS)[number];
+
+/**
+ * Given a detected scenario and the set of layers detected in the DXF,
+ * derive the default layer sequence as an array of [layer, toolNumber] tuples.
+ * Only includes layers that are present in `detectedLayers`.
+ */
+export function deriveDefaultSequence(
+  scenario: string,
+  detectedLayers: string[],
+): [string, number][] {
+  const scenarioSeq = SCENARIOS[scenario];
+  if (!scenarioSeq) return [];
+
+  const detected = new Set(detectedLayers);
+  return scenarioSeq.filter(([layer]) => detected.has(layer));
+}

@@ -1,0 +1,303 @@
+# Layer Sequencing Feature — Code Review
+
+## Summary
+
+The implementation adds the ability for users to reorder CNC layer execution
+order (e.g., FREZ before CUT vs. CUT before FREZ) through a `custom_sequence`
+parameter that overrides the auto-detected scenario's default order. The
+feature spans the full stack: Python backend (config → pipeline → API),
+TypeScript frontend (types → API → hooks → two page components).
+
+Overall the wiring is correct and the feature works for the happy path.
+However, there are several issues ranging from a data-loss bug to type-safety
+gaps and minor cleanup items.
+
+---
+
+## 1. Correctness — Missing Connections & Inconsistencies
+
+### 1.1 [BUG] custom_sequence is not persisted — data loss on save/reload
+
+When a user reorders layers and clicks "Save", the custom sequence is **not**
+written to Convex. Both `saveNcProgram` and `updateNcProgram` in
+`convex/nc_programs.ts` have no `customSequence` field. When the program is
+later opened in `$programId.tsx`, `deriveDefaultSequence()` reconstructs the
+*default* order from the scenario — the user's custom reorder is silently
+lost. If the user then regenerates (e.g., switches algorithm), they get the
+default order, not the order that produced the saved NC code.
+
+**Fix**: Add a `customSequence` optional field to the Convex `saveNcProgram`
+and `updateNcProgram` mutations and persist it alongside the program. On
+reload in `$programId.tsx`, prefer `program.customSequence` over the
+default-derived sequence.
+
+### 1.2 [BUG] `run_pipeline` prepares contours based on auto-detected scenario, ignoring custom_sequence
+
+In `pipeline.py:run_pipeline`, the contour preparation loop iterates over
+`SCENARIOS[scenario_name]`, not `custom_sequence`. Layers that appear in
+`custom_sequence` but **not** in the detected scenario are only added as
+*reference layers* (line ~203) — without `simplify_contour()`. If the user
+reorders layers in a way that adds a layer the scenario didn't include, the
+CNC contours for that layer will be unsimplified, potentially degrading path
+quality.
+
+Additionally, `run_pipeline` builds `cnc_layers` from the scenario's
+`toolpath_sequence`, while `run_from_contours` builds *its* `cnc_layers` from
+the custom sequence. These two "cnc_layers" sets can differ, causing
+`ref_layers` to be computed differently in each function.
+
+**Impact**: Medium. The frontend's `deriveDefaultSequence()` only reorders
+layers that are already in the detected scenario, so in normal UI flow this
+won't trigger. But if an API consumer sends an arbitrary custom_sequence, it
+could produce sub-optimal output.
+
+**Fix**: When `custom_sequence` is provided, `run_pipeline` should iterate
+over `custom_sequence` instead of `SCENARIOS[scenario_name]` for the CNC
+contour preparation loop, and apply `simplify_contour` to those layers.
+
+### 1.3 `PipelineResult.scenario` is misleading when custom_sequence is used
+
+`run_pipeline` always returns `scenario=scenario_name` (the auto-detected
+scenario) even when a custom_sequence overrides the toolpath order. The
+frontend then shows this scenario name, which doesn't reflect the actual
+execution order. Consider returning the scenario name with a suffix like
+`"most_common (custom)"` or adding a `custom_sequence_used: bool` field.
+
+### 1.4 Unused imports
+
+- `CNCPipelinePage.tsx:28` — imports `LAYER_TOOL_MAP` but never references it.
+- `$programId.tsx:24` — imports `LAYER_TOOL_MAP` and `SCENARIOS` but never
+  references either.
+
+These are dead code. `LAYER_TOOL_MAP` exists on both sides (Python and TS) but
+is never consumed at runtime — it seems intended for a future "add layer to
+sequence" feature.
+
+---
+
+## 2. Safety — Does the existing flow break when custom_sequence is NOT provided?
+
+### 2.1 No regressions in the default path ✅
+
+When `custom_sequence` is `None` (Python) / `undefined` (TS), the code falls
+back correctly:
+
+- **`run_from_contours`**: `if custom_sequence:` → falsy → uses
+  `SCENARIOS.get(scenario, [])`. Correct.
+- **`run_pipeline`**: passes `custom_sequence=None` through. The scenario
+  detection and contour preparation are unchanged. Correct.
+- **`/api/generate`**: only parses `custom_sequence` if the query param exists.
+  Correct.
+- **`/api/regenerate`**: `custom_sequence` is `Optional[list[list]] = None` in
+  the Pydantic model. Correct.
+- **`uploadDXF(api.ts)`**: only includes `custom_sequence` in query params if
+  `customSequence && customSequence.length > 0`. Correct.
+- **`upload(useGenerate.ts)`**: passes `customSequence` through as optional.
+  Correct.
+
+### 2.2 Empty list is safely handled ✅
+
+`json.loads("[]")` → `[]` (falsy in Python). The `if custom_sequence:` guard
+correctly falls back to the scenario when an empty list arrives. The
+frontend also guards with `customSequence.length > 0` before sending.
+
+---
+
+## 3. Edge Cases
+
+### 3.1 [BUG] No validation of tool numbers in custom_sequence
+
+`run_from_contours` line 59:
+```python
+toolpath_sequence = [(entry[0], int(entry[1])) for entry in custom_sequence]
+```
+Then line 76:
+```python
+moves, _ = generate_toolpath(ordered, tools[tool_num], layer_name, ...)
+```
+
+If `tool_num` (e.g., `5`) doesn't exist in the `tools` dict, this raises a
+bare `KeyError` that propagates as a 500 error. The backend should validate
+that every tool number in `custom_sequence` exists in `TOOLS` and return a
+clear 400/422 error.
+
+### 3.2 [BUG] No validation of entry shape in custom_sequence
+
+If a malformed entry like `["FREZ"]` (missing tool number) arrives,
+`entry[1]` raises `IndexError`. If `entry[1]` is not numeric (e.g., a string
+that can't be `int()`-ed), `int(entry[1])` raises `ValueError`. Both crash as
+500 errors.
+
+**Fix**: Add a validation step:
+```python
+for entry in custom_sequence:
+    if not isinstance(entry, list) or len(entry) < 2:
+        raise ValueError(f"Invalid custom_sequence entry: {entry}")
+    layer, tool = entry[0], entry[1]
+    if layer not in LAYER_TOOL_MAP or tool not in TOOLS:
+        raise ValueError(f"Unknown layer/tool: {layer} T{tool}")
+```
+
+### 3.3 No duplicate-layer detection
+
+A custom_sequence like `[["FREZ", 9], ["FREZ", 9], ["CUT", 7]]` would process
+the FREZ layer twice, generating two toolpath blocks for the same layer. This
+is almost certainly unintended but not guarded against.
+
+### 3.4 Single-layer scenario (cut_only) — UI works but is odd
+
+With a single-layer sequence, the reorder up/down buttons are correctly
+disabled, and the position Select has only one option. Functional but slightly
+pointless UX. Not a bug.
+
+### 3.5 Custom sequence references a layer absent from the DXF
+
+In `run_from_contours`, `if layer_name not in prepared: continue` silently
+skips it. If ALL layers in custom_sequence are missing, `toolpath_blocks`
+remains empty and the `ValueError("No toolpath blocks generated")` fires. The
+error message doesn't explain *why*, making it hard to debug. Should add a
+more descriptive message listing which layers were expected vs. found.
+
+---
+
+## 4. TypeScript Type Issues
+
+### 4.1 Pydantic `list[list]` vs TS `[string, number][]`
+
+The Python `RegenerateRequest.custom_sequence: Optional[list[list]]` is
+untyped — it accepts `[[1, 2, 3], ["x"]]`. The TS `CustomSequence` type is
+`[string, number][]` (tuple-typed). At the JSON serialization boundary this is
+fine (JSON arrays are untyped), but the Pydantic model provides no validation.
+Using `list[tuple[str, int]]` with a custom validator would be safer.
+
+### 4.2 `/api/generate` custom_sequence is a raw string, not a typed model
+
+Unlike `/api/regenerate` (which uses Pydantic), the `/api/generate` endpoint
+accepts `custom_sequence: Optional[str]` and manually calls `json.loads`. This
+bypasses all Pydantic validation. Consider accepting a JSON body for
+`/api/generate` too, or at minimum add the same structural validation after
+parsing.
+
+### 4.3 No runtime type guard on the frontend
+
+`CustomSequence` is a TypeScript type alias — it vanishes at runtime. If a
+bug elsewhere produces a malformed array (e.g., `[["FREZ", "9"]]` where the
+tool number is a string), it will be sent as-is. The `int()` conversion on
+the Python side _would_ handle this case, so it's not a crash, but the
+string-number mismatch is still a type-safety smell.
+
+---
+
+## 5. Python Parameter Handling
+
+### 5.1 ✅ `custom_sequence` parameter threading is complete
+
+Both `run_from_contours` and `run_pipeline` accept and pass through the
+parameter. Both API endpoints parse and forward it.
+
+### 5.2 ⚠️ `scenario` parameter becomes dead when custom_sequence is provided
+
+In `run_from_contours`, the `scenario` parameter is ignored when
+`custom_sequence` is truthy. This is fine functionally, but the parameter
+signature is misleading — a caller might expect `scenario` to be used for
+fallback/error-handling even when a custom sequence is given.
+
+### 5.3 [MEDIUM] `run_from_contours` doesn't validate custom_sequence against LAYER_TOOL_MAP
+
+The `LAYER_TOOL_MAP` was added to `config.py` specifically to validate that
+layer→tool assignments are correct, but it is never imported or used in
+`pipeline.py`. This means a caller could send `[["CUT", 9]]` (CUT assigned to
+tool 9, which has no "CUT" layer config), and `generate_toolpath` would crash
+at `tool["layers"][layer_name]["depth"]` with a KeyError.
+
+**Fix**: Import `LAYER_TOOL_MAP` in `pipeline.py` and validate:
+```python
+if custom_sequence:
+    for layer, tool in custom_sequence:
+        expected_tool = LAYER_TOOL_MAP.get(layer)
+        if expected_tool is None or int(tool) != expected_tool:
+            raise ValueError(f"Invalid layer/tool pair: ({layer}, T{tool})")
+```
+
+---
+
+## 6. Additional Observations
+
+### 6.1 State initialization during render (both pages)
+
+Both `CNCPipelinePage.tsx` and `$programId.tsx` initialize `layerSequence`
+state during the render body (not in `useEffect` or event handler):
+
+```tsx
+if (layerSequence.length === 0 && state.generate) {
+  const defaultSeq = deriveDefaultSequence(...)
+  if (defaultSeq.length > 0) {
+    setLayerSequence(defaultSeq)  // ← setState during render
+  }
+}
+```
+
+This works because the guard prevents re-triggering, but it's a React
+anti-pattern that can cause confusing re-render behavior. Prefer `useEffect`
+for this initialization.
+
+### 6.2 `useCallback` dependency on `state` in CNCPipelinePage
+
+`handleLayerSequenceChange` depends on `state` (the full `PageState` object,
+which includes geometry with potentially thousands of segments). This causes
+the callback to be recreated on every state change, defeating memoization.
+
+### 6.3 JSON.stringify for equality comparison
+
+`isCustomOrder` is computed by comparing `JSON.stringify(layerSequence)` vs.
+`JSON.stringify(defaultSeq)`. While correct for arrays-of-arrays, this is
+fragile in general and O(n) on every render. Consider a shallow-equals
+utility or memoizing the default sequence string.
+
+### 6.4 Missing `isCustomOrder` in useEffect dependency array
+
+In the `useEffect` that re-uploads on algorithm change:
+```tsx
+useEffect(() => {
+  ...
+  const customSeq = isCustomOrder ? layerSequence : undefined
+  upload(...)
+}, [algorithm, state.status, upload, resetPlayback])
+// ⚠️ missing: isCustomOrder, layerSequence, toolOverrides
+```
+
+React's exhaustive-deps rule would flag this. If the user reorders layers
+and then changes the algorithm, the stale closure could send the old sequence.
+
+### 6.5 segmentToLineMap inconsistency between the two pages
+
+`CNCPipelinePage.tsx` builds `segmentToLineMap` keeping the **first**
+(smallest) line per segment:
+```tsx
+if (map[seq] === undefined || line < map[seq]) { map[seq] = line }
+```
+`$programId.tsx` builds it keeping the **last** (Object.fromEntries overwrites):
+```tsx
+Object.fromEntries(Object.entries(currentLineToSegmentMap).map(([line, seq]) => [seq, Number(line)]))
+```
+This inconsistency exists before this feature but could cause subtle playback
+differences. Not introduced by this PR but worth noting.
+
+---
+
+## Priority Summary
+
+| # | Severity | Issue |
+|---|----------|-------|
+| 1.1 | **High** | custom_sequence not persisted — saved programs lose reorder on reload |
+| 3.1 | **High** | No validation of tool numbers → unhandled KeyError/500 |
+| 3.2 | **High** | No validation of entry shape → IndexError/500 on malformed input |
+| 5.3 | **Medium** | LAYER_TOOL_MAP not used for validation in pipeline.py |
+| 1.2 | **Medium** | run_pipeline prepares contours using scenario, not custom_sequence |
+| 1.3 | **Low** | PipelineResult.scenario misleading when custom_sequence used |
+| 1.4 | **Low** | Unused imports (LAYER_TOOL_MAP, SCENARIOS) |
+| 3.3 | **Low** | No duplicate-layer detection in custom_sequence |
+| 4.1 | **Low** | Pydantic model uses untyped `list[list]` instead of `list[tuple[str, int]]` |
+| 6.1 | **Low** | setState during render (anti-pattern) |
+| 6.2 | **Low** | useCallback with heavy `state` dependency |
+| 6.4 | **Low** | Missing deps in useEffect |

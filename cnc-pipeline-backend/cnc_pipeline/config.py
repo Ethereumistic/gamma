@@ -101,6 +101,16 @@ SCENARIOS: dict[str, list[tuple[str, int]]] = {
     ],
 }
 
+# ── Layer → default tool mapping ────────────────────────────────────────────────
+# Used to build custom sequences when the user reorders layers.
+# Each CNC layer is always cut by exactly one tool.
+LAYER_TOOL_MAP: dict[str, int] = {
+    "CUT":      7,
+    "HOLES":    7,
+    "FREZ":     9,
+    "FREZ_135": 11,
+}
+
 # ── G-code line numbering ─────────────────────────────────────────────────────
 LINE_NUM_START     = 40    # first line in output (after tape-start lines are stripped)
 LINE_NUM_INCREMENT = 10    # every line +10

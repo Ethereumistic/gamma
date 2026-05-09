@@ -12,6 +12,7 @@ export const saveNcProgram = mutation({
     estimatedTimeSeconds: v.number(),
     ncCode: v.string(),
     dxfSourceName: v.string(),
+    customSequence: v.optional(v.any()),
     geometryData: v.optional(
       v.object({
         segments: v.array(
@@ -64,6 +65,7 @@ export const saveNcProgram = mutation({
         ncCode: args.ncCode,
         updatedBy: access.userId,
         updatedAt: now,
+        customSequence: args.customSequence,
         geometryData: args.geometryData,
         lineToSegmentMap: args.lineToSegmentMap,
         contoursByLayer: args.contoursByLayer,
@@ -88,6 +90,7 @@ export const saveNcProgram = mutation({
         estimatedTimeSeconds: args.estimatedTimeSeconds,
         ncCode: args.ncCode,
         dxfSourceName: args.dxfSourceName,
+        customSequence: args.customSequence,
         geometryData: args.geometryData,
         lineToSegmentMap: args.lineToSegmentMap,
         contoursByLayer: args.contoursByLayer,
@@ -111,6 +114,7 @@ export const updateNcProgram = mutation({
     scenario: v.optional(v.string()),
     estimatedTimeSeconds: v.optional(v.number()),
     ncCode: v.optional(v.string()),
+    customSequence: v.optional(v.any()),
     geometryData: v.optional(
       v.object({
         segments: v.array(
@@ -154,6 +158,7 @@ export const updateNcProgram = mutation({
     if (args.scenario !== undefined) patch.scenario = args.scenario;
     if (args.estimatedTimeSeconds !== undefined) patch.estimatedTimeSeconds = args.estimatedTimeSeconds;
     if (args.ncCode !== undefined) patch.ncCode = args.ncCode;
+    if (args.customSequence !== undefined) patch.customSequence = args.customSequence;
     if (args.geometryData !== undefined) patch.geometryData = args.geometryData;
     if (args.lineToSegmentMap !== undefined) patch.lineToSegmentMap = args.lineToSegmentMap;
     if (args.contoursByLayer !== undefined) patch.contoursByLayer = args.contoursByLayer;

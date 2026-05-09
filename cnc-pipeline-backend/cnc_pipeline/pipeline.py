@@ -27,6 +27,7 @@ def run_from_contours(
     algorithm: str,
     original_filename: str = "",
     tool_overrides: dict | None = None,
+    custom_sequence: list[list] | None = None,
 ) -> dict:
     from .models import Point, Contour, BBox
     from .geometry import sort_frez_outer_to_inner, sort_nearest_neighbour
@@ -34,6 +35,7 @@ def run_from_contours(
     from .gcode_writer import GCodeWriter
     from .validator import validate
     from .config import SCENARIOS, LAYER_FREZ, LAYER_FREZ_135, build_tools_dict
+    import logging
 
     bbox = BBox(
         stock_bbox["min_x"], stock_bbox["min_y"],
@@ -51,7 +53,26 @@ def run_from_contours(
         ]
 
     tools = build_tools_dict(tool_overrides)
-    toolpath_sequence = SCENARIOS.get(scenario, [])
+
+    # ── Determine toolpath sequence ──
+    if custom_sequence:
+        logging.getLogger("cnc_pipeline").info(f"run_from_contours using custom_sequence: {custom_sequence}")
+        # Validate and convert: [[layer, tool], ...] → [(layer, tool), ...]
+        validated = []
+        for entry in custom_sequence:
+            if not isinstance(entry, list) or len(entry) < 2:
+                raise ValueError(f"Invalid custom_sequence entry: {entry} — expected [layer, tool_number]")
+            layer, tool = str(entry[0]), int(entry[1])
+            if layer not in prepared:
+                continue  # skip layers not present in the DXF
+            if tool not in tools:
+                raise ValueError(f"Unknown tool number in custom_sequence: T{tool} for layer {layer}")
+            validated.append((layer, tool))
+        if not validated:
+            raise ValueError("custom_sequence contained no valid layers present in the DXF")
+        toolpath_sequence = validated
+    else:
+        toolpath_sequence = SCENARIOS.get(scenario, [])
     
     toolpath_blocks = []
     out_segments = []
@@ -158,7 +179,7 @@ def run_from_contours(
     }
 
 
-def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "juggler_gemini", tool_overrides: dict | None = None) -> PipelineResult:
+def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "juggler_gemini", tool_overrides: dict | None = None, custom_sequence: list[list] | None = None) -> PipelineResult:
     """
     Full pipeline: DXF file → PipelineResult containing NC text.
     Raises ValueError for unrecoverable errors (missing CUT layer, etc.).
@@ -180,12 +201,18 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
 
     # 2. Detect scenario
     scenario_name = detect_scenario(reader.layers)
-    toolpath_sequence = SCENARIOS[scenario_name]  # list of (layer, tool_num)
+
+    # Determine which layers to prepare as CNC layers
+    if custom_sequence:
+        # When custom_sequence is provided, use it to determine CNC layers
+        sequence_to_prepare = [(str(entry[0]), int(entry[1])) for entry in custom_sequence]
+    else:
+        sequence_to_prepare = SCENARIOS[scenario_name]  # list of (layer, tool_num)
 
     prepared_contours = {}
     total_contours = 0
 
-    for layer_name, tool_num in toolpath_sequence:
+    for layer_name, tool_num in sequence_to_prepare:
         contours = reader.get_contours(layer_name)
         if not contours:
             warnings.append(f"Layer {layer_name} has no geometry — skipping")
@@ -195,7 +222,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
         total_contours += len(contours)
         prepared_contours[layer_name] = contours
 
-    cnc_layers = {layer_name for layer_name, _ in toolpath_sequence}
+    cnc_layers = {layer_name for layer_name, _ in sequence_to_prepare}
     ref_layers = [l for l in reader.layers if l not in cnc_layers]
     for layer_name in ref_layers:
         contours = reader.get_contours(layer_name)
@@ -226,6 +253,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
         algorithm=algorithm,
         original_filename=dxf_path if not original_filename else original_filename,
         tool_overrides=tool_overrides,
+        custom_sequence=custom_sequence,
     )
     result["warnings"].extend(warnings)
 

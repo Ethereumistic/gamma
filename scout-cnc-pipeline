@@ -1,0 +1,678 @@
+# CNC Pipeline Project Structure – Complete Analysis
+
+## 1. Overall Directory Structure
+
+```
+gamma/
+├── alugamma/                      # Frontend (Vite + React + TypeScript + Convex)
+│   ├── convex/                    # Convex backend (serverless functions, schema, auth)
+│   │   ├── schema.ts              # DB schema (organizations, projects, designs, cnc_settings, nc_programs)
+│   │   ├── cnc_settings.ts        # CRUD for org-level CNC tool overrides
+│   │   ├── nc_programs.ts          # CRUD for saved NC programs
+│   │   ├── workspaces.ts          # Viewer workspace query
+│   │   ├── auth.ts / auth.config.ts
+│   │   ├── designs.ts
+│   │   ├── helpers.ts
+│   │   └── _generated/            # Auto-generated Convex API types
+│   ├── src/
+│   │   ├── app.tsx                # Root app: routing, providers, layout
+│   │   ├── main.tsx               # Entry point
+│   │   ├── routes/
+│   │   │   ├── cnc-pipeline/
+│   │   │   │   ├── index.tsx       # Dashboard: list all NC programs
+│   │   │   │   ├── new.tsx         # Wrapper → renders CNCPipelinePage
+│   │   │   │   └── $programId.tsx  # Viewer for a saved NC program
+│   │   │   └── ...other routes
+│   │   ├── features/
+│   │   │   ├── cnc-pipeline/      # ★ MAIN FEATURE DIRECTORY
+│   │   │   │   ├── CNCPipelinePage.tsx    # Main page component (upload, generate, view, save)
+│   │   │   │   ├── api.ts                 # HTTP calls to Python backend
+│   │   │   │   ├── types.ts              # TypeScript types for all CNC data shapes
+│   │   │   │   ├── tool-defaults.ts      # TOOL_DEFAULTS, resolveTools(), computeOverrides()
+│   │   │   │   ├── constants.ts          # SCENARIO_LABELS short codes
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── BackendStatus.tsx  # Health dot indicator
+│   │   │   │   │   ├── DXFDropZone.tsx    # File upload (drag & drop / browse)
+│   │   │   │   │   ├── GeometryViewer.tsx # SVG viewer with playback, rapids, trace mode
+│   │   │   │   │   ├── LayerControls.tsx  # Layer visibility toggles, seek, trace mode
+│   │   │   │   │   ├── NCPreview.tsx      # G-code text viewer with line highlighting
+│   │   │   │   │   ├── PlaybackControls.tsx # Play/pause, timeline slider, seek buttons
+│   │   │   │   │   └── ScenarioCard.tsx   # Static scenario details card
+│   │   │   │   └── hooks/
+│   │   │   │       ├── useBackendHealth.ts # Polls /api/health
+│   │   │   │       ├── useGenerate.ts      # Page-level state machine: idle→uploading→generating→done
+│   │   │   │       └── usePlayback.ts      # Time-based NC playback with physics model
+│   │   │   ├── settings/
+│   │   │   │   ├── context.tsx            # SettingsProvider with open/close/tab state
+│   │   │   │   ├── settings-dialog.tsx    # Tabbed dialog (CNC Tools / Hotkeys)
+│   │   │   │   ├── cnc-settings-panel.tsx # ★ Tool parameter editor per tool & layer
+│   │   │   │   └── hotkeys-panel.tsx      # Keyboard shortcuts reference
+│   │   │   └── workspace/context.tsx      # WorkspaceProvider (org/project selection)
+│   │   ├── components/
+│   │   │   ├── layout/
+│   │   │   │   ├── app-navbar.tsx         # Top navbar with portal slot + sidebar trigger
+│   │   │   │   ├── app-sidebar.tsx        # Left sidebar with project NC programs list
+│   │   │   │   ├── navbar/
+│   │   │   │   │   ├── navbar-content.tsx # ★ ROUTED slot: renders cnc-navbar-portal div
+│   │   │   │   │   ├── navbar-breadcrumb.tsx
+│   │   │   │   │   ├── sheet-metal-toolbar.tsx
+│   │   │   │   │   ├── nav-number-field.tsx
+│   │   │   │   │   └── notification-bell.tsx
+│   │   │   │   └── sidebar/
+│   │   │   │       ├── sidebar-footer-section.tsx  # ★ SETTINGS GEAR BUTTON lives here
+│   │   │   │       ├── sidebar-header-section.tsx
+│   │   │   │       ├── sidebar-nav-section.tsx
+│   │   │   │       ├── sidebar-item-list.tsx
+│   │   │   │       └── sidebar-rename-dialog.tsx
+│   │   │   └── ui/               # shadcn/ui primitives (card, button, dialog, etc.)
+│   │   ├── hooks/                  # Shared hooks (rename dialog, filterable list)
+│   │   └── lib/                    # Utility functions
+│   └── (config files)
+│
+└── cnc-pipeline-backend/           # Python FastAPI backend
+    ├── main.py                     # FastAPI app: /api/generate, /api/regenerate, /api/preview, etc.
+    └── cnc_pipeline/
+        ├── config.py               # ★ SCENARIOS dict, TOOLS dict, build_tools_dict()
+        ├── scenario.py             # detect_scenario() — auto-detects from DXF layers
+        ├── pipeline.py             # ★ run_pipeline() + run_from_contours() — the core orchestrator
+        ├── models.py               # Data classes: Point, Segment, Contour, BBox, Move
+        ├── geometry.py             # sort_frez_outer_to_inner(), sort_nearest_neighbour()
+        ├── toolpath.py             # generate_toolpath()
+        ├── gcode_writer.py         # GCodeWriter — produces NC text
+        ├── dxf_reader.py           # DXFReader — reads DXF files via ezdxf
+        └── validator.py            # validate() — post-generation validation
+```
+
+---
+
+## 2. CNC Pipeline Feature — Complete File Inventory
+
+### Frontend Files
+
+| File | Purpose |
+|------|---------|
+| `src/features/cnc-pipeline/CNCPipelinePage.tsx` | **Main page**: Upload DXF, generate NC, view geometry + G-code, playback, save |
+| `src/features/cnc-pipeline/api.ts` | HTTP client: `uploadDXF()`, `fetchNCText()`, `regenerate()`, `downloadURL()` |
+| `src/features/cnc-pipeline/types.ts` | Types: `PageState`, `Segment`, `GenerateResponse`, `GeometryResponse`, `RegenerateResponse`, `NcProgramSummary` |
+| `src/features/cnc-pipeline/tool-defaults.ts` | Tool config: `TOOL_DEFAULTS`, `ToolConfig`, `LayerConfig`, `resolveTools()`, `computeOverrides()` |
+| `src/features/cnc-pipeline/constants.ts` | `SCENARIO_LABELS` short codes (e.g. `"F-C"`) |
+| `src/features/cnc-pipeline/components/LayerControls.tsx` | Layer visibility toggle chips with colors, seek-to-start, trace mode |
+| `src/features/cnc-pipeline/components/GeometryViewer.tsx` | SVG geometry renderer with playback, rapids, tool dot animation |
+| `src/features/cnc-pipeline/components/NCPreview.tsx` | Scrollable G-code text viewer with line highlighting and click-to-seek |
+| `src/features/cnc-pipeline/components/PlaybackControls.tsx` | Play/pause, seek buttons, timeline slider |
+| `src/features/cnc-pipeline/components/DXFDropZone.tsx` | Drag & drop + file browse for .dxf |
+| `src/features/cnc-pipeline/components/ScenarioCard.tsx` | Static analysis summary card (scenario, tools, contours, time) |
+| `src/features/cnc-pipeline/components/BackendStatus.tsx` | Green/red health dot |
+| `src/features/cnc-pipeline/hooks/useGenerate.ts` | State machine: idle→uploading→(generating)→done/error |
+| `src/features/cnc-pipeline/hooks/usePlayback.ts` | Time-based playback with per-line physics model |
+| `src/features/cnc-pipeline/hooks/useBackendHealth.ts` | Polls backend `/api/health` every 5s |
+| `src/routes/cnc-pipeline/index.tsx` | Dashboard listing all saved NC programs |
+| `src/routes/cnc-pipeline/new.tsx` | New program route → renders `CNCPipelinePage` |
+| `src/routes/cnc-pipeline/$programId.tsx` | Saved program viewer with regenerate capability |
+
+### Backend Files (Python)
+
+| File | Purpose |
+|------|---------|
+| `cnc-pipeline-backend/main.py` | FastAPI routes: `/api/generate`, `/api/regenerate`, `/api/preview/{id}`, `/api/download/{id}`, `/api/diagnose-layers` |
+| `cnc_pipeline/config.py` | **SCENARIOS** dict (layer→tool ordering), **TOOLS** dict, `build_tools_dict()` |
+| `cnc_pipeline/scenario.py` | `detect_scenario()` — auto-select scenario from DXF layer names |
+| `cnc_pipeline/pipeline.py` | Core orchestrator: `run_pipeline()` + `run_from_contours()` |
+| `cnc_pipeline/models.py` | Data classes: Point, Segment, Contour, BBox, Move |
+| `cnc_pipeline/geometry.py` | Sorting algorithms (outer-to-inner, nearest-neighbour) |
+| `cnc_pipeline/toolpath.py` | Toolpath generation from contours |
+| `cnc_pipeline/gcode_writer.py` | NC text output |
+| `cnc_pipeline/dxf_reader.py` | DXF parsing via ezdxf |
+| `cnc_pipeline/validator.py` | Post-generation validation |
+
+### Convex (Database) Files
+
+| File | Purpose |
+|------|---------|
+| `convex/schema.ts` | DB schema with `nc_programs` and `cnc_settings` tables |
+| `convex/nc_programs.ts` | Save/load/delete/star NC programs |
+| `convex/cnc_settings.ts` | Org-level tool override persistence |
+
+---
+
+## 3. How Tools and Layers Are Currently Defined and Sequenced
+
+### The Source of Truth: `SCENARIOS` dict in `config.py`
+
+Layer sequencing is **entirely hardcoded in the backend** in `cnc_pipeline/config.py`:
+
+```python
+SCENARIOS: dict[str, list[tuple[str, int]]] = {
+    "most_common": [
+        ("FREZ",  9),        # Layer → Tool number
+        ("CUT",   7),
+    ],
+    "common": [
+        ("HOLES", 7),
+        ("FREZ",  9),
+        ("CUT",   7),
+    ],
+    "rare": [
+        ("FREZ",     9),
+        ("FREZ_135", 11),
+        ("CUT",      7),
+    ],
+    "very_rare": [
+        ("HOLES",    7),
+        ("FREZ",     9),
+        ("FREZ_135", 11),
+        ("CUT",      7),
+    ],
+    "cut_only": [
+        ("CUT", 7),
+    ],
+}
+```
+
+**Each scenario is an ordered list of `(layer_name, tool_number)` tuples.** The order determines:
+1. **The sequence in which layers are cut** — this is the cutting order
+2. **Which tool is used for each layer** — tool assignments
+3. **Tool change insertion** — the GCodeWriter inserts tool change blocks between entries
+
+### How the Scenario is Selected
+
+`scenario.py:detect_scenario()` auto-selects based on which layers exist in the DXF:
+
+```python
+def detect_scenario(dxf_layers: set[str]) -> str:
+    has_holes    = "HOLES"    in dxf_layers
+    has_frez     = "FREZ"     in dxf_layers
+    has_frez_135 = "FREZ_135" in dxf_layers
+    has_cut      = "CUT"      in dxf_layers
+
+    if not has_cut:
+        raise ValueError("DXF has no CUT layer")
+    if has_holes and has_frez and has_frez_135:
+        return "very_rare"      # HOLES → FREZ → FREZ_135 → CUT
+    if has_holes and has_frez:
+        return "common"         # HOLES → FREZ → CUT
+    if has_frez and has_frez_135:
+        return "rare"           # FREZ → FREZ_135 → CUT
+    if has_frez:
+        return "most_common"    # FREZ → CUT
+    return "cut_only"           # CUT only
+```
+
+**Currently: There is NO frontend control to change the scenario or reorder layers.** The scenario is auto-detected and the sequence is fixed.
+
+### How the Scenario Flows Through the Pipeline
+
+```
+1. DXF uploaded → POST /api/generate
+2. scenario.py:detect_scenario(layers) → "most_common"
+3. pipeline.py: SCENARIOS["most_common"] → [("FREZ", 9), ("CUT", 7)]
+4. For each (layer, tool_num) in sequence:
+   a. Skip if layer not in contours
+   b. Sort contours (outer-to-inner for FREZ, nearest-neighbour for others)
+   c. Build geometry segments with seq_index (global cutting order)
+   d. generate_toolpath() → produce Move objects
+5. GCodeWriter.write(toolpath_blocks) → NC text + line_to_segment_map
+6. Return to frontend: GenerateResponse + GeometryResponse
+```
+
+### The Regenerate Path
+
+When the user changes the algorithm on a saved NC program (`$programId.tsx`):
+- Frontend calls `POST /api/regenerate` with `contours_by_layer`, `stock_bbox`, `scenario`, `algorithm`
+- **The scenario is locked to what was originally detected** — there's no way to change it
+- Backend calls `run_from_contours()` which uses the same `SCENARIOS[scenario]` lookup
+
+---
+
+## 4. The Settings Dialog (Sidebar Settings Wheel)
+
+### Where It Lives
+
+**The settings gear button is in the sidebar footer:**
+
+`src/components/layout/sidebar/sidebar-footer-section.tsx`:
+```tsx
+<Button
+  variant="ghost"
+  size="icon"
+  className="h-8 w-8 shrink-0 rounded-lg ..."
+  onClick={() => openSettings("cnc")}    // ← Opens settings dialog to "cnc" tab
+  title="Settings"
+>
+  <Settings className="h-3.5 w-3.5" />
+</Button>
+```
+
+### The Settings Dialog
+
+`src/features/settings/settings-dialog.tsx`:
+- A `Dialog` component with two tabs: **"CNC Tools"** and **"Hotkeys"**
+- The CNC Tools tab renders `<CNCSettingsPanel />`
+- Controlled by `SettingsContext` (`src/features/settings/context.tsx`)
+
+### What the CNC Settings Panel Contains
+
+`src/features/settings/cnc-settings-panel.tsx`:
+
+**Currently contains ONLY tool parameter overrides:**
+- Per-tool collapsible sections (T7, T9, T11)
+- Tool parameters: diameter, gauge_length, flutes, spindle_rpm, feed_cut, feed_plunge
+- Per-layer depth & offset within each tool
+- Save/Reset buttons that persist to Convex `cnc_settings` table
+
+**Currently does NOT contain:**
+- Any layer sequencing UI
+- Any scenario selection
+- Any layer ordering controls
+- Any way to change which tool is assigned to which layer
+
+### Data Flow for Tool Overrides
+
+```
+1. CNCSettingsPanel reads from Convex: cncSettings?.toolOverrides
+2. Resolves against TOOL_DEFAULTS: resolveTools(TOOL_DEFAULTS, storedOverrides)
+3. User edits fields → local state (localTools)
+4. computeOverrides(localTools, TOOL_DEFAULTS) → sparse diff
+5. Save → Convex mutation: cnc_settings.upsert({ organizationId, toolOverrides })
+6. On next upload, CNCPipelinePage reads cncSettings?.toolOverrides
+7. Passed as toolOverrides arg to uploadDXF() → POST /api/generate?tool_overrides=...
+8. Backend: build_tools_dict(overrides) merges into TOOLS dict
+```
+
+---
+
+## 5. App Navbar Teleport and Algorithm Selector
+
+### The Teleport Architecture
+
+The CNC Pipeline pages **do NOT render their own navbar content directly**. Instead, they use React portals to inject controls into a div provided by the navbar:
+
+**The portal target div** is created in `navbar-content.tsx`:
+```tsx
+if (isCncPipeline) {
+  return (
+    <div
+      id="cnc-navbar-portal"
+      className="flex flex-1 items-center justify-between gap-4 overflow-x-auto"
+    />
+  )
+}
+```
+
+**The portal source** is in `CNCPipelinePage.tsx` (and `$programId.tsx`):
+```tsx
+const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
+
+useEffect(() => {
+  const el = document.getElementById("cnc-navbar-portal")
+  if (el) {
+    setPortalNode(el)
+  } else {
+    // MutationObserver fallback if the div hasn't mounted yet
+  }
+}, [])
+
+// Then in JSX:
+{portalNode && createPortal(<div>...</div>, portalNode)}
+```
+
+### What's in the CNC Navbar Portal (New/Upload Page)
+
+When geometry is loaded, the navbar shows:
+1. **BackendStatus** (green/red health dot)
+2. **Algorithm selector** — `<Select>` with "Juggler G" and "Juggler C"
+3. **DXF filename** — editable input
+4. **Scenario display** — color-coded layer sequence (e.g. "FREZ → CUT")
+5. **Tools used** — "T9 → T7" format
+6. **Contour count** and **Lift count**
+7. **Estimated time**
+8. **Settings button** (opens a per-program settings dialog with filename suffix options)
+9. **Save button** (saves to Convex)
+10. **DXF DropZone** (compact + icon, for re-upload)
+
+When idle, shows: "CNC Pipeline" text + BackendStatus + Algorithm selector.
+
+### Algorithm Selector Details
+
+```tsx
+const ALGORITHMS = [
+  { value: "juggler_gemini", label: "Juggler G", desc: "Shapely-powered optimal path selection 4" },
+  { value: "juggler_claude", label: "Juggler C", desc: "Shapely-powered optimal path selection 5" },
+]
+```
+
+- Default is loaded from `localStorage.getItem("cnc_default_algorithm")`
+- Changing algorithm triggers a re-upload/regeneration of the same DXF file
+- The algorithm only affects **contour ordering** (nearest-neighbour vs. geometry-aware), NOT layer ordering
+
+### What's in the CNC Navbar Portal (Viewer Page)
+
+Similar but:
+- Editable program name + ".nc" suffix
+- Algorithm selector (triggers regeneration via `POST /api/regenerate`)
+- Scenario display
+- Time display
+- Settings icon (non-functional stub)
+- Save + Download buttons
+
+---
+
+## 6. State Management Analysis
+
+### No Zustand/Redux/Jotai
+
+The project uses **no external state management library**. State management is:
+
+1. **Convex** (server state): Organizations, projects, designs, NC programs, CNC settings
+2. **React Context** (client state): WorkspaceProvider, SettingsProvider, SheetMetalProvider
+3. **Component-level useState** (local state): All CNC pipeline state lives in `CNCPipelinePage.tsx`
+4. **Custom hooks**: `useGenerate` (page state machine), `usePlayback` (playback state)
+
+### Key State Containers for CNC Pipeline
+
+| State | Location | Type |
+|-------|----------|------|
+| Page lifecycle (idle→done) | `useGenerate` hook → `PageState` | `useState<PageState>` |
+| Algorithm selection | `CNCPipelinePage` | `useState<string>` (localStorage-backed) |
+| Layer visibility | `CNCPipelinePage` | `useState<Record<string, boolean>>` |
+| Trace mode | `CNCPipelinePage` | `useState<Record<string, boolean>>` |
+| Playback state | `usePlayback` hook | Multiple `useState` |
+| Tool overrides (persistent) | Convex `cnc_settings` table | Server state |
+| Tool overrides (editing) | `CNCSettingsPanel` | `useState<Record<number, ToolConfig>>` |
+| NC program data | Convex `nc_programs` table | Server state |
+| NC settings (filename suffix) | `CNCPipelinePage` | `useState` (localStorage-backed) |
+
+### What's Missing for Layer Sequencing
+
+Currently there is:
+- ❌ No store for layer order/sequence
+- ❌ No UI to change the scenario or reorder layers
+- ❌ No way to assign different tools to layers
+- ❌ No frontend awareness of scenarios at all (they're just displayed as labels)
+- ❌ No drag-and-drop or reorderable list for layers
+- ❌ No endpoint to re-generate with a custom layer sequence (backend only accepts `scenario` string)
+
+---
+
+## 7. Data Flow Diagram — NC Program Generation Page
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  CNCPipelinePage.tsx                                                │
+│                                                                     │
+│  1. User drops DXF file                                             │
+│  2. handleFile(file):                                               │
+│     ├─ setVisible({})         // reset layer visibility             │
+│     └─ upload(file, algorithm, toolOverrides)                       │
+│          │                                                          │
+│  3. useGenerate.upload():                                          │
+│     ├─ setState({ status: "uploading" })                            │
+│     ├─ api.uploadDXF(file, algorithm, toolOverrides)                 │
+│     │   └─ POST /api/generate  ──────────────────────────────┐      │
+│     │                                                         ▼    │
+│     │  ┌──────────────────────────────────────────────────────┐    │
+│     │  │ Python Backend                                        │    │
+│     │  │ 1. DXFReader reads file                               │    │
+│     │  │ 2. detect_scenario(layers) → "most_common"            │    │
+│     │  │ 3. SCENARIOS["most_common"] → [("FREZ",9),("CUT",7)]  │    │
+│     │  │ 4. For each (layer, tool):                            │    │
+│     │  │    a. Get contours from DXF                            │    │
+│     │  │    b. Sort contours (algorithm-dependent)              │    │
+│     │  │    c. Build segments with seq_index                    │    │
+│     │  │    d. generate_toolpath() → Moves                     │    │
+│     │  │ 5. GCodeWriter.write() → NC text + line_to_seg_map    │    │
+│     │  └──────────────────────────────────────────────────────┘    │
+│     │                                                              │
+│     ├─ Response: { generate: GenerateResponse, geometry: GeometryResponse }│
+│     ├─ setState({ status: "generating", ... })                      │
+│     ├─ fetchNCText(jobId)                                           │
+│     └─ setState({ status: "done", jobId, generate, geometry, ncText })│
+│                                                                     │
+│  4. Render:                                                         │
+│     ├─ PORTAL → navbar: algorithm, scenario, tools, time, save     │
+│     ├─ LEFT COL: NCPreview (G-code viewer)                         │
+│     └─ RIGHT COL: GeometryViewer (SVG) + LayerControls + Playback   │
+│                                                                     │
+│  5. handleSave():                                                   │
+│     └─ saveNcProgram mutation → Convex nc_programs table            │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  CNCProgramViewerPage.tsx ($programId)                              │
+│                                                                     │
+│  1. Load program from Convex: nc_programs.getById                   │
+│  2. Render same viewer layout                                       │
+│  3. Algorithm change → handleRegenerate():                          │
+│     └─ POST /api/regenerate {                                       │
+│          contours_by_layer, stock_bbox,                              │
+│          scenario (LOCKED to original),                              │
+│          algorithm (new),                                            │
+│          tool_overrides                                               │
+│        }                                                             │
+│     └─ Response: new geometry + NC text                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 8. Key Types Reference
+
+### ToolConfig and LayerConfig (Frontend, `tool-defaults.ts`)
+
+```typescript
+interface LayerConfig {
+  depth: number;   // Cutting depth (negative, e.g. -4.1)
+  offset: number;  // Tool offset (e.g. 3.0)
+}
+
+interface ToolConfig {
+  id: string;            // e.g. "prav"
+  name: string;          // e.g. "End Mill"
+  number: number;        // e.g. 7
+  diameter: number;      // mm
+  gauge_length: number;  // mm
+  flutes: number;
+  spindle_rpm: number;
+  feed_cut: number;      // mm/min
+  feed_plunge: number;   // mm/min
+  tip_radius?: number;   // for tapered tools
+  taper_angle?: number;
+  taper_height?: number;
+  layers: Record<string, LayerConfig>;  // e.g. { CUT: {depth: -4.1, offset: 3.0} }
+}
+```
+
+### Segment (Frontend, `types.ts`)
+
+```typescript
+interface Segment {
+  x1: number; y1: number;   // Start point
+  x2: number; y2: number;   // End point
+  layer: string;             // Layer name (CUT, FREZ, etc.)
+  seq_index: number;         // Global cutting sequence order (0-based)
+}
+```
+
+### PageState (Frontend, `types.ts`)
+
+```typescript
+type PageState =
+  | { status: "idle" }
+  | { status: "uploading" }
+  | { status: "ready"; jobId: string; generate: GenerateResponse; geometry: GeometryResponse }
+  | { status: "generating"; jobId: string; generate: GenerateResponse; geometry: GeometryResponse }
+  | { status: "done"; jobId: string; generate: GenerateResponse; geometry: GeometryResponse; ncText: string }
+  | { status: "error"; message: string }
+```
+
+### SCENARIOS (Backend, `config.py`)
+
+```python
+SCENARIOS = {
+    "most_common": [("FREZ", 9), ("CUT", 7)],
+    "common":      [("HOLES", 7), ("FREZ", 9), ("CUT", 7)],
+    "rare":        [("FREZ", 9), ("FREZ_135", 11), ("CUT", 7)],
+    "very_rare":   [("HOLES", 7), ("FREZ", 9), ("FREZ_135", 11), ("CUT", 7)],
+    "cut_only":    [("CUT", 7)],
+}
+```
+
+### Tool-Layer Assignment Matrix
+
+| Tool (#) | Tool ID | Tool Name | Assigned Layers | Depth / Offset |
+|-----------|---------|-----------|-----------------|----------------|
+| 7 | `prav` | End Mill | CUT, HOLES | CUT: -4.1 / 3.0, HOLES: -4.11 / 0.0 |
+| 9 | `trapec_105` | Tapered Tipped | FREZ | -3.0 / 0.0 |
+| 11 | `trapec_135` | Tapered Tipped | FREZ_135 | -3.0 / 0.0 |
+
+### Layer Colors (Frontend, `LayerControls.tsx`)
+
+```typescript
+const LAYER_COLORS = {
+  CUT: "#22c55e",      // green
+  FREZ: "#a855f7",     // purple
+  FREZ_135: "#f97316",  // orange
+  HOLES: "#f9ca01",    // yellow
+  SHEETS: "#38bdf8",   // sky blue
+  "0": "#94a3b8",      // slate (reference only)
+}
+```
+
+---
+
+## 9. Existing Layer Ordering/Sequencing Logic — What Exists and What's Missing
+
+### What Exists
+
+1. **Backend `SCENARIOS` dict** — The only place where layer order + tool assignment is defined. It's hardcoded with 5 fixed scenarios.
+
+2. **Backend `detect_scenario()`** — Auto-selects scenario from DXF layers present. No user override.
+
+3. **Frontend scenario DISPLAY** — The scenario label and layer order are shown in the navbar (e.g. "FREZ → CUT") but are read-only.
+
+4. **Backend `toolpath_sequence` iteration** — In `pipeline.py`, the toolpath is generated by iterating `SCENARIOS[scenario]` in order, skipping layers not present in the DXF.
+
+5. **`seq_index` on segments** — Each geometry segment gets a `seq_index` reflecting its absolute position in the cutting order. This is used by the frontend for playback and visualization.
+
+6. **Per-tool layer depth/offset overrides** — Users can change depth and offset per tool-layer via the Settings dialog. These DON'T change order — only cutting parameters.
+
+### What's Missing (Required for Layer Sequencing Feature)
+
+1. **No frontend notion of "layer sequence"** — The frontend has no data structure representing the ordered list of layers and their tool assignments.
+
+2. **No way to select/change scenario** — Neither on upload nor on the viewer page.
+
+3. **No way to reorder layers** — No drag-and-drop, no up/down controls.
+
+4. **No way to reassign tools to layers** — Tool 7 always does CUT and HOLES, Tool 9 always does FREZ, etc. No UI to change this.
+
+5. **No backend endpoint for custom sequence** — The `/api/regenerate` endpoint only accepts a `scenario` string (not a custom layer order). It would need to accept a list of `(layer, tool)` tuples.
+
+6. **No custom scenario persistence** — Convex has no table/field for storing a custom layer sequence.
+
+7. **No layer enable/disable** — Users can't skip a layer during generation (e.g. disable HOLES).
+
+8. **No layer order UI in the settings dialog** — The CNC settings panel only has tool parameters, not layer sequence.
+
+---
+
+## 10. Architecture Notes for Implementing Layer Sequencing
+
+### Where to Add the UI
+
+Best candidate locations:
+- **CNC Settings Panel** (`cnc-settings-panel.tsx`) — Add a "Layer Sequence" section with reorderable items
+- **CNCPipelinePage navbar portal** — Add quick scenario selector + layer order chips
+- **A new dedicated panel** alongside the existing LayerControls in the geometry viewer header
+
+### State to Add
+
+A new piece of state representing the **custom layer sequence**:
+```typescript
+interface LayerSequenceEntry {
+  layer: string;      // "HOLES", "FREZ", "FREZ_135", "CUT"
+  toolNumber: number; // 7, 9, 11
+  enabled: boolean;   // Whether to include in generation
+}
+
+// Example for "very_rare" scenario:
+// [
+//   { layer: "HOLES",    toolNumber: 7,  enabled: true },
+//   { layer: "FREZ",     toolNumber: 9,  enabled: true },
+//   { layer: "FREZ_135", toolNumber: 11, enabled: true },
+//   { layer: "CUT",      toolNumber: 7,  enabled: true },
+// ]
+```
+
+This would need to be:
+1. Initialized from the detected scenario's `SCENARIOS` entry
+2. Editable via drag-and-drop (reorder) and tool selector (reassign)
+3. Storable in Convex (per NC program or per organization)
+4. Passable to the backend via `/api/generate` and `/api/regenerate`
+
+### Backend Changes Required
+
+1. Accept `custom_sequence` parameter (list of `{layer, tool_number}` dicts) as an alternative to `scenario`
+2. When `custom_sequence` is provided, use it instead of looking up `SCENARIOS[scenario]`
+3. Validation: ensure CUT layer is always present and last (or whatever business rule applies)
+
+### Frontend-to-Backend Flow for Custom Sequence
+
+```
+User reorders layers in UI
+  → custom_sequence state updated
+  → On upload: POST /api/generate?custom_sequence=[{"layer":"CUT","tool":7},...]
+  → On regenerate: POST /api/regenerate with custom_sequence field
+  → Backend: use custom_sequence instead of SCENARIOS[scenario]
+  → Generate toolpath with custom order
+  → Return new geometry + NC text
+```
+
+### Persistence in Convex
+
+Could be added to:
+- `nc_programs` table — per-program custom sequence (field: `customSequence?: any`)
+- `cnc_settings` table — org-level default sequence (field: `defaultSequence?: any`)
+- Or a new `cnc_sequences` table for managing named sequences
+
+### Drag-and-Drop Library
+
+The project currently uses no DnD library. Options:
+- `@dnd-kit/core` + `@dnd-kit/sortable` — Modern, accessible, React-native
+- `react-beautiful-dnd` — Mature but archived
+- Manual implementation with HTML5 drag API
+
+---
+
+## 11. Key Component Names Quick Reference
+
+| Component | File | Key Props / Exports |
+|-----------|------|---------------------|
+| `CNCPipelinePage` | `features/cnc-pipeline/CNCPipelinePage.tsx` | Main upload+view page |
+| `CNCProgramViewerPage` | `routes/cnc-pipeline/$programId.tsx` | Saved program viewer |
+| `GeometryViewer` | `features/cnc-pipeline/components/GeometryViewer.tsx` | `{ geometry, visible, currentLineIndex, ... }` |
+| `LayerControls` | `features/cnc-pipeline/components/LayerControls.tsx` | `{ layers, visible, onChange, ... }` — exports `LAYER_COLORS` |
+| `NCPreview` | `features/cnc-pipeline/components/NCPreview.tsx` | `{ ncText, jobId, currentLineIndex, onLineClick }` |
+| `PlaybackControls` | `features/cnc-pipeline/components/PlaybackControls.tsx` | `{ isPlaying, onTogglePlay, currentLine, totalLines, ... }` |
+| `DXFDropZone` | `features/cnc-pipeline/components/DXFDropZone.tsx` | `{ onFile, disabled, compact }` |
+| `ScenarioCard` | `features/cnc-pipeline/components/ScenarioCard.tsx` | `{ data: GenerateResponse }` |
+| `CNCSettingsPanel` | `features/settings/cnc-settings-panel.tsx` | Tool param editor |
+| `SettingsDialog` | `features/settings/settings-dialog.tsx` | Tabbed settings modal |
+| `SettingsProvider` | `features/settings/context.tsx` | `openSettings(tab?)`, `closeSettings()` |
+| `AppNavbar` | `components/layout/app-navbar.tsx` | Renders `NavbarContent` |
+| `NavbarContent` | `components/layout/navbar/navbar-content.tsx` | Renders `#cnc-navbar-portal` div |
+| `SidebarFooterSection` | `components/layout/sidebar/sidebar-footer-section.tsx` | Settings gear button |
+| `useGenerate` | `features/cnc-pipeline/hooks/useGenerate.ts` | `{ state, upload, generateNC, reset }` |
+| `usePlayback` | `features/cnc-pipeline/hooks/usePlayback.ts` | Playback state and controls |
+| `useBackendHealth` | `features/cnc-pipeline/hooks/useBackendHealth.ts` | `boolean` online status |
+| `useWorkspace` | `features/workspace/context.tsx` | `{ selectedProjectId, selectedOrganizationId, ... }` |
+| `useSettings` | `features/settings/context.tsx` | `{ settingsOpen, activeTab, openSettings, closeSettings }` |
+| `resolveTools` | `features/cnc-pipeline/tool-defaults.ts` | Deep-merges overrides onto TOOL_DEFAULTS |
+| `computeOverrides` | `features/cnc-pipeline/tool-defaults.ts` | Computes diff from resolved→defaults |
+| `uploadDXF` | `features/cnc-pipeline/api.ts` | POST DXF to backend |
+| `regenerate` | `features/cnc-pipeline/api.ts` | POST contours+scenario+algorithm to backend |
+| `detect_scenario` | `cnc_pipeline/scenario.py` | Auto-selects scenario from layer names |
+| `SCENARIOS` | `cnc_pipeline/config.py` | Hardcoded layer→tool assignment dict |
+| `build_tools_dict` | `cnc_pipeline/config.py` | Merges tool overrides |
+| `run_pipeline` | `cnc_pipeline/pipeline.py` | Full DXF→NC pipeline |
+| `run_from_contours` | `cnc_pipeline/pipeline.py` | Regenerate from stored contours |

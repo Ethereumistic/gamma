@@ -115,6 +115,7 @@ export default defineSchema({
     updatedAt: v.number(),
     updatedBy: v.id("users"),
     isStarred: v.optional(v.boolean()),
+    customSequence: v.optional(v.any()),   // custom layer order: [["FREZ",9],["CUT",7]]
     geometryData: v.optional(
       v.object({
         segments: v.array(

@@ -11,26 +11,21 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Save, Settings2 } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { Download, Save, Settings2, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { regenerate } from "@/features/cnc-pipeline/api";
-import type { GeometryResponse } from "@/features/cnc-pipeline/types";
+import type { GeometryResponse, CustomSequence } from "@/features/cnc-pipeline/types";
+import { deriveDefaultSequence } from "@/features/cnc-pipeline/tool-defaults";
 import { useWorkspace } from "@/features/workspace/context";
 
 const ALGORITHMS = [
   { value: "juggler_gemini", label: "Juggler G", desc: "Shapely-powered optimal path selection 4" },
   { value: "juggler_claude", label: "Juggler C", desc: "Shapely-powered optimal path selection 5" },
 ];
-
-const SCENARIO_LABELS: Record<string, string> = {
-  most_common: "FREZ → CUT",
-  common: "HOLES → FREZ → CUT",
-  rare: "FREZ → FREZ_135 → CUT",
-  very_rare: "HOLES → FREZ → FREZ_135 → CUT",
-  cut_only: "CUT only",
-};
 
 const formatTime = (sec: number) => {
   if (sec >= 60) return `${(sec / 60).toFixed(1)}m`;
@@ -59,6 +54,9 @@ export default function CNCProgramViewerPage() {
   const [currentNcLines, setCurrentNcLines] = useState<string[]>([]);
   const [currentLineToSegmentMap, setCurrentLineToSegmentMap] = useState<Record<number, number>>({});
   const [currentEstimatedTime, setCurrentEstimatedTime] = useState(0);
+
+  // ── Layer sequence state ──────────────────────────────────────────────────
+  const [layerSequence, setLayerSequence] = useState<CustomSequence>([]);
 
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
 
@@ -127,6 +125,17 @@ export default function CNCProgramViewerPage() {
       }
       setCurrentEstimatedTime(program.estimatedTimeSeconds);
       setVisible({});
+
+      // Initialize layer sequence from program's saved custom sequence or default
+      if (program.customSequence && Array.isArray(program.customSequence) && program.customSequence.length > 0) {
+        setLayerSequence(program.customSequence as CustomSequence)
+      } else {
+        const detectedLayers = program.contoursByLayer
+          ? Object.keys(program.contoursByLayer)
+          : []
+        const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+        setLayerSequence(defaultSeq)
+      }
     }
   }, [program, loadedProgramId]);
 
@@ -177,23 +186,38 @@ export default function CNCProgramViewerPage() {
     URL.revokeObjectURL(url);
   };
 
-  const hasRegenerated = selectedAlgorithm !== (program?.algorithm);
+  const isCustomOrder = useMemo(() => {
+    if (!program) return false
+    const detectedLayers = program.contoursByLayer ? Object.keys(program.contoursByLayer) : []
+    const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+    return JSON.stringify(layerSequence) !== JSON.stringify(defaultSeq)
+  }, [layerSequence, program])
+
+  const hasRegenerated = selectedAlgorithm !== (program?.algorithm) || isCustomOrder;
   const isDirty = hasRegenerated || (program && editName !== program.name);
 
-  async function handleRegenerate(newAlgorithm: string) {
+  async function handleRegenerate(newAlgorithm?: string, newSequence?: CustomSequence) {
     if (!program?.contoursByLayer || !program?.stockBbox) return;
-    if (newAlgorithm === selectedAlgorithm) return;
+
+    const algo = newAlgorithm ?? selectedAlgorithm
+    const seq = newSequence ?? layerSequence
+    if (algo === selectedAlgorithm && !newSequence) return;
 
     setIsRegenerating(true);
     resetPlayback();
 
     try {
+      const detectedLayers = Object.keys(program.contoursByLayer)
+      const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+      const customSeq = JSON.stringify(seq) === JSON.stringify(defaultSeq) ? undefined : seq
+
       const result = await regenerate({
         contours_by_layer: program.contoursByLayer,
         stock_bbox: program.stockBbox,
         scenario: program.scenario,
-        algorithm: newAlgorithm,
+        algorithm: algo,
         tool_overrides: toolOverrides,
+        custom_sequence: customSeq,
       });
 
       setCurrentGeometry(result.geometry_data);
@@ -204,7 +228,8 @@ export default function CNCProgramViewerPage() {
         )
       );
       setCurrentEstimatedTime(result.estimated_time);
-      setSelectedAlgorithm(newAlgorithm);
+      setSelectedAlgorithm(algo);
+      if (newSequence) setLayerSequence(newSequence);
     } catch (err) {
       toast.error("Regeneration failed", { description: String(err) });
     } finally {
@@ -229,12 +254,14 @@ export default function CNCProgramViewerPage() {
             bbox: currentGeometry.bbox,
           } : undefined,
           lineToSegmentMap: currentLineToSegmentMap,
+          customSequence: isCustomOrder ? layerSequence : undefined,
         });
       } else {
         await updateNcProgram({
           projectId: program.projectId,
           ncProgramId: program._id,
           name: editName,
+          customSequence: isCustomOrder ? layerSequence : undefined,
         });
       }
       toast.success("NC Program Details Updated");
@@ -270,7 +297,7 @@ export default function CNCProgramViewerPage() {
 
           <Select
             value={selectedAlgorithm}
-            onValueChange={handleRegenerate}
+            onValueChange={(val) => handleRegenerate(val)}
             disabled={isRegenerating || !program?.contoursByLayer}
           >
             <SelectTrigger className="h-7 w-[130px] bg-black/20 border-white/10 text-[10px] font-mono hover:bg-white/5 focus:ring-1 focus:ring-emerald-500 uppercase">
@@ -288,21 +315,155 @@ export default function CNCProgramViewerPage() {
           </Select>
 
           <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
-          <span className="flex items-center gap-1 font-medium whitespace-nowrap">
-            {(SCENARIO_LABELS[activeScenario] ?? activeScenario).split(" ").map((word: string, i: number) => {
-              if (word === "→" || word === "only") return <span key={i} className="text-slate-500">{word}</span>
-              return <span key={i} style={{ color: LAYER_COLORS[word] ?? "#cbd5e1" }}>{word}</span>
-            })}
-          </span>
+          <div className="flex items-center gap-1 font-medium whitespace-nowrap">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+              Sequence
+            </span>
+            {layerSequence.map(([layer, toolNum], idx) => (
+              <div key={layer} className="flex items-center gap-0.5">
+                {idx > 0 && (
+                  <span className="text-slate-600 mx-0.5">→</span>
+                )}
+                <Select
+                  value={String(idx)}
+                  onValueChange={(val) => {
+                    const newIdx = parseInt(val, 10)
+                    if (newIdx !== idx) {
+                      const newSeq = [...layerSequence]
+                      const [moved] = newSeq.splice(idx, 1)
+                      newSeq.splice(newIdx, 0, moved)
+                      handleRegenerate(undefined, newSeq)
+                    }
+                  }}
+                  disabled={isRegenerating || !program?.contoursByLayer}
+                >
+                  <SelectTrigger
+                    className="h-6 w-auto min-w-[48px] bg-black/20 border-none text-[10px] font-bold uppercase tracking-wider px-1.5 hover:bg-white/5 focus:ring-1 focus:ring-emerald-500"
+                    style={{ color: LAYER_COLORS[layer] ?? "#cbd5e1" }}
+                  >
+                    {layer}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {layerSequence.map((_, optionIdx) => (
+                      <SelectItem key={optionIdx} value={String(optionIdx)}>
+                        <span className="text-[10px] font-mono text-slate-400">{optionIdx + 1}.</span>{" "}
+                        <span className="text-xs font-medium uppercase">{layer}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span
+                  className="text-[9px] font-mono text-slate-600 tabular-nums"
+                  title={`Tool T${toolNum}`}
+                >
+                  T{toolNum}
+                </span>
+              </div>
+            ))}
+            {isCustomOrder && (
+              <span className="text-[9px] text-amber-400/70 ml-1 italic">custom</span>
+            )}
+          </div>
           <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
           <span className="text-slate-400 whitespace-nowrap">
             Time: <span className="text-slate-200 font-medium ml-1">{formatTime(activeTime)}</span>
           </span>
 
           <div className="ml-auto flex items-center gap-2 pl-4">
-            <Button variant="ghost" size="sm" className="h-8 px-3 text-xs border border-transparent text-slate-400 hover:text-white hover:bg-white/5">
-              <Settings2 className="h-3.5 w-3.5" />
-            </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-3 text-xs border border-transparent text-slate-400 hover:text-white hover:bg-white/5">
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>NC Program Settings</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  {/* ── Layer Sequence ── */}
+                  {layerSequence.length > 0 && (
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="font-semibold">Layer Sequence</Label>
+                        {isCustomOrder && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[10px] text-slate-400 hover:text-white"
+                            onClick={() => {
+                              if (!program) return
+                              const detectedLayers = program.contoursByLayer ? Object.keys(program.contoursByLayer) : []
+                              const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+                              handleRegenerate(undefined, defaultSeq)
+                            }}
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" />
+                            Reset Order
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        Reorder layers to change CNC execution order. This affects tool change sequence in the NC program.
+                      </p>
+                      <div className="space-y-1">
+                        {layerSequence.map(([layer, toolNum], idx) => {
+                          const color = LAYER_COLORS[layer] ?? "#cbd5e1"
+                          return (
+                            <div
+                              key={layer}
+                              className="flex items-center gap-2 rounded-md border border-white/5 bg-white/[0.02] px-3 py-2"
+                            >
+                              <span className="text-[10px] font-mono text-slate-500 tabular-nums w-4">
+                                {idx + 1}
+                              </span>
+                              <div
+                                className="w-2.5 h-2.5 rounded-sm shrink-0"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
+                                {layer}
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-500 ml-auto">
+                                T{toolNum}
+                              </span>
+                              <div className="flex items-center gap-0.5 ml-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 w-5 p-0 text-slate-500 hover:text-white disabled:opacity-20"
+                                  disabled={idx === 0 || isRegenerating}
+                                  onClick={() => {
+                                    const newSeq = [...layerSequence]
+                                    ;[newSeq[idx - 1], newSeq[idx]] = [newSeq[idx], newSeq[idx - 1]]
+                                    handleRegenerate(undefined, newSeq)
+                                  }}
+                                >
+                                  <ArrowUp className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 w-5 p-0 text-slate-500 hover:text-white disabled:opacity-20"
+                                  disabled={idx === layerSequence.length - 1 || isRegenerating}
+                                  onClick={() => {
+                                    const newSeq = [...layerSequence]
+                                    ;[newSeq[idx], newSeq[idx + 1]] = [newSeq[idx + 1], newSeq[idx]]
+                                    handleRegenerate(undefined, newSeq)
+                                  }}
+                                >
+                                  <ArrowDown className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="outline"
               size="sm"
