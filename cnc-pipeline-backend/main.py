@@ -21,6 +21,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",   # Vite dev server
         "http://localhost:4173",   # Vite preview
+        "http://127.0.0.1:8765",   # CNC pipeline backend local
         "https://cnc.alubeta.com", # CNC pipeline backend
         "https://alubeta.com",     #Frontend
         "https://gamma-iota-five.vercel.app", #Frontend Vercel

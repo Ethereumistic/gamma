@@ -5,8 +5,9 @@ import { Id } from "../../../convex/_generated/dataModel";
 import { NCPreview } from "@/features/cnc-pipeline/components/NCPreview";
 import { PlaybackControls } from "@/features/cnc-pipeline/components/PlaybackControls";
 import { GeometryViewer } from "@/features/cnc-pipeline/components/GeometryViewer";
-import { LayerControls, LAYER_COLORS } from "@/features/cnc-pipeline/components/LayerControls";
+import { LayerControls, LAYER_COLORS, getLayerColor } from "@/features/cnc-pipeline/components/LayerControls";
 import { usePlayback } from "@/features/cnc-pipeline/hooks/usePlayback";
+import type { GeometryResponse, CustomSequence } from "@/features/cnc-pipeline/types";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -18,8 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { regenerate } from "@/features/cnc-pipeline/api";
-import type { GeometryResponse, CustomSequence } from "@/features/cnc-pipeline/types";
-import { deriveDefaultSequence } from "@/features/cnc-pipeline/tool-defaults";
+import { deriveDefaultSequence, resolveTools, TOOL_DEFAULTS, LAYER_TOOL_MAP_DEFAULTS, resolveLayerToolMap, type ToolConfig } from "@/features/cnc-pipeline/tool-defaults";
 import { useWorkspace } from "@/features/workspace/context";
 
 const ALGORITHMS = [
@@ -45,6 +45,16 @@ export default function CNCProgramViewerPage() {
     selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip"
   );
   const toolOverrides = cncSettings?.toolOverrides;
+
+  const resolvedTools = useMemo(
+    () => resolveTools(TOOL_DEFAULTS, toolOverrides ?? {}, null),
+    [toolOverrides]
+  )
+
+  const resolvedLayerToolMap = useMemo(
+    () => resolveLayerToolMap(LAYER_TOOL_MAP_DEFAULTS, null, resolvedTools),
+    [resolvedTools]
+  )
 
   const [editName, setEditName] = useState<string>("");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string>("");
@@ -128,13 +138,26 @@ export default function CNCProgramViewerPage() {
 
       // Initialize layer sequence from program's saved custom sequence or default
       if (program.customSequence && Array.isArray(program.customSequence) && program.customSequence.length > 0) {
-        setLayerSequence(program.customSequence as CustomSequence)
+        const seq = program.customSequence;
+        // Detect format: if second element is a string id (not a number), translate to numbers
+        if (typeof seq[0][1] === "string") {
+          // New id-based format — translate to number-based for this viewer
+          setLayerSequence(seq.map(([layer, toolId]) => {
+            const tool = resolvedTools[toolId as string];
+            return [layer, tool?.number ?? 0] as [string, number];
+          }))
+        } else {
+          setLayerSequence(seq as CustomSequence)
+        }
       } else {
         const detectedLayers = program.contoursByLayer
           ? Object.keys(program.contoursByLayer)
           : []
-        const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
-        setLayerSequence(defaultSeq)
+        const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
+        setLayerSequence(defaultSeq.map(([layer, toolId]) => {
+          const tool = resolvedTools[toolId];
+          return [layer, tool?.number ?? 0] as [string, number];
+        }))
       }
     }
   }, [program, loadedProgramId]);
@@ -189,9 +212,10 @@ export default function CNCProgramViewerPage() {
   const isCustomOrder = useMemo(() => {
     if (!program) return false
     const detectedLayers = program.contoursByLayer ? Object.keys(program.contoursByLayer) : []
-    const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+    const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
+      .map(([layer, toolId]) => [layer, resolvedTools[toolId]?.number ?? 0] as [string, number])
     return JSON.stringify(layerSequence) !== JSON.stringify(defaultSeq)
-  }, [layerSequence, program])
+  }, [layerSequence, program, resolvedLayerToolMap, resolvedTools])
 
   const hasRegenerated = selectedAlgorithm !== (program?.algorithm) || isCustomOrder;
   const isDirty = hasRegenerated || (program && editName !== program.name);
@@ -208,7 +232,8 @@ export default function CNCProgramViewerPage() {
 
     try {
       const detectedLayers = Object.keys(program.contoursByLayer)
-      const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+      const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
+        .map(([layer, toolId]) => [layer, resolvedTools[toolId]?.number ?? 0] as [string, number])
       const customSeq = JSON.stringify(seq) === JSON.stringify(defaultSeq) ? undefined : seq
 
       const result = await regenerate({
@@ -280,6 +305,15 @@ export default function CNCProgramViewerPage() {
 
   const uniqueLayers = currentGeometry ? [...new Set(currentGeometry.segments.map(s => s.layer))] : [];
 
+  // Build the set of CNC-active layers (built-in + any in the layer-tool map)
+  const cncLayerNames = useMemo(() => {
+    const s = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
+    for (const layer of Object.keys(resolvedLayerToolMap)) {
+      s.add(layer)
+    }
+    return s
+  }, [resolvedLayerToolMap])
+
   return (
     <div className="p-6 h-[calc(100vh-4rem)] flex flex-col text-slate-200">
 
@@ -339,7 +373,7 @@ export default function CNCProgramViewerPage() {
                 >
                   <SelectTrigger
                     className="h-6 w-auto min-w-[48px] bg-black/20 border-none text-[10px] font-bold uppercase tracking-wider px-1.5 hover:bg-white/5 focus:ring-1 focus:ring-emerald-500"
-                    style={{ color: LAYER_COLORS[layer] ?? "#cbd5e1" }}
+                    style={{ color: getLayerColor(layer) }}
                   >
                     {layer}
                   </SelectTrigger>
@@ -394,7 +428,8 @@ export default function CNCProgramViewerPage() {
                             onClick={() => {
                               if (!program) return
                               const detectedLayers = program.contoursByLayer ? Object.keys(program.contoursByLayer) : []
-                              const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers)
+                              const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
+                                .map(([layer, toolId]) => [layer, resolvedTools[toolId]?.number ?? 0] as [string, number])
                               handleRegenerate(undefined, defaultSeq)
                             }}
                           >
@@ -408,7 +443,7 @@ export default function CNCProgramViewerPage() {
                       </p>
                       <div className="space-y-1">
                         {layerSequence.map(([layer, toolNum], idx) => {
-                          const color = LAYER_COLORS[layer] ?? "#cbd5e1"
+                          const color = getLayerColor(layer)
                           return (
                             <div
                               key={layer}
@@ -559,6 +594,7 @@ export default function CNCProgramViewerPage() {
                       onToggleRapids={setShowRapids}
                       traceMode={traceMode}
                       onTraceModeToggle={handleTraceModeToggle}
+                      cncLayerNames={cncLayerNames}
                     />
                   </div>
                 ) : (
@@ -583,6 +619,7 @@ export default function CNCProgramViewerPage() {
                   ncLines={currentNcLines}
                   isPlaying={isPlaying}
                   traceMode={traceMode}
+                  cncLayerNames={cncLayerNames}
                 />
               ) : (
                 <div className="text-center text-slate-500 max-w-[400px]">

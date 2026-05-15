@@ -2,12 +2,12 @@
 
 import { useState, useCallback } from "react"
 import { uploadDXF, fetchNCText } from "../api"
-import type { PageState, GenerateResponse, GeometryResponse, CustomSequence } from "../types"
+import type { PageState, GenerateResponse, GeometryResponse, CustomSequence, IdSequence } from "../types"
 
 export function useGenerate() {
   const [state, setState] = useState<PageState>({ status: "idle" })
 
-  const upload = useCallback(async (file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence) => {
+  const upload = useCallback(async (file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence | IdSequence) => {
     setState({ status: "uploading" })
     try {
       const { generate, geometry } = await uploadDXF(file, algorithm, toolOverrides, customSequence)

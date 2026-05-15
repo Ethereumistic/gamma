@@ -16,7 +16,7 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 // Upload DXF → get job_id + analysis + geometry in one shot
-export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence): Promise<{
+export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence | [string, string][]): Promise<{
   generate: GenerateResponse
   geometry: GeometryResponse
 }> {

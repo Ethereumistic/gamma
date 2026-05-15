@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react"
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch"
 import { GeometryResponse, Segment } from "../types"
-import { LAYER_COLORS } from "./LayerControls"
+import { LAYER_COLORS, getLayerColor } from "./LayerControls"
 import { motion } from "motion/react"
 
 // ─── Physics constants (mirrored from usePlayback) ────────────────────────────
@@ -31,10 +31,13 @@ interface Props {
     ncLines?: string[]
     isPlaying?: boolean
     traceMode?: Record<string, boolean>
+    /** Which layers are CNC-active (part of toolpath sequence). Defaults to built-in set. */
+    cncLayerNames?: Set<string>
 }
 
 // Layers that participate in CNC toolpath generation.
-const CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
+// Default set — can be overridden via `cncLayerNames` prop.
+const DEFAULT_CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
 
 // ─── Inner zoom-controls component (must live inside TransformWrapper) ────────
 function ZoomControls() {
@@ -94,7 +97,9 @@ export function GeometryViewer({
     ncLines,
     isPlaying = false,
     traceMode,
+    cncLayerNames,
 }: Props) {
+    const CNC_LAYERS = cncLayerNames ?? DEFAULT_CNC_LAYERS
     const [hoveredSeq, setHoveredSeq] = useState<number | null>(null)
 
     const { segments, bbox } = geometry
@@ -318,7 +323,7 @@ export function GeometryViewer({
                             <div>
                                 Segment #{displaySeq! + 1}
                                 {" — "}
-                                <span style={{ color: LAYER_COLORS[displaySegment.layer] ?? "#fff" }}>
+                                <span style={{ color: getLayerColor(displaySegment.layer) }}>
                                     {displaySegment.layer}
                                 </span>
                                 {!CNC_LAYERS.has(displaySegment.layer) && (
@@ -328,7 +333,7 @@ export function GeometryViewer({
                             {nextSegment && (
                                 <div style={{ color: "#94a3b8" }}>
                                     Next: #{nextSeq! + 1} —{" "}
-                                    <span style={{ color: LAYER_COLORS[nextSegment.layer] ?? "#fff" }}>
+                                    <span style={{ color: getLayerColor(nextSegment.layer) }}>
                                         {nextSegment.layer}
                                     </span>
                                 </div>
@@ -415,7 +420,7 @@ export function GeometryViewer({
                                     const isActive = stableActiveSeq !== null && seg.seq_index === stableActiveSeq
                                     const isPast = stableActiveSeq !== null && seg.seq_index < stableActiveSeq
                                     const isCncLayer = CNC_LAYERS.has(seg.layer)
-                                    const baseColor = LAYER_COLORS[seg.layer] ?? "#ffffff"
+                                    const baseColor = getLayerColor(seg.layer)
 
                                     let strokeColor = baseColor
                                     if (isHovered) {

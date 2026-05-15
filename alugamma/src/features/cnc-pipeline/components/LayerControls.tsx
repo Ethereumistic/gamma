@@ -11,8 +11,21 @@ export const LAYER_COLORS: Record<string, string> = {
   "0": "#94a3b8",     // slate
 }
 
-// Layers that are included in CNC toolpath generation
-const CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
+/** Deterministic vibrant color for any layer name (used for custom layers) */
+export function getLayerColor(layer: string): string {
+  if (layer in LAYER_COLORS) return LAYER_COLORS[layer]
+  // Generate a deterministic hue from the layer name
+  let hash = 0
+  for (let i = 0; i < layer.length; i++) {
+    hash = layer.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = ((hash % 360) + 360) % 360
+  // Use HSL with high saturation and medium lightness for vibrant CNC-looking colors
+  return `hsl(${hue}, 80%, 60%)`
+}
+
+// Default CNC layers — can be overridden via props
+const BUILTIN_CNC_LAYERS = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
 
 interface Props {
   layers: string[]
@@ -25,6 +38,8 @@ interface Props {
   onToggleRapids?: (val: boolean) => void
   traceMode?: Record<string, boolean>
   onTraceModeToggle?: (layer: string) => void
+  /** Which layers are CNC-active (part of toolpath sequence). Defaults to built-in set. */
+  cncLayerNames?: Set<string>
 }
 
 export function LayerControls({
@@ -38,9 +53,11 @@ export function LayerControls({
   onToggleRapids,
   traceMode,
   onTraceModeToggle,
+  cncLayerNames,
 }: Props) {
-  const cncLayers = layers.filter((l) => CNC_LAYERS.has(l))
-  const refLayers = layers.filter((l) => !CNC_LAYERS.has(l))
+  const activeCncLayers = cncLayerNames ?? BUILTIN_CNC_LAYERS
+  const cncLayers = layers.filter((l) => activeCncLayers.has(l))
+  const refLayers = layers.filter((l) => !activeCncLayers.has(l))
 
   const handleHop = (e: React.MouseEvent, layer: string) => {
     e.stopPropagation()
@@ -54,7 +71,7 @@ export function LayerControls({
 
   const renderLayer = (layer: string, isRef: boolean) => {
     const isActive = visible[layer] ?? true
-    const color = LAYER_COLORS[layer] ?? "#fff"
+    const color = getLayerColor(layer)
 
     return (
       <div

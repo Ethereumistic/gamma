@@ -4,4 +4,5 @@ export const SCENARIO_LABELS: Record<string, string> = {
   rare: "F-F135-C",
   very_rare: "H-F-F135-C",
   cut_only: "C",
+  custom: "Custom",
 };

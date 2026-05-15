@@ -41,7 +41,7 @@ class GCodeWriter:
         self.program_name = program_name
         self.total_path_length = 0.0
 
-    def write(self, toolpath_blocks: list[tuple[int, str, list[Move]]], bbox: BBox, tools: dict[int, dict] | None = None) -> tuple[str, dict[int, int]]:
+    def write(self, toolpath_blocks: list[tuple[str, str, list[Move]]], bbox: BBox, tools: dict[str, dict] | None = None) -> tuple[str, dict[int, int]]:
         counter = LineCounter()
         lines = []
         line_to_segment_map = {}
@@ -53,8 +53,8 @@ class GCodeWriter:
         machine_y = None
         
         for index, block in enumerate(toolpath_blocks, start=1):
-            tool_num, layer_name, moves = block
-            tool = resolved_tools[tool_num]
+            tool_id, layer_name, moves = block
+            tool = resolved_tools[tool_id]
             is_final_toolpath = (index == len(toolpath_blocks))
             
             # Pre-calculate stats for comment block

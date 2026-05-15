@@ -17,6 +17,8 @@ export const upsert = mutation({
   args: {
     organizationId: v.id("organizations"),
     toolOverrides: v.any(),
+    customTools: v.optional(v.any()),
+    layerToolMap: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireOrganizationManager(ctx, args.organizationId);
@@ -31,6 +33,8 @@ export const upsert = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         toolOverrides: args.toolOverrides,
+        customTools: args.customTools,
+        layerToolMap: args.layerToolMap,
         updatedBy: userId,
         updatedAt: now,
       });
@@ -39,6 +43,8 @@ export const upsert = mutation({
       return await ctx.db.insert("cnc_settings", {
         organizationId: args.organizationId,
         toolOverrides: args.toolOverrides,
+        customTools: args.customTools,
+        layerToolMap: args.layerToolMap,
         updatedBy: userId,
         updatedAt: now,
       });

@@ -5,19 +5,64 @@ import os
 
 @dataclass
 class PipelineResult:
-    scenario:          str           # "most_common" | "common" | "rare" | "very_rare" | "cut_only"
-    layers_detected:   list[str]     # e.g. ["CUT", "FREZ"]
-    tools_used:        list[int]     # e.g. [9, 7]
-    contour_count:     int           # total contours across all layers
-    lift_count:        int           # total retract moves (= total contours - 1 per toolpath + toolpaths)
-    estimated_time_seconds: float    # rough estimate based on path length / feed rate
-    warnings:          list[str]     # non-fatal issues found during generation
-    nc_text:           str           # the complete generated NC program
-    output_filename:   str           # e.g. "part_name.nc"
-    geometry_data:     dict          # ordered geometry segments for frontend rendering
+    scenario:          str
+    layers_detected:   list[str]
+    tools_used:        list[int]
+    contour_count:     int
+    lift_count:        int
+    estimated_time_seconds: float
+    warnings:          list[str]
+    nc_text:           str
+    output_filename:   str
+    geometry_data:     dict
     line_to_segment_map: dict[int, int] = field(default_factory=dict)
     contours_by_layer: dict[str, list[dict]] = field(default_factory=dict)
     stock_bbox: dict = field(default_factory=dict)
+
+
+def _resolve_tool_ref(tool_ref) -> str:
+    """Resolve a tool reference from custom_sequence to a tool ID string.
+    Accepts both new format (str tool_id) and legacy format (int tool_number).
+    For legacy number references, we try to find a matching tool in the defaults.
+    """
+    if isinstance(tool_ref, str):
+        return tool_ref
+    # Legacy: tool number — caller must resolve against the tools dict
+    return str(tool_ref)
+
+
+def _resolve_custom_sequence(custom_sequence, tools: dict[str, dict]) -> list[tuple[str, str]]:
+    """Validate and resolve a custom_sequence to [(layer, tool_id), ...].
+    Handles both new format [[layer, tool_id], ...] and legacy [[layer, tool_number], ...].
+    """
+    validated = []
+    for entry in custom_sequence:
+        if not isinstance(entry, list) or len(entry) < 2:
+            raise ValueError(f"Invalid custom_sequence entry: {entry} — expected [layer, tool_ref]")
+        layer = str(entry[0])
+        tool_ref = entry[1]
+
+        if isinstance(tool_ref, str):
+            # New format: tool_id
+            tool_id = tool_ref
+        elif isinstance(tool_ref, (int, float)):
+            # Legacy format: tool_number → find matching tool ID
+            tool_num = int(tool_ref)
+            # Find tool with this number
+            matches = [tid for tid, t in tools.items() if t["number"] == tool_num]
+            if not matches:
+                raise ValueError(f"Unknown tool number in custom_sequence: T{tool_num} for layer {layer}")
+            tool_id = matches[0]  # Use first match
+        else:
+            raise ValueError(f"Invalid tool reference in custom_sequence: {tool_ref}")
+
+        tool_id = str(tool_id)
+
+        if tool_id not in tools:
+            raise ValueError(f"Unknown tool ID in custom_sequence: {tool_id} for layer {layer}")
+
+        validated.append((layer, tool_id))
+    return validated
 
 
 def run_from_contours(
@@ -57,39 +102,31 @@ def run_from_contours(
     # ── Determine toolpath sequence ──
     if custom_sequence:
         logging.getLogger("cnc_pipeline").info(f"run_from_contours using custom_sequence: {custom_sequence}")
-        # Validate and convert: [[layer, tool], ...] → [(layer, tool), ...]
-        validated = []
-        for entry in custom_sequence:
-            if not isinstance(entry, list) or len(entry) < 2:
-                raise ValueError(f"Invalid custom_sequence entry: {entry} — expected [layer, tool_number]")
-            layer, tool = str(entry[0]), int(entry[1])
-            if layer not in prepared:
-                continue  # skip layers not present in the DXF
-            if tool not in tools:
-                raise ValueError(f"Unknown tool number in custom_sequence: T{tool} for layer {layer}")
-            validated.append((layer, tool))
-        if not validated:
+        validated = _resolve_custom_sequence(custom_sequence, tools)
+        # Filter to only layers present in the DXF
+        toolpath_sequence = [(l, t) for l, t in validated if l in prepared]
+        if not toolpath_sequence:
             raise ValueError("custom_sequence contained no valid layers present in the DXF")
-        toolpath_sequence = validated
     else:
         toolpath_sequence = SCENARIOS.get(scenario, [])
-    
+
     toolpath_blocks = []
     out_segments = []
     seq_index = 0
     warnings = []
 
-    for layer_name, tool_num in toolpath_sequence:
+    for layer_name, tool_id in toolpath_sequence:
         if layer_name not in prepared:
             continue
-            
+
+        tool = tools[tool_id]
         contours = prepared[layer_name]
-        
+
         if layer_name in (LAYER_FREZ, LAYER_FREZ_135):
             ordered = sort_frez_outer_to_inner(contours, bbox, algorithm)
         else:
             ordered = sort_nearest_neighbour(contours)
-            
+
         start_idx = seq_index
         for contour in ordered:
             for i in range(len(contour.points) - 1):
@@ -113,8 +150,8 @@ def run_from_contours(
                 })
                 seq_index += 1
 
-        moves, _ = generate_toolpath(ordered, tools[tool_num], layer_name, start_seq_index=start_idx)
-        toolpath_blocks.append((tool_num, layer_name, moves))
+        moves, _ = generate_toolpath(ordered, tool, layer_name, start_seq_index=start_idx)
+        toolpath_blocks.append((tool_id, layer_name, moves))
 
     if not toolpath_blocks:
         raise ValueError("No toolpath blocks generated — check DXF layer names")
@@ -145,12 +182,11 @@ def run_from_contours(
                 })
                 seq_index += 1
 
-    import os
     stem = os.path.splitext(os.path.basename(original_filename or "regenerated"))[0]
     writer = GCodeWriter(program_name=stem)
     nc_text, line_to_segment_map = writer.write(toolpath_blocks, bbox, tools=tools)
 
-    validation = validate(nc_text, [t for t, _, _ in toolpath_blocks], bbox)
+    validation = validate(nc_text, [tools[tid]["number"] for tid, _, _ in toolpath_blocks], bbox)
     warnings.extend(validation.warnings)
 
     lift_count = sum(
@@ -174,7 +210,7 @@ def run_from_contours(
         "estimated_time": estimated_time,
         "warnings": warnings,
         "lift_count": lift_count,
-        "tools_used": [t for t, _, _ in toolpath_blocks],
+        "tools_used": [tools[tid]["number"] for tid, _, _ in toolpath_blocks],
         "output_filename": f"{stem}-{algorithm}.nc",
     }
 
@@ -182,7 +218,6 @@ def run_from_contours(
 def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "juggler_gemini", tool_overrides: dict | None = None, custom_sequence: list[list] | None = None) -> PipelineResult:
     """
     Full pipeline: DXF file → PipelineResult containing NC text.
-    Raises ValueError for unrecoverable errors (missing CUT layer, etc.).
     """
     from .dxf_reader import DXFReader
     from .scenario import detect_scenario
@@ -191,7 +226,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
     from .toolpath import generate_toolpath
     from .gcode_writer import GCodeWriter
     from .validator import validate
-    from .config import SCENARIOS, LAYER_CUT, LAYER_FREZ, LAYER_FREZ_135, LAYER_HOLES
+    from .config import SCENARIOS, LAYER_CUT, LAYER_FREZ, LAYER_FREZ_135, LAYER_HOLES, build_tools_dict
 
     warnings = []
 
@@ -202,17 +237,21 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
     # 2. Detect scenario
     scenario_name = detect_scenario(reader.layers)
 
+    # Build tools dict early so we can resolve custom_sequence
+    tools = build_tools_dict(tool_overrides)
+
     # Determine which layers to prepare as CNC layers
     if custom_sequence:
-        # When custom_sequence is provided, use it to determine CNC layers
-        sequence_to_prepare = [(str(entry[0]), int(entry[1])) for entry in custom_sequence]
+        sequence_to_prepare = _resolve_custom_sequence(custom_sequence, tools)
     else:
-        sequence_to_prepare = SCENARIOS[scenario_name]  # list of (layer, tool_num)
+        if scenario_name == "custom":
+            raise ValueError("No standard CNC layers found and no custom sequence provided — cannot generate toolpath")
+        sequence_to_prepare = SCENARIOS[scenario_name]
 
     prepared_contours = {}
     total_contours = 0
 
-    for layer_name, tool_num in sequence_to_prepare:
+    for layer_name, tool_id in sequence_to_prepare:
         contours = reader.get_contours(layer_name)
         if not contours:
             warnings.append(f"Layer {layer_name} has no geometry — skipping")
@@ -246,6 +285,11 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
         "max_y": bbox.max_y,
     }
 
+    # Determine the actual custom_sequence to pass to run_from_contours
+    # Only layers that have geometry
+    actual_sequence = [(l, t) for l, t in sequence_to_prepare if l in prepared_contours]
+    serializable_sequence = [[l, t] for l, t in actual_sequence]
+
     result = run_from_contours(
         contours_by_layer=contours_by_layer,
         stock_bbox=stock_bbox_serial,
@@ -253,7 +297,7 @@ def run_pipeline(dxf_path: str, original_filename: str = "", algorithm: str = "j
         algorithm=algorithm,
         original_filename=dxf_path if not original_filename else original_filename,
         tool_overrides=tool_overrides,
-        custom_sequence=custom_sequence,
+        custom_sequence=serializable_sequence if custom_sequence else None,
     )
     result["warnings"].extend(warnings)
 

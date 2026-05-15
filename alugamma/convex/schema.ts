@@ -99,6 +99,8 @@ export default defineSchema({
   cnc_settings: defineTable({
     organizationId: v.id("organizations"),
     toolOverrides: v.any(),   // sparse JSON: { "7": { "layers": { "CUT": { "depth": -4.4 } } } }
+    customTools: v.optional(v.any()), // full custom tool definitions: { "3": { id, name, number, ... } }
+    layerToolMap: v.optional(v.any()), // custom layer → tool overrides: { "CUSTOM1": 3 }
     updatedBy: v.id("users"),
     updatedAt: v.number(),
   }).index("by_organization", ["organizationId"]),

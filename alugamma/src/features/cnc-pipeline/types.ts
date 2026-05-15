@@ -9,8 +9,11 @@ export type Scenario =
   | "very_rare"
   | "cut_only"
 
-/** Serializable form sent to backend: array of [layer, toolNumber] pairs */
+/** Serializable form sent to backend: array of [layer, toolNumber] pairs (legacy) */
 export type CustomSequence = [string, number][]
+
+/** New id-based sequence: array of [layer, toolId] pairs */
+export type IdSequence = [string, string][]
 
 export interface ContoursPoint {
   x: number
