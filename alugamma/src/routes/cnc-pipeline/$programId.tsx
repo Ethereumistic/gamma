@@ -296,15 +296,6 @@ export default function CNCProgramViewerPage() {
   };
 
 
-  if (program === undefined) {
-    return <div className="p-8 text-slate-400 flex items-center justify-center">Loading program...</div>;
-  }
-  if (program === null) {
-    return <div className="p-8 text-red-400 flex items-center justify-center">Program not found or access denied.</div>;
-  }
-
-  const uniqueLayers = currentGeometry ? [...new Set(currentGeometry.segments.map(s => s.layer))] : [];
-
   // Build the set of CNC-active layers (built-in + any in the layer-tool map)
   const cncLayerNames = useMemo(() => {
     const s = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
@@ -313,6 +304,15 @@ export default function CNCProgramViewerPage() {
     }
     return s
   }, [resolvedLayerToolMap])
+
+  if (program === undefined) {
+    return <div className="p-8 text-slate-400 flex items-center justify-center">Loading program...</div>;
+  }
+  if (program === null) {
+    return <div className="p-8 text-red-400 flex items-center justify-center">Program not found or access denied.</div>;
+  }
+
+  const uniqueLayers = currentGeometry ? [...new Set(currentGeometry.segments.map(s => s.layer))] : [];
 
   return (
     <div className="p-6 h-[calc(100vh-4rem)] flex flex-col text-slate-200">
