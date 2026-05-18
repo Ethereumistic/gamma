@@ -110,6 +110,9 @@ LAYER_TOOL_MAP: dict[str, str] = {
     "FREZ_135": "trapec_135",
 }
 
+# ── Default layer config for custom/ad-hoc layers ────────────────────────────────
+DEFAULT_LAYER_CONFIG = {"depth": -3.0, "offset": 0.0}
+
 # ── G-code line numbering ─────────────────────────────────────────────────────
 LINE_NUM_START     = 40
 LINE_NUM_INCREMENT = 10

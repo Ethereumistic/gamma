@@ -1,7 +1,7 @@
 # cnc_pipeline/toolpath.py
 from .models import Point, Contour, Move
 from typing import Literal
-from .config import Z_CLEARANCE, Z_APPROACH
+from .config import Z_CLEARANCE, Z_APPROACH, DEFAULT_LAYER_CONFIG
 
 def generate_toolpath(
     contours: list[Contour],
@@ -14,7 +14,8 @@ def generate_toolpath(
 
     plunge_feed = tool["feed_plunge"]
     cut_feed = tool["feed_cut"]
-    depth = tool["layers"][layer_name]["depth"]
+    layer_config = tool["layers"].get(layer_name, DEFAULT_LAYER_CONFIG)
+    depth = layer_config["depth"]
 
     moves = []
     current_seq_index = start_seq_index
