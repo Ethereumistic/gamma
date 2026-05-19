@@ -52,8 +52,8 @@ export default function CNCProgramViewerPage() {
   )
 
   const resolvedLayerToolMap = useMemo(
-    () => resolveLayerToolMap(LAYER_TOOL_MAP_DEFAULTS, null, resolvedTools),
-    [resolvedTools]
+    () => resolveLayerToolMap(LAYER_TOOL_MAP_DEFAULTS, cncSettings?.layerToolMap ?? null, resolvedTools),
+    [resolvedTools, cncSettings?.layerToolMap]
   )
 
   const [editName, setEditName] = useState<string>("");
@@ -296,14 +296,26 @@ export default function CNCProgramViewerPage() {
   };
 
 
-  // Build the set of CNC-active layers (built-in + any in the layer-tool map)
+  // Build the set of CNC-active layers (built-in + layer-tool map + current program sequence)
   const cncLayerNames = useMemo(() => {
     const s = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
     for (const layer of Object.keys(resolvedLayerToolMap)) {
       s.add(layer)
     }
+    // Also include layers from the current program's machining sequence
+    for (const [layer] of layerSequence) {
+      s.add(layer)
+    }
+    // Include layers from the program's contours that match known CNC patterns
+    if (program?.contoursByLayer) {
+      for (const layer of Object.keys(program.contoursByLayer)) {
+        if (resolvedLayerToolMap[layer]) {
+          s.add(layer)
+        }
+      }
+    }
     return s
-  }, [resolvedLayerToolMap])
+  }, [resolvedLayerToolMap, layerSequence, program?.contoursByLayer])
 
   if (program === undefined) {
     return <div className="p-8 text-slate-400 flex items-center justify-center">Loading program...</div>;

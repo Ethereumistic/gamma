@@ -71,15 +71,6 @@ export default function CNCPipelinePage() {
     [storedLayerToolMap, resolvedTools]
   )
 
-  // Build the set of CNC layer names (built-in + any in resolvedLayerToolMap)
-  const cncLayerNames = useMemo(() => {
-    const s = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
-    for (const layer of Object.keys(resolvedLayerToolMap)) {
-      s.add(layer)
-    }
-    return s
-  }, [resolvedLayerToolMap])
-
   // Available tools list for dropdowns
   const availableTools = useMemo(() => {
     return Object.entries(resolvedTools)
@@ -131,6 +122,19 @@ export default function CNCPipelinePage() {
 
   // ── Layer sequence state ──────────────────────────────────────────────────
   const [layerSequence, setLayerSequence] = useState<IdSequence>([])
+
+  // Build the set of CNC layer names (built-in + resolvedLayerToolMap + current sequence)
+  const cncLayerNames = useMemo(() => {
+    const s = new Set(["CUT", "FREZ", "FREZ_135", "HOLES"])
+    for (const layer of Object.keys(resolvedLayerToolMap)) {
+      s.add(layer)
+    }
+    // Also include layers from the current machining sequence
+    for (const [layer] of layerSequence) {
+      s.add(layer)
+    }
+    return s
+  }, [resolvedLayerToolMap, layerSequence])
 
   const isCustomOrder = useMemo(() => {
     if (state.status !== "done" && state.status !== "ready" && state.status !== "generating") return false

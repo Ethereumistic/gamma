@@ -14,14 +14,25 @@ export const LAYER_COLORS: Record<string, string> = {
 /** Deterministic vibrant color for any layer name (used for custom layers) */
 export function getLayerColor(layer: string): string {
   if (layer in LAYER_COLORS) return LAYER_COLORS[layer]
-  // Generate a deterministic hue from the layer name
+  // Deterministic palette of vibrant, distinct colors for custom layers.
+  // Chosen to contrast with built-in colors (green, purple, orange, yellow, sky, slate).
+  const CUSTOM_PALETTE = [
+    "#fb923c", // amber-orange
+    "#f472b6", // pink
+    "#2dd4bf", // teal
+    "#818cf8", // indigo
+    "#4ade80", // lime
+    "#e879f9", // fuchsia
+    "#38bdf8", // cyan
+    "#fbbf24", // warm yellow
+  ]
+  // Deterministic index from layer name
   let hash = 0
   for (let i = 0; i < layer.length; i++) {
     hash = layer.charCodeAt(i) + ((hash << 5) - hash)
   }
-  const hue = ((hash % 360) + 360) % 360
-  // Use HSL with high saturation and medium lightness for vibrant CNC-looking colors
-  return `hsl(${hue}, 80%, 60%)`
+  const idx = ((hash % CUSTOM_PALETTE.length) + CUSTOM_PALETTE.length) % CUSTOM_PALETTE.length
+  return CUSTOM_PALETTE[idx]
 }
 
 // Default CNC layers — can be overridden via props

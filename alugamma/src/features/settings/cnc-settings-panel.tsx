@@ -16,6 +16,7 @@ import {
   type ToolConfig,
   type LayerConfig,
 } from "@/features/cnc-pipeline/tool-defaults";
+import { getLayerColor } from "@/features/cnc-pipeline/components/LayerControls";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -915,15 +916,3 @@ function AddLayerMapping({
   );
 }
 
-/** Get a color for a layer name for visual display */
-function getLayerColor(layer: string): string {
-  const colors: Record<string, string> = {
-    CUT: "#22c55e",
-    FREZ: "#a855f7",
-    FREZ_135: "#f97316",
-    HOLES: "#f9ca01",
-    SHEETS: "#38bdf8",
-    "0": "#94a3b8",
-  };
-  return colors[layer] || "#60a5fa"; // blue for custom layers
-}
