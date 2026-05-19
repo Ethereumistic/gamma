@@ -20,9 +20,11 @@ src/features/nesting/
 ├── types.ts              Data model, filename parser, mode detection, helpers
 ├── packer.ts             MaxRects bin packing engine (pure math, zero deps)
 ├── deduplicator.ts       CUT line coincident-segment merging
-├── dxf-writer.ts         Generates R2000 DXF strings from SheetLayouts
+├── dxf-writer.ts         Generates DXF strings using Maker.js exporter (same method as sheet-metal feature)
+│                         + injectBeforeEndsec() for labels + downloadDxf/exportAllSheetsAsZip
 ├── dxf-reader.ts          Parses imported DXF files → bbox + CUT segments
 │                         + createNestPartFromDesign() bridge from sheet-metal
+│                         + extractDxfModel() → Maker.js IModel for rendering/output
 ├── context.tsx            NestingProvider + useNesting() React context
 ├── preview-canvas.tsx     HTML5 Canvas renderer with pan/zoom
 ├── part-list.tsx          Left sidebar — import DXF, import from project, manage parts
@@ -62,6 +64,18 @@ NestPart ── the input (one DXF part type)
   source: "sheet-metal"|"custom-dxf"
   cutLines: Segment[]           CUT layer geometry in local coords
   l0Bbox: Rect                  Layer 0 bounding box in local coords
+  dxfContent?: string           raw DXF string (for Maker.js model extraction)
+  designId?: string             link to Convex sheet-metal design
+  blockDxfContent?: string      (reserved, not currently used in output)
+
+PackItem ── internal packer input (expanded from NestPart.count)
+  rid: string                  unique key "{partId}_{instanceIndex}"
+  partId: string               references back to the part
+  partName: string              for display/logging
+  instanceIndex: number         which copy of this part type
+  w, h: number                 dimensions in packing space (possibly swapped)
+  rotated: boolean              true if pre-rotated 90° (allowedRotation=90)
+  partData: NestPart           reference to original part
 
 Placement ── one part instance on a sheet
   partId, instanceIndex         references back to the part
@@ -70,6 +84,7 @@ Placement ── one part instance on a sheet
   rotation: 0|90
 
 SheetLayout ── one unique arrangement on a sheet
+  id: string                   layout identifier
   sheetIndex: number
   mode: "A"|"B"                A=margin, B=full-span centered
   placements: Placement[]
@@ -86,6 +101,7 @@ NestJob ── top-level state object
   status: "idle"|"packing"|"done"|"error"
   warnings: string[]
   totalSheetsToCut: number
+  createdAt, updatedAt: number
 ```
 
 ### 3.2 Geometric Primitives
@@ -93,6 +109,8 @@ NestJob ── top-level state object
 ```typescript
 type Segment = { x1, y1, x2, y2: number }  // a line segment
 type Rect = { x0, y0, x1, y1: number }      // axis-aligned bounding box
+type FreeRect = { x, y, w, h: number }      // packer free-rectangle (internal)
+type PackResult = { x, y, width, height, rid, rotated: boolean }  // packer result (rotated = true if w↔h swapped)
 ```
 
 ### 3.3 Coordinate Spaces
@@ -105,13 +123,25 @@ There are **three** coordinate systems. Keeping them distinct is critical:
 | **Packing space** | (0,0) = bottom-left of usable bin area | MaxRects placements |
 | **Sheet space** | (0,0) = bottom-left of the physical 1250×3200 sheet | DXF output |
 
-Transforms:
+**Transforms:**
 - **Mode A Packing → Sheet:** `sheet_x = pack_x + 35`, `sheet_y = pack_y + 35`
 - **Mode B Packing → Sheet:** `sheet_x = pack_x + offset_x`, `sheet_y = pack_y + offset_y` (centering computed per-layout)
-- **Part-local → Sheet (0°):** `sheet_x = insert_x + local_x`, `sheet_y = insert_y + local_y`
-- **Part-local → Sheet (90°):** `sheet_x = insert_x - local_y`, `sheet_y = insert_y + local_x`
+- **Part-local → Sheet (0°):** `sheet_x = pack_x + offset_x + CUT_OFFSET + local_x`, `sheet_y = pack_y + offset_y + CUT_OFFSET + local_y`
+- **Part-local → Sheet (90°):** `sheet_x = pack_x + offset_x + l0Height + CUT_OFFSET − local_y`, `sheet_y = pack_y + offset_y + CUT_OFFSET + local_x`
 
 Where `insert_x = pack_x + offset_x + CUT_OFFSET` and `insert_y = pack_y + offset_y + CUT_OFFSET`.
+
+For 0° rotation, the local origin (0,0) maps to (insert_x, insert_y), placing the CUT bbox at [pack_x + offset_x, pack_x + offset_x + cutWidth] × [pack_y + offset_y, pack_y + offset_y + cutHeight].
+
+For 90° rotation, the local origin (0,0) maps to (pack_x + offset_x + l0Height + CUT_OFFSET, pack_y + offset_y + CUT_OFFSET), which compensates for the leftward bbox shift caused by CCW rotation. The CUT bbox lands at [pack_x + offset_x, pack_x + offset_x + cutHeight] × [pack_y + offset_y, pack_y + offset_y + cutWidth].
+
+**Maker.js Transform Pipeline (non-CUT geometry):**
+Both the DXF writer and preview canvas apply the same 3-step transform to part geometry using Maker.js operations:
+1. **Normalize** — `moveRelative([-l0Bbox.x0, -l0Bbox.y0])` shifts the L0 lower-left to (0,0) (effectively a no-op since `l0Bbox` is always `{x0:0, y0:0}` after normalization in `parseDxfContent`)
+2. **Rotate & align** — 0°: `moveRelative([CUT_OFFSET, CUT_OFFSET])`; 90°: `rotate(90, [0,0])` then `moveRelative([l0Height+CUT_OFFSET, CUT_OFFSET])`
+3. **Translate to sheet** — `moveRelative([packX+offsetX, packY+offsetY])`
+
+The deduplicator uses the mathematical equivalent of this pipeline via `computeInsertPosition()` + `transformCutSegment()`, which compute the same final coordinates using direct arithmetic instead of Maker.js transforms.
 
 ---
 
@@ -212,12 +242,22 @@ The packer maintains a list of free rectangles per bin. When an item is placed:
 1. All free rectangles that overlap the placed item are **split** into up to 4 sub-rectangles (left, right, top, bottom remainders)
 2. Free rectangles entirely contained within other free rectangles are **pruned**
 3. New bins are created on demand (up to `MAX_SHEETS = 200`)
+4. Console errors are logged when a part fails to place (instead of silently dropping it)
 
 ### 6.4 Rotation Handling
 
 - `allowedRotation === 0` → dimensions are `cutWidth × cutHeight` (upright only)
-- `allowedRotation === 90` → dimensions are `cutHeight × cutWidth` (pre-rotated)
-- `allowedRotation === -1` → both orientations tried; if packer swaps w↔h, `rotation` is set to `90`
+- `allowedRotation === 90` → dimensions are `cutHeight × cutWidth` (pre-rotated), `item.rotated = true`
+- `allowedRotation === -1` → both orientations tried; if packer swaps w↔h, `BestPosition.rotated = true`
+
+In `packAllParts`, the final `rotation` field on each Placement is computed from both sources:
+```
+rotationDeg = rect.rotated || item.rotated ? 90 : 0
+```
+- `rect.rotated` — set by the MaxRects packer when it swaps w↔h for a rotation-allowed item
+- `item.rotated` — set in `buildItems` when `allowedRotation === 90` (pre-rotated parts)
+
+This is more reliable than comparing dimensions, which fails for near-square parts where `cutWidth ≈ cutHeight`.
 
 ### 6.5 Repeat Count Computation
 
@@ -236,10 +276,10 @@ The **bottleneck part** (the one that requires the most repeats) determines how 
 
 After all items are placed in Mode B, the packer computes:
 ```
-layout_w = max(pack_x + pack_width) across all placements
-layout_h = max(pack_y + pack_height) across all placements
-offset_x = (1250 - layout_w) / 2
-offset_y = (3200 - layout_h) / 2
+layout_w = max(packX + packWidth) across all placements
+layout_h = max(packY + packHeight) across all placements
+offset_x = (SHEET_WIDTH - layout_w) / 2    // SHEET_WIDTH = 1250
+offset_y = (SHEET_HEIGHT - layout_h) / 2    // SHEET_HEIGHT = 3200
 ```
 
 This gives equal margins on left/right and top/bottom, centering the layout on the sheet.
@@ -264,12 +304,18 @@ When coincident, the retained segment spans the **union** of both overlapping pr
 
 ```
 For each placement on a sheet:
-    ┌─────────────────────────────────┐
-    │ Transform CUT segments from     │
-    │ part-local → sheet space:       │
-    │ • 0° rotation: translate        │
-    │ • 90° rotation: rotate+translate│
-    └─────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────┐
+    │ Compute insert position via computeInsertPosition(): │
+    │ • 0°: insert = (packX + offsetX + CUT_OFFSET,       │
+    │               packY + offsetY + CUT_OFFSET)          │
+    │ • 90°: insert = (packX + offsetX + l0Height + CO,   │
+    │                packY + offsetY + CUT_OFFSET)         │
+    │                                                     │
+    │ Transform CUT segments from part-local → sheet:    │
+    │ • 0°: sheet = insert + local                        │
+    │ • 90°: sheet_x = insertX − local_y                  │
+    │         sheet_y = insertY + local_x                 │
+    └─────────────────────────────────────────────────────┘
             │
             ▼
     Collect all CUT segments into flat array
@@ -288,14 +334,24 @@ Complexity is O(n²) worst case, but typical sheets have <200 segments, so it ru
 
 ### 7.4 Coordinate Transform for 90° Rotation
 
-```
-90° rotation around insert point:
-  sheet_x = insert_x - local_y
-  sheet_y = insert_y + local_x
+The `computeInsertPosition()` function computes the alignment point in sheet space, taking the part's `l0Height` into account. For 0° rotation, the insert point is straightforward: pack position + layout offset + CUT_OFFSET. For 90° rotation, the leftward bbox shift from CCW rotation requires an additional `l0Height + CUT_OFFSET` shift in X.
 
-Where:
-  insert_x = pack_x + offset_x + CUT_OFFSET
-  insert_y = pack_y + offset_y + CUT_OFFSET
+```
+90° rotation transform:
+  sheet_x = insertX − local_y
+  sheet_y = insertY + local_x
+
+Where insertX and insertY come from computeInsertPosition():
+  0°:  insertX = packX + offsetX + CUT_OFFSET
+       insertY = packY + offsetY + CUT_OFFSET
+  90°: insertX = packX + offsetX + l0Height + CUT_OFFSET
+       insertY = packY + offsetY + CUT_OFFSET
+
+The (l0Height + CUT_OFFSET) X-shift for 90° rotation compensates for
+the leftward bbox shift caused by CCW rotation around the origin. Without
+this compensation, parts would extend l0Height mm past the left boundary.
+The CUT bbox lands at [packX+offsetX, packX+offsetX+cutHeight] ×
+[packY+offsetY, packY+offsetY+cutWidth] for 90°, matching the pack rectangle.
 ```
 
 ---
@@ -304,72 +360,81 @@ Where:
 
 ### 8.1 Output Structure
 
-Each `SheetLayout` produces one `.dxf` file containing:
+Each `SheetLayout` produces one `.dxf` file generated in two stages:
 
-1. **HEADER section** — R2000 version (`AC1015`), mm units, extents, `$HANDSEED`
-2. **CLASSES section** — Empty but required for R2000+ compatibility
-3. **TABLES section** — VPORT, LTYPE, LAYER, STYLE, APPID, BLOCK_RECORD tables (all with proper handles and subclass markers)
-4. **BLOCKS section** — `*Model_Space`, `*Paper_Space` (required by R2000), and one block per part type (non-CUT geometry only)
-5. **ENTITIES section** — Sheet frame + block inserts + deduplicated CUT lines + label text
-6. **OBJECTS section** — Root dictionary (required by R2000)
+1. **Maker.js model construction** — Build an `IModel` containing all geometry (sheet frame lines, per-part non-CUT geometry as sub-models, deduplicated CUT line paths)
+2. **Maker.js DXF export** — `makerjs.exporter.toDXF()` converts the model to a complete DXF string with proper layers and colors
+3. **Label injection** — A TEXT entity for the sheet label is injected into the DXF string before ENDSEC
 
-### 8.2 Key Design Decision
+The approach mirrors the sheet-metal feature, which also uses Maker.js for DXF output.
 
-**CUT lines are written directly as LINE entities, NOT via block inserts.** This is what enables deduplication — shared edges become single LINE entities. All other geometry (Layer 0 outlines, FREZ, HOLES) goes through block INSERT references.
+### 8.2 Key Design Decisions
 
-Only parts that have block definitions (`blockDxfContent` or `source === "sheet-metal"`) get INSERT entities. Parts without block definitions do NOT get INSERT references — this avoids referencing non-existent blocks which would make the DXF invalid.
+**CUT lines are written directly as LINE paths in the Maker.js model, NOT as block/INSERT references.** This enables deduplication — shared edges become single LINE entities. All other geometry (Layer 0, FREZ, FREZ_135, HOLES) is extracted from the source DXF via `extractDxfModel()` and rendered through Maker.js sub-models with per-placement transformations.
 
-### 8.3 DXF Construction
+**Non-CUT geometry uses Maker.js sub-models, not DXF INSERT/BLOCK references.** Each unique part type has its non-CUT geometry extracted into a Maker.js `IModel` (via `extractDxfModel`), which is cached, deep-cloned per placement, transformed (normalize → rotate → shift → translate), and added to the main model as a sub-model named `{partId}_{placementIndex}`. Maker.js handles the rendering of all path types (lines, arcs, circles, polylines) to DXF entities automatically.
 
-The writer builds a DXF string using a `DxfBuilder` class that emits group-code/value pairs. The builder tracks a monotonically increasing **handle counter** (starting at `0x100`) and emits a unique handle (group code 5) for every entity, table record, block, and dictionary object. No external DXF library is used for output — the format follows the DXF R2000 specification. Line endings use CRLF (`\r\n`) per the DXF standard.
+**Parts without source DXF content fall back to a simple L0 rectangle.** If `part.dxfContent` is empty/null but `part.l0Bbox` exists, the writer creates a 4-line rectangle model on the `0` layer as a visual placeholder.
 
-### 8.4 AutoCAD Compatibility Requirements
+### 8.3 DXF Construction Pipeline
 
-DXF files generated by this writer **must** follow these rules for AutoCAD compatibility:
+The writer builds the DXF in these steps:
 
-1. **Every entity, table record, block, and dictionary has a unique handle (group code 5)** — R2000 requires handles for all objects. Without handles, AutoCAD cannot build its internal object model and rejects the file as invalid.
+```
+1. Create main Maker.js IModel: { paths: {}, models: {} }
+      │
+      ▼
+2. Add sheet frame (4 LINE paths via addRectLines)
+   ┌─ Mode A: outer 1250×3200 + inner 1180×3130 margin rectangle
+   └─ Mode B: outer 1250×3200 + inner centered rectangle
+      │
+      ▼
+3. For each placement, add per-part non-CUT geometry:
+   a. Extract base Maker.js model from part.dxfContent (cached per part ID)
+   b. Deep-clone the base model
+   c. Normalize: moveRelative([-l0Bbox.x0, -l0Bbox.y0])
+      (Shifts L0 lower-left to (0,0) — effectively a no-op since l0Bbox
+       is always {x0:0, y0:0} after parseDxfContent normalizes it)
+   d. Rotate and align:
+      ┌─ 0°: moveRelative([CUT_OFFSET, CUT_OFFSET])
+      └─ 90°: rotate(90, [0,0]) then moveRelative([l0Height+CUT_OFFSET, CUT_OFFSET])
+   e. Translate to sheet position: moveRelative([packX+offsetX, packY+offsetY])
+   f. Add as sub-model to main model
+      │
+      ▼
+4. Add deduplicated CUT lines (collectAndDeduplicate → LINE paths on LAYER_CUT)
+      │
+      ▼
+5. Export via Maker.js: makerjs.exporter.toDXF(mainModel, { units, layerOptions })
+      │
+      ▼
+6. Inject sheet label TEXT entity before ENDSEC
+      text = "sheetName_xrepeatCount" at (SHEET_WIDTH/2, SHEET_HEIGHT+80), height 50
+```
 
-2. **`$HANDSEED` in HEADER** — The `$HANDSEED` variable tells AutoCAD the next available handle number. Required for R2000.
+### 8.4 Label Injection
 
-3. **CLASSES section is present** (even if empty) — R2000+ requires it. Without it, AutoCAD shows a black screen and crashes.
+The sheet label (`sheetName_xrepeatCount`) is added as a DXF TEXT entity positioned at `(SHEET_WIDTH/2, SHEET_HEIGHT + 80)` with text height 50mm on the SHEETS layer. Since Maker.js doesn't support TEXT entities natively, the label is injected by locating the ENTITIES section in the generated DXF string and inserting the TEXT group codes before the next ENDSEC.
 
-4. **OBJECTS section is present** — R2000 requires an OBJECTS section with at least a root DICTIONARY object. Without it, AutoCAD rejects the file.
-
-5. **Required tables: VPORT, LTYPE, LAYER, STYLE, APPID, BLOCK_RECORD** — R2000 expects all of these. The STYLE table must include a "Standard" text style (for TEXT entities). The APPID table must include "ACAD". The BLOCK_RECORD table must include entries for `*Model_Space`, `*Paper_Space`, and each user-defined block.
-
-6. **Table entries have proper subclass markers and handles** — Each table header needs `5 <handle>` and `100 AcDbSymbolTable`. Each table record needs `5 <handle>`, `100 AcDbSymbolTableRecord`, and the appropriate subclass (e.g., `100 AcDbLinetypeTableRecord`).
-
-7. **`*Model_Space` and `*Paper_Space` blocks** — R2000 requires these block definitions in the BLOCKS section.
-
-8. **All entities have `100` subclass markers** — Each entity must have:
-   - `100 AcDbEntity` followed by layer (`8`) and optional color (`62`)
-   - `100 AcDbLine` / `100 AcDbPolyline` / `100 AcDbText` / `100 AcDbBlockReference` / `100 AcDbBlockBegin` / `100 AcDbBlockEnd` with the entity-specific groups
-
-   Without these markers, AutoCAD rejects the entity silently.
-
-9. **Entity color (62) comes before entity-specific groups** — Group 62 must be in the `AcDbEntity` subclass, not after coordinate groups.
-
-10. **LWPOLYLINE vertex groups are ordered correctly** — Group 90 (vertex count), then 70 (closed flag), then 10/20 pairs for each vertex.
-
-11. **BLOCK/ENDBLK entities have handles and subclass markers** — Both need `5 <handle>`, `100 AcDbEntity`, and `100 AcDbBlockBegin`/`100 AcDbBlockEnd`. The group code `2` (block name) and `8` (layer) must appear AFTER the `100 AcDbEntity` subclass marker, not before it.
-
-12. **No orphaned INSERT references** — INSERT entities must only reference blocks that exist in the BLOCKS section. Parts without block definitions must not generate INSERT entities.
+This is done by the `injectBeforeEndsec()` helper, which finds the ENTITIES section header and the next ENDSEC, then splices the entity DXF text in between.
 
 ### 8.5 Sheet Frame Drawing
 
 **Mode A:**
-- Outer 1250×3200 rectangle on SHEETS layer
-- Inner 1180×3130 dashed margin rectangle on SHEETS layer
+- Outer 1250×3200 rectangle on SHEETS layer (4 LINE paths via `addRectLines`)
+- Inner 1180×3130 dashed margin rectangle on SHEETS layer (4 LINE paths)
 
 **Mode B:**
 - Outer 1250×3200 rectangle
-- Inner dashed rectangle around the centered layout (computed from `offset_x`, `offset_y`, layout_w, layout_h)
+- Inner dashed rectangle around the centered layout (computed dynamically from `offsetX`, `offsetY`, and the max extent of all placements)
+
+Note: The inner rectangle dimensions are computed from the actual placements in the layout (`Math.max(...placements.map(pl => pl.packX + pl.packWidth))`), not stored as layout properties.
 
 ### 8.6 Export Functions
 
-- `writeNestSheetDxf(layout, parts)` → returns DXF string
-- `downloadDxf(content, filename)` → triggers browser download
-- `exportAllSheetsAsZip(layouts, parts)` → creates ZIP of all DXF files using JSZip
+- `writeNestSheetDxf(layout, parts)` → builds Maker.js model, exports to DXF string, injects label, returns the complete DXF string
+- `downloadDxf(content, filename)` → creates a Blob and triggers browser download
+- `exportAllSheetsAsZip(layouts, parts)` → creates a ZIP of all DXF files using JSZip and triggers download
 
 ---
 
@@ -380,26 +445,53 @@ DXF files generated by this writer **must** follow these rules for AutoCAD compa
 When the user imports a DXF file, we need to:
 1. Extract the **Layer 0 bounding box** (to know the part dimensions)
 2. Extract **CUT layer line segments** (for deduplication during output)
+3. Extract **non-CUT geometry** as a Maker.js model (for DXF output and canvas rendering)
 
 ### 9.2 Entity Support
 
-| Entity Type | Bbox Extraction | Segment Extraction |
-|-------------|----------------|-------------------|
-| LINE | ✅ | ✅ |
-| LWPOLYLINE | ✅ | ✅ (vertices + closed) |
-| ARC | ✅ (bounding box) | ✅ (64-division arc) |
-| CIRCLE | ✅ (bounding box) | ✅ (64-division circle) |
-| SPLINE | ✅ (control points) | ✅ (between control points) |
-| ELLIPSE | ✅ (bounding box) | ✅ (64-division) |
-| POLYLINE | ❌ | ❌ (not yet) |
+| Entity Type | Bbox Extraction | Segment Extraction | Model Extraction |
+|-------------|----------------|-------------------|------------------|
+| LINE | ✅ | ✅ | ✅ |
+| LWPOLYLINE | ✅ | ✅ (vertices + closed) | ✅ (with bulge → arc support) |
+| ARC | ✅ (bounding box) | ✅ (64-division arc) | ✅ |
+| CIRCLE | ✅ (bounding box) | ✅ (64-division circle) | ✅ |
+| SPLINE | ✅ (control points) | ✅ (between control points) | ❌ (skipped) |
+| ELLIPSE | ✅ (bounding box) | ✅ (64-division) | ❌ (skipped) |
+| POLYLINE | ❌ | ❌ (not yet) | ❌ |
+| TEXT/MTEXT | ❌ | ❌ | ❌ (skipped) |
 
 ### 9.3 Critical Implementation Detail
 
 DXF stores LWPOLYLINE vertices as **multiple group code 10/20 pairs** within a single entity. A naive `Map<number, value>` would clobber all but the last vertex. The parser uses an **ordered array of code/value pairs** (`entity.pairs`) alongside a `firstValue` map, with a `getAllValues(entity, code)` helper to correctly collect all values for repeated group codes.
 
-### 9.4 Fallback Behavior
+### 9.4 Coordinate Normalization
+
+When extracting CUT segments and the L0 bounding box, the reader **normalizes coordinates to part-local space**: all segment coordinates are shifted by `(-l0Bbox.x0, -l0Bbox.y0)`, and the returned `l0Bbox` is always `{x0: 0, y0: 0, x1: l0Width, y1: l0Height}`. This ensures that:
+- CUT lines are stored in part-local coordinates where the L0 origin is at `(0, 0)`
+- The transform pipeline can apply `moveRelative([-l0Bbox.x0, -l0Bbox.y0])` as a normalization step without effect (since `l0Bbox.x0 = l0Bbox.y0 = 0`), keeping code paths uniform
+
+### 9.5 Fallback Behavior
 
 If the DXF cannot be parsed (binary DXF, unsupported entities, etc.), the reader falls back to **placeholder dimensions (500×500mm)** so the part still appears in the UI and the user can proceed. A console warning is emitted.
+
+### 9.6 DXF Model Extraction (`extractDxfModel`)
+
+The `extractDxfModel()` function converts raw DXF content into a Maker.js `IModel` for use by both the DXF writer and the preview canvas. This enables rendering of non-CUT geometry (Layer 0 outlines, FREZ, FREZ_135, HOLES) without manual DXF construction.
+
+**Processing:**
+1. Parse DXF entities using `parseDxfEntities()`
+2. Skip entities on the CUT layer and DEFPOINTS/empty layers
+3. Convert each entity to Maker.js path objects:
+   - LINE → `makerjs.paths.Line`
+   - CIRCLE → `makerjs.paths.Circle`
+   - ARC → `makerjs.paths.Arc`
+   - LWPOLYLINE → individual `Line` segments (with bulge support → `Arc` via chord/sagitta math)
+4. Assign the original DXF layer to each path's `layer` property (preserves layer/color info for rendering)
+5. Return the assembled `IModel`, or `null` if no valid paths were found
+
+**LWPOLYLINE bulge handling:** When a polyline vertex has a non-zero bulge value (group code 42), the `addLwPolylineSegment()` function computes the arc center, radius, and start/end angles from the chord and bulge. This correctly renders filleted corners and arcs in imported DXF part geometry.
+
+**Caching:** Both the DXF writer and preview canvas cache the extracted model per part ID, so `extractDxfModel()` is called only once per unique part.
 
 ---
 
@@ -417,7 +509,7 @@ useNesting() → {
   removePart,                 // remove by ID
   updatePartCount,            // change the required count
   clearParts,                 // start over
-  runPacking,                 // triggers packer → updates job.layouts
+  runPacking,                 // triggers packer → updates job.layouts, shows toast on success/error
   exportSheet,                // download single DXF
   exportAllSheets,            // download ZIP of all DXFs
   selectedSheetIndex,         // which layout is shown in canvas
@@ -484,7 +576,10 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
 - Color-coded layers (CUT=red, Layer 0=white, sheet border=gray, labels=amber)
 - Shows sheet boundary, margin guides (dashed), placed parts with labels
 - Mode A: 35mm margin rectangle; Mode B: centered guide rectangle
-- Uses `react-zoom-pan-pinch` style manual pan/zoom (implemented via refs)
+- **Per-part geometry rendering:** Uses the same Maker.js model extraction (`extractDxfModel`) as the DXF writer. Each part's base model is deep-cloned, then transformed through the same 3-step pipeline (normalize → rotate & align → translate) using `makerjs.model.moveRelative` and `makerjs.model.rotate`. The transformed model is walked via `makerjs.model.walk()` to draw all path types (lines, arcs, circles) with layer-appropriate colors.
+- **Label positioning:** Part names are drawn at the center of the Layer 0 bbox in sheet space. For 90° rotation, `l0Width` and `l0Height` swap in sheet space, and an `l0ShiftX = l0Height` offset accounts for the alignment shift.
+- **Deduplicated CUT lines:** Rendered on top of part geometry using `collectAndDeduplicate()` (cached in `layout.dedupedCutSegments` if available, otherwise computed on-the-fly).
+- Uses manual pan/zoom via refs (no `react-zoom-pan-pinch` dependency)
 
 ### 11.4 Sheet List Panel
 
@@ -588,16 +683,12 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
 6. dxf-writer.ts: for each layout:
       ├─ collectAndDeduplicate() transforms CUT lines to sheet space & dedupes
       ├─ writeNestSheetDxf() builds DXF string:
-      │   ├── Header (AC1015, units, extents, $HANDSEED)
-      │   ├── Classes (empty, but required for R2000+)
-      │   ├── Tables (VPORT, LTYPE, LAYER, STYLE, APPID, BLOCK_RECORD — all with handles & subclass markers)
-      │   ├── Blocks (*Model_Space, *Paper_Space, + one per part with non-CUT geometry)
-      │   ├── Entities:
-      │   │   ├── Sheet frame (SHEETS layer LWPOLYLINE)
-      │   │   ├── Block INSERTs (only for parts with block definitions)
-      │   │   ├── Deduplicated CUT LINEs
-      │   │   └── Label TEXT
-      │   └── Objects (root DICTIONARY, required for R2000)
+      │   ├── Build Maker.js IModel with sheet frame, per-part sub-models, CUT paths
+      │   │   ├── Sheet frame: 4-line rectangles on SHEETS layer
+      │   │   ├── Per-part: extractDxfModel() → deep-clone → normalize → rotate/shift → translate
+      │   │   └── CUT lines: deduplicated LINE paths on LAYER_CUT
+      │   ├── Export via makerjs.exporter.toDXF() with layer colors
+      │   └── Inject sheet label TEXT entity before ENDSEC
       │
       └─ jszip: bundles all DXFs into a ZIP and downloads
 ```
@@ -622,13 +713,15 @@ This function:
 1. Calls `computeSheetMetalGeometry(model)` to regenerate geometry on-the-fly
 2. Calls `buildDxf(geometry, exportName, model)` to produce the full DXF content
 3. Computes L0 dimensions: `totalWidth - 2 * offsetCut` and `totalHeight - 2 * offsetCut` (subtracting the cut margin to get the nominal part size)
-4. Extracts CUT line segments in local coordinates (L0 outline starts at origin `(0,0)` in the geometry coordinate system)
+4. Extracts CUT line segments from `geometry.shapes` filtered by `layer === "CUT"`, using absolute coordinates (which are already local-relative-to-L0-origin since the L0 outline starts at `(0, 0)` in the geometry engine)
 5. Reads `includeMetadata`, `arrowDirection`, and `metadataCount` from the design model to set `direction` and `count`
 6. Returns a ready-to-use `NestPart` with `source: "sheet-metal"` and `designId` linking back to the Convex design
 
 **Key design decision: No Convex file storage for DXF.** The `SheetMetalModel` is a fully deterministic parametric description — given the same model, `computeSheetMetalGeometry() + buildDxf()` always produces identical output. DXF files are regenerated on-the-fly from the model, which is the single source of truth. This eliminates staleness bugs, storage costs, and sync complexity.
 
-**Coordinate normalization:** In the sheet-metal geometry engine, coordinates use absolute positioning where the L0 outline starts at `(0, 0)`. The CUT layer extends `offsetCut` mm beyond L0 on all sides. For nesting, `l0Width = totalWidth - 2 * offsetCut` and `l0Height = totalHeight - 2 * offsetCut`, and CUT lines are used as-is (they naturally extend beyond the L0 bounding box by `offsetCut` mm on each side).
+**Coordinate normalization:** In the sheet-metal geometry engine, coordinates use absolute positioning where the L0 outline starts at `(0, 0)`. The CUT layer extends `offsetCut` mm beyond L0 on all sides. For nesting, `l0Width = totalWidth - 2 * offsetCut` and `l0Height = totalHeight - 2 * offsetCut`, and CUT lines are used as-is (they naturally extend beyond the L0 bounding box by `offsetCut` mm on each side). The `l0Bbox` is always `{x0: 0, y0: 0, x1: l0Width, y1: l0Height}`.
+
+For imported DXF files, `parseDxfContent()` normalizes all CUT line coordinates by subtracting `l0Bbox.x0` and `l0Bbox.y0`, and resets `l0Bbox` to `{x0: 0, y0: 0, x1: l0Width, y1: l0Height}`. This ensures a uniform coordinate system regardless of where the originating CAD program placed geometry.
 
 **`createNestPartFromGeometry()`** — the lower-level helper:
 ```typescript
@@ -701,7 +794,7 @@ The `NestJob` type is designed to be serializable. Adding persistence requires:
 | Manual repositioning | Not supported | Drag parts on canvas (v2) |
 | Formula DSL | Not implemented | Text input for quick part configuration |
 | POLYLINE entity | Not parsed in DXF reader | Add VERTEX sub-entity support |
-| Block definitions in output | Writes simplified Layer-0 rectangles | Parse full DXF blocks from imported files |
+| DXF model extraction | Lines, arcs, circles, LWPOLYLINE (with bulge) | Add SPLINE/ELLIPSE support in extractDxfModel |
 | Web Worker packing | Synchronous on main thread | Offload to worker for >500 parts |
 | Guillotine cuts | Not implemented | Add as alternative packing algorithm |
 | Nesting optimizations | MaxRects only | Add skyline, guillotine-cut algorithms |

@@ -134,13 +134,21 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     // 1. Normalise raw DXF coordinates so the part's l0 lower-left sits at local (0,0)
     makerjs.model.moveRelative(instance, [-part.l0Bbox.x0, -part.l0Bbox.y0]);
 
-    // 2. Rotate around sheet-space (0,0)
-    makerjs.model.rotate(instance, placement.rotation, [0, 0]);
+    // 2. Rotate and align
+    if (placement.rotation === 90) {
+      // Rotate 90° CCW around origin, then shift so rotated CUT bbox aligns with (0,0).
+      // After CCW rotation, the bbox shifts left by l0Height.
+      // Adding (l0Height + CUT_OFFSET) in X and CUT_OFFSET in Y brings
+      // the CUT bbox lower-left back to (0,0), matching the 0° case.
+      makerjs.model.rotate(instance, 90, [0, 0]);
+      makerjs.model.moveRelative(instance, [part.l0Height + CUT_OFFSET, CUT_OFFSET]);
+    } else {
+      // No rotation — shift so CUT bbox is at (0,0)
+      makerjs.model.moveRelative(instance, [CUT_OFFSET, CUT_OFFSET]);
+    }
 
-    // 3. Translate to final sheet position
-    const insertX = placement.packX + layout.offsetX + CUT_OFFSET;
-    const insertY = placement.packY + layout.offsetY + CUT_OFFSET;
-    makerjs.model.moveRelative(instance, [insertX, insertY]);
+    // 3. Translate to final sheet position (pack position + layout offset)
+    makerjs.model.moveRelative(instance, [placement.packX + layout.offsetX, placement.packY + layout.offsetY]);
 
     mainModel.models![`${part.id}_${i}`] = instance;
   }

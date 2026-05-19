@@ -151,17 +151,32 @@ function transformCutSegment(
 }
 
 /** Compute the block insert position in sheet space for a placement.
- *  The insert position accounts for the CUT_OFFSET (CUT boundary corner → layer 0 corner). */
+ *  For 0° rotation: the L0 origin maps directly — pack + offset + CUT_OFFSET.
+ *  For 90° rotation: an additional (l0Height + CUT_OFFSET) shift in X compensates
+ *  for the leftward bbox shift caused by CCW rotation, so the CUT boundary
+ *  aligns exactly with the pack rectangle. */
 function computeInsertPosition(
   placement: Placement,
   offsetX: number,
   offsetY: number,
+  part: NestPart,
 ): { insertX: number; insertY: number } {
-  // Sheet space insert = packing offset + pack position + CUT_OFFSET
-  // (CUT boundary starts at pack position; Layer 0 starts CUT_OFFSET inside)
-  const insertX = placement.packX + offsetX + CUT_OFFSET;
-  const insertY = placement.packY + offsetY + CUT_OFFSET;
-  return { insertX, insertY };
+  if (placement.rotation === 90) {
+    // After 90° CCW rotation, the geometry shifts left by l0Height.
+    // Adding (l0Height + CUT_OFFSET) to X and CUT_OFFSET to Y realigns
+    // the CUT bbox with the pack rectangle.
+    // Combined with transformCutSegment's (insertX − y) / (insertY + x) formula:
+    //   sheet_x = (packX + offsetX + l0H + 3) − local_y
+    //   which places CUT left edge at packX + offsetX, right edge at packX + offsetX + cutHeight.
+    return {
+      insertX: placement.packX + offsetX + part.l0Height + CUT_OFFSET,
+      insertY: placement.packY + offsetY + CUT_OFFSET,
+    };
+  }
+  return {
+    insertX: placement.packX + offsetX + CUT_OFFSET,
+    insertY: placement.packY + offsetY + CUT_OFFSET,
+  };
 }
 
 // ── Collect and Deduplicate All CUT Lines for a Sheet ──────────────────────
@@ -180,7 +195,7 @@ export function collectAndDeduplicate(
     const part = partMap.get(placement.partId);
     if (!part) continue;
 
-    const { insertX, insertY } = computeInsertPosition(placement, offsetX, offsetY);
+    const { insertX, insertY } = computeInsertPosition(placement, offsetX, offsetY, part);
 
     for (const localSeg of part.cutLines) {
       const sheetSeg = transformCutSegment(localSeg, insertX, insertY, placement.rotation);

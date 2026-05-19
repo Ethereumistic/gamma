@@ -270,6 +270,7 @@ class MaxRectsPacker {
       width: bestPos.w,
       height: bestPos.h,
       rid,
+      rotated: bestPos.rotated,
     };
 
     this.placedRects[bestBinIndex].push(placed);
@@ -337,7 +338,12 @@ function runSinglePacker(
   for (const item of items) {
     const allowRotation = item.partData.allowedRotation === -1;
     const result = packer.insert(item.w, item.h, item.rid, allowRotation, heuristic);
-    // If it fails to place, we just skip (shouldn't happen with enough bins)
+    if (!result) {
+      console.error(
+        `[NESTING] Failed to place part "${item.partName}" (instance ${item.instanceIndex}). ` +
+        `Dimensions: ${item.w}×${item.h}mm. This part will be missing from the output.`
+      );
+    }
   }
 
   return packer.getResults();
@@ -494,12 +500,9 @@ export function packAllParts(parts: NestPart[]): {
 
       const part = item.partData;
 
-      // Detect if the packer swapped dims (meaning rotation was applied)
-      const wasRotated =
-        Math.abs(rect.width - part.cutHeight) < 0.1 &&
-        Math.abs(rect.height - part.cutWidth) < 0.1;
-
-      const rotationDeg: 0 | 90 = wasRotated || item.rotated ? 90 : 0;
+      // The packer explicitly reports whether it swapped w↔h for this item.
+      // This is more reliable than comparing dimensions (which fails for near-square parts).
+      const rotationDeg: 0 | 90 = rect.rotated || item.rotated ? 90 : 0;
 
       placements.push({
         partId: part.id,

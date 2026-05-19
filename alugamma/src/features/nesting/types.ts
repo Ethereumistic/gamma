@@ -151,6 +151,7 @@ export type PackResult = {
   width: number;
   height: number;
   rid: string;
+  rotated: boolean; // true if the packer swapped w↔h for this item
 };
 
 export type PackedBin = {
@@ -251,8 +252,8 @@ export function detectPackingMode(parts: NestPart[]): PackingMode {
   // Mode B triggers when:
   // 1. Any single part's CUT width > USABLE_WIDTH
   // 2. Any single part's CUT height > USABLE_HEIGHT
-  // 3. Any two parts' CUT widths sum >= SHEET_WIDTH
-  // 4. Any two parts' CUT heights sum >= SHEET_HEIGHT
+  // 3. Any two parts' CUT widths sum > USABLE_WIDTH  (can't fit side-by-side in margin mode)
+  // 4. Any two parts' CUT heights sum > USABLE_HEIGHT (can't fit top-to-bottom in margin mode)
 
   for (const p of parts) {
     if (p.cutWidth > USABLE_WIDTH) return "B";
@@ -263,8 +264,8 @@ export function detectPackingMode(parts: NestPart[]): PackingMode {
   if (parts.length <= 100) {
     for (let i = 0; i < parts.length; i++) {
       for (let j = i + 1; j < parts.length; j++) {
-        if (parts[i].cutWidth + parts[j].cutWidth >= SHEET_WIDTH) return "B";
-        if (parts[i].cutHeight + parts[j].cutHeight >= SHEET_HEIGHT) return "B";
+        if (parts[i].cutWidth + parts[j].cutWidth > USABLE_WIDTH) return "B";
+        if (parts[i].cutHeight + parts[j].cutHeight > USABLE_HEIGHT) return "B";
       }
     }
   }

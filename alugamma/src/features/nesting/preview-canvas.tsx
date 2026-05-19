@@ -226,17 +226,27 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
           // Deep-clone so rotation/movement don't mutate the cached base model
           const instance: makerjs.IModel = JSON.parse(JSON.stringify(baseModel));
 
-          // Normalise raw DXF coordinates so the part's l0 lower-left sits at (0,0)
+          // 1. Normalise raw DXF coordinates so the part's l0 lower-left sits at (0,0)
           makerjs.model.moveRelative(instance, [
             -part.l0Bbox.x0,
             -part.l0Bbox.y0,
           ]);
-          // Rotate around local (0,0)
-          makerjs.model.rotate(instance, placement.rotation, [0, 0]);
-          // Translate to packed sheet position
-          const insertX = placement.packX + layout.offsetX + CUT_OFFSET;
-          const insertY = placement.packY + layout.offsetY + CUT_OFFSET;
-          makerjs.model.moveRelative(instance, [insertX, insertY]);
+
+          // 2. Rotate and align
+          if (placement.rotation === 90) {
+            // Rotate 90° CCW around origin, then shift so rotated CUT bbox aligns with (0,0).
+            // After CCW rotation, the bbox shifts left by l0Height.
+            // Adding (l0Height + CUT_OFFSET) in X and CUT_OFFSET in Y brings
+            // the CUT bbox lower-left back to (0,0), matching the 0° case.
+            makerjs.model.rotate(instance, 90, [0, 0]);
+            makerjs.model.moveRelative(instance, [part.l0Height + CUT_OFFSET, CUT_OFFSET]);
+          } else {
+            // No rotation — shift so CUT bbox is at (0,0)
+            makerjs.model.moveRelative(instance, [CUT_OFFSET, CUT_OFFSET]);
+          }
+
+          // 3. Translate to final sheet position (pack position + layout offset)
+          makerjs.model.moveRelative(instance, [placement.packX + layout.offsetX, placement.packY + layout.offsetY]);
 
           // Walk all paths (including nested sub-models) and draw them
           makerjs.model.walk(instance, {
@@ -307,10 +317,15 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.setLineDash([]);
 
         // Part label (centered on Layer 0 bbox)
+        // For 90° rotation, l0Width and l0Height swap in sheet space,
+        // and the L0 bbox is offset by l0Height in X (alignment shift).
+        const l0ShiftX = placement.rotation === 90 ? part.l0Height : 0;
+        const labelW = placement.rotation === 90 ? part.l0Height : part.l0Width;
+        const labelH = placement.rotation === 90 ? part.l0Width : part.l0Height;
         const labelX =
-          placement.packX + layout.offsetX + CUT_OFFSET + part.l0Width / 2;
+          placement.packX + layout.offsetX + CUT_OFFSET + l0ShiftX + labelW / 2;
         const labelY =
-          placement.packY + layout.offsetY + CUT_OFFSET + part.l0Height / 2;
+          placement.packY + layout.offsetY + CUT_OFFSET + labelH / 2;
         ctx.fillStyle = CANVAS_COLORS.label;
         ctx.font = `${Math.max(8, 10 * scale)}px monospace`;
         ctx.textAlign = "center";
