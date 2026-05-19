@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react";
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
 import { Square, Maximize } from "lucide-react";
 
@@ -48,7 +48,9 @@ export const PreviewCanvas = forwardRef<{ centerView: () => void }, PreviewCanva
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const transformRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredLine, setHoveredLine] = useState<LineShape | null>(null);
+  const [fitScale, setFitScale] = useState<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     centerView: () => transformRef.current?.centerView(),
@@ -58,6 +60,27 @@ export const PreviewCanvas = forwardRef<{ centerView: () => void }, PreviewCanva
   // Exact 1:1 pixel size for the drawing
   const canvasWidth = geometry.totalWidth > 0 ? geometry.totalWidth + PADDING * 2 : 1200;
   const canvasHeight = geometry.totalHeight > 0 ? geometry.totalHeight + PADDING * 2 : 760;
+
+  // Compute the scale that fits the entire canvas inside the container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const measure = () => {
+      const { clientWidth, clientHeight } = container;
+      if (clientWidth > 0 && clientHeight > 0 && canvasWidth > 0 && canvasHeight > 0) {
+        const scale = Math.min(clientWidth / canvasWidth, clientHeight / canvasHeight);
+        // Leave a tiny margin so edges aren't flush
+        setFitScale(scale * 0.92);
+      }
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [canvasWidth, canvasHeight]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -115,7 +138,7 @@ export const PreviewCanvas = forwardRef<{ centerView: () => void }, PreviewCanva
       
       context.stroke();
     }
-  }, [geometry, hoveredLine, canvasWidth, canvasHeight]);
+  }, [geometry, hoveredLine, canvasWidth, canvasHeight, fitScale]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -167,29 +190,32 @@ export const PreviewCanvas = forwardRef<{ centerView: () => void }, PreviewCanva
   };
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#080c14]">
-      <TransformWrapper
-        ref={transformRef}
-        initialScale={1}
-        minScale={0.1}
-        maxScale={8}
-        centerOnInit
-        limitToBounds={model.rubberband}
-        wheel={{ step: 0.1 }}
-      >
-        <CanvasControls />
-        <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
-          <canvas
-            ref={canvasRef}
-            width={canvasWidth}
-            height={canvasHeight}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => setHoveredLine(null)}
-            className="outline-none"
-            style={{ display: "block" }}
-          />
-        </TransformComponent>
-      </TransformWrapper>
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#080c14]">
+      {/* Delay TransformWrapper until we've measured the container so initialScale is correct */}
+      {fitScale !== null && (
+        <TransformWrapper
+          ref={transformRef}
+          initialScale={fitScale}
+          minScale={0.03}
+          maxScale={8}
+          centerOnInit
+          limitToBounds={model.rubberband}
+          wheel={{ step: 0.1 }}
+        >
+          <CanvasControls />
+          <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
+            <canvas
+              ref={canvasRef}
+              width={canvasWidth}
+              height={canvasHeight}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={() => setHoveredLine(null)}
+              className="outline-none"
+              style={{ display: "block" }}
+            />
+          </TransformComponent>
+        </TransformWrapper>
+      )}
       
       <div 
          ref={tooltipRef} 
