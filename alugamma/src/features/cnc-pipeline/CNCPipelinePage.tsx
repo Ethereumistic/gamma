@@ -23,6 +23,8 @@ import { LayerControls, LAYER_COLORS, getLayerColor } from "./components/LayerCo
 import { GeometryViewer } from "./components/GeometryViewer"
 import { NCPreview } from "./components/NCPreview"
 import { PlaybackControls } from "./components/PlaybackControls"
+import { SequencePill } from "./components/SequencePill"
+import { AddLayerDropdown } from "./components/AddLayerDropdown"
 import { useGenerate } from "./hooks/useGenerate"
 import { usePlayback } from "./hooks/usePlayback"
 import {
@@ -431,90 +433,51 @@ export default function CNCPipelinePage() {
                 {layerSequence.map(([layer, toolId], idx) => {
                   const color = getLayerColor(layer)
                   const tool = resolvedTools[toolId]
-                  const toolNum = tool?.number ?? 0
                   return (
-                    <div key={layer} className="flex items-center gap-0.5">
+                    <div key={layer} className="flex items-center">
                       {idx > 0 && (
                         <span className="text-slate-600 mx-0.5">→</span>
                       )}
-                      <Select
-                        value={String(idx)}
-                        onValueChange={(val) => {
-                          const newIdx = parseInt(val, 10)
-                          if (newIdx !== idx) {
-                            const newSeq = [...layerSequence]
-                            const [moved] = newSeq.splice(idx, 1)
-                            newSeq.splice(newIdx, 0, moved)
-                            handleLayerSequenceChange(newSeq)
-                          }
+                      <SequencePill
+                        layer={layer}
+                        color={color}
+                        toolLabel={`T${tool?.number ?? 0}`}
+                        disabled={state.status === "generating"}
+                        onRemove={() => handleRemoveLayerFromSequence(idx)}
+                        onReorder={(newIdx) => {
+                          const newSeq = [...layerSequence]
+                          const [moved] = newSeq.splice(idx, 1)
+                          newSeq.splice(newIdx, 0, moved)
+                          handleLayerSequenceChange(newSeq)
                         }}
-                        disabled={state.status === "generating"}
-                      >
-                        <SelectTrigger
-                          className="h-6 w-auto min-w-[48px] bg-black/20 border-none text-[10px] font-bold uppercase tracking-wider px-1.5 hover:bg-white/5 focus:ring-1 focus:ring-emerald-500"
-                          style={{ color }}
-                        >
-                          {layer}
-                        </SelectTrigger>
-                        <SelectContent>
-                          {layerSequence.map((_, optionIdx) => (
-                            <SelectItem key={optionIdx} value={String(optionIdx)}>
-                              <span className="text-[10px] font-mono text-slate-400">{optionIdx + 1}.</span>{" "}
-                              <span className="text-xs font-medium uppercase">{layer}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {/* ── Tool selector ── */}
-                      <Select
-                        value={toolId}
-                        onValueChange={(val) => handleLayerToolChange(idx, val)}
-                        disabled={state.status === "generating"}
-                      >
-                        <SelectTrigger
-                          className="h-6 w-auto min-w-[36px] bg-black/20 border-none text-[9px] font-mono tabular-nums px-1 hover:bg-white/5 focus:ring-1 focus:ring-emerald-500 text-slate-500"
-                        >
-                          T{toolNum}
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableTools.map((t) => (
-                            <SelectItem key={t.key} value={t.key}>
-                              <span className="text-xs font-mono">T{t.number}</span>
-                              <span className="text-xs text-slate-400 ml-1">— {t.name}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        currentIndex={idx}
+                        totalCount={layerSequence.length}
+                        availableTools={availableTools.map((t) => ({
+                          value: t.key,
+                          label: `T${t.number}`,
+                          description: t.name,
+                        }))}
+                        currentToolValue={toolId}
+                        onToolChange={(val) => handleLayerToolChange(idx, val)}
+                      />
                     </div>
                   )
                 })}
-                {isCustomOrder && (
-                  <span className="text-[9px] text-amber-400/70 ml-1 italic">custom</span>
-                )}
               </div>
 
-              {/* ── Add unassigned layers ── */}
-              {unassignedLayers.length > 0 && (
-                <div className="flex items-center gap-1 ml-1">
-                  {unassignedLayers.map((layer) => {
-                    const color = getLayerColor(layer)
-                    const assignedTool = resolvedLayerToolMap[layer]
-                    return (
-                      <button
-                        key={layer}
-                        onClick={() => handleAddLayerToSequence(layer)}
-                        className="flex items-center gap-0.5 h-6 px-1.5 rounded border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/30 transition-colors"
-                        style={{ color: color + "cc" }}
-                        title={`Add ${layer} layer to sequence${assignedTool ? ` (T${resolvedTools[assignedTool]?.number ?? assignedTool})` : ""}`}
-                      >
-                        <Plus className="h-2.5 w-2.5" />
-                        <span className="text-[9px] font-bold uppercase tracking-wider">{layer}</span>
-                        {assignedTool && <span className="text-[8px] font-mono text-slate-500 ml-0.5">T{resolvedTools[assignedTool]?.number ?? "?"}</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+              <AddLayerDropdown
+                availableLayers={unassignedLayers.map((layer) => {
+                  const assignedTool = resolvedLayerToolMap[layer]
+                  const tool = assignedTool ? resolvedTools[assignedTool] : null
+                  return {
+                    layer,
+                    color: getLayerColor(layer),
+                    toolLabel: tool ? `T${tool.number}` : "T?",
+                  }
+                })}
+                onAddLayer={handleAddLayerToSequence}
+                disabled={state.status === "generating"}
+              />
 
               <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
               <span className="text-slate-400 whitespace-nowrap">
@@ -537,9 +500,8 @@ export default function CNCPipelinePage() {
               <div className="ml-auto flex items-center gap-2 pl-4">
                 <Dialog>
                   <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 px-3 text-xs hover:bg-white/5 flex gap-1.5">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-white/5">
                       <Settings2 className="h-3.5 w-3.5" />
-                      Settings
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[425px]">

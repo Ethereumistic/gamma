@@ -6,6 +6,8 @@ import { NCPreview } from "@/features/cnc-pipeline/components/NCPreview";
 import { PlaybackControls } from "@/features/cnc-pipeline/components/PlaybackControls";
 import { GeometryViewer } from "@/features/cnc-pipeline/components/GeometryViewer";
 import { LayerControls, LAYER_COLORS, getLayerColor } from "@/features/cnc-pipeline/components/LayerControls";
+import { SequencePill } from "@/features/cnc-pipeline/components/SequencePill";
+import { AddLayerDropdown } from "@/features/cnc-pipeline/components/AddLayerDropdown";
 import { usePlayback } from "@/features/cnc-pipeline/hooks/usePlayback";
 import type { GeometryResponse, CustomSequence } from "@/features/cnc-pipeline/types";
 import { useEffect, useMemo, useState } from "react";
@@ -366,50 +368,72 @@ export default function CNCProgramViewerPage() {
               Sequence
             </span>
             {layerSequence.map(([layer, toolNum], idx) => (
-              <div key={layer} className="flex items-center gap-0.5">
+              <div key={layer} className="flex items-center">
                 {idx > 0 && (
                   <span className="text-slate-600 mx-0.5">→</span>
                 )}
-                <Select
-                  value={String(idx)}
-                  onValueChange={(val) => {
-                    const newIdx = parseInt(val, 10)
-                    if (newIdx !== idx) {
-                      const newSeq = [...layerSequence]
-                      const [moved] = newSeq.splice(idx, 1)
-                      newSeq.splice(newIdx, 0, moved)
-                      handleRegenerate(undefined, newSeq)
-                    }
-                  }}
+                <SequencePill
+                  layer={layer}
+                  color={getLayerColor(layer)}
+                  toolLabel={`T${toolNum}`}
                   disabled={isRegenerating || !program?.contoursByLayer}
-                >
-                  <SelectTrigger
-                    className="h-6 w-auto min-w-[48px] bg-black/20 border-none text-[10px] font-bold uppercase tracking-wider px-1.5 hover:bg-white/5 focus:ring-1 focus:ring-emerald-500"
-                    style={{ color: getLayerColor(layer) }}
-                  >
-                    {layer}
-                  </SelectTrigger>
-                  <SelectContent>
-                    {layerSequence.map((_, optionIdx) => (
-                      <SelectItem key={optionIdx} value={String(optionIdx)}>
-                        <span className="text-[10px] font-mono text-slate-400">{optionIdx + 1}.</span>{" "}
-                        <span className="text-xs font-medium uppercase">{layer}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span
-                  className="text-[9px] font-mono text-slate-600 tabular-nums"
-                  title={`Tool T${toolNum}`}
-                >
-                  T{toolNum}
-                </span>
+                  onRemove={() => {
+                    const newSeq = [...layerSequence]
+                    newSeq.splice(idx, 1)
+                    handleRegenerate(undefined, newSeq)
+                  }}
+                  onReorder={(newIdx) => {
+                    const newSeq = [...layerSequence]
+                    const [moved] = newSeq.splice(idx, 1)
+                    newSeq.splice(newIdx, 0, moved)
+                    handleRegenerate(undefined, newSeq)
+                  }}
+                  currentIndex={idx}
+                  totalCount={layerSequence.length}
+                  availableTools={Object.values(resolvedTools)
+                    .sort((a, b) => a.number - b.number)
+                    .map((t) => ({
+                      value: String(t.number),
+                      label: `T${t.number}`,
+                      description: t.name,
+                    }))}
+                  currentToolValue={String(toolNum)}
+                  onToolChange={(val) => {
+                    const toolNum = parseInt(val, 10)
+                    const newSeq = [...layerSequence]
+                    newSeq[idx] = [layerSequence[idx][0], toolNum]
+                    handleRegenerate(undefined, newSeq)
+                  }}
+                />
               </div>
             ))}
-            {isCustomOrder && (
-              <span className="text-[9px] text-amber-400/70 ml-1 italic">custom</span>
-            )}
           </div>
+
+          <AddLayerDropdown
+            availableLayers={(() => {
+              const assigned = new Set(layerSequence.map(([l]) => l))
+              const allLayerKeys = new Set([
+                ...(program?.contoursByLayer ? Object.keys(program.contoursByLayer) : []),
+                ...Object.keys(resolvedLayerToolMap),
+              ])
+              return [...allLayerKeys].filter((l) => !assigned.has(l)).map((layer) => {
+                const toolNum = resolvedLayerToolMap[layer] ? resolvedTools[resolvedLayerToolMap[layer]]?.number ?? 0 : 0
+                return {
+                  layer,
+                  color: getLayerColor(layer),
+                  toolLabel: toolNum ? `T${toolNum}` : "T?",
+                }
+              })
+            })()}
+            onAddLayer={(layer) => {
+              const toolNum = resolvedLayerToolMap[layer]
+                ? resolvedTools[resolvedLayerToolMap[layer]]?.number ?? 0
+                : 0
+              const newSeq = [...layerSequence, [layer, toolNum] as [string, number]]
+              handleRegenerate(undefined, newSeq)
+            }}
+            disabled={isRegenerating}
+          />
           <div className="h-4 w-px bg-white/10 mx-1 shrink-0" />
           <span className="text-slate-400 whitespace-nowrap">
             Time: <span className="text-slate-200 font-medium ml-1">{formatTime(activeTime)}</span>
@@ -418,7 +442,7 @@ export default function CNCProgramViewerPage() {
           <div className="ml-auto flex items-center gap-2 pl-4">
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 px-3 text-xs border border-transparent text-slate-400 hover:text-white hover:bg-white/5">
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-white/5">
                   <Settings2 className="h-3.5 w-3.5" />
                 </Button>
               </DialogTrigger>
