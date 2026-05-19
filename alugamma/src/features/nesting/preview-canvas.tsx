@@ -193,7 +193,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         );
         ctx.setLineDash([]);
       } else {
-        // Mode B: draw centering guide
+        // Mode B: draw alignment guide (centered or bottom-left)
         const guideX1 = layout.offsetX;
         const guideY1 = layout.offsetY;
         const maxX = Math.max(
@@ -369,7 +369,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       ctx.font = `${Math.max(8, 10 * scale)}px sans-serif`;
       ctx.textAlign = "left";
       ctx.fillText(
-        `Mode ${layout.mode} | ${layout.placements.length} parts | ×${layout.repeatCount}`,
+        `Mode ${layout.mode} (${layout.alignment}) | ${layout.placements.length} parts | ×${layout.repeatCount}`,
         sx(10),
         sy(SHEET_HEIGHT + 60),
       );
@@ -405,17 +405,29 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       draw();
     }, [layout, parts, draw]);
 
-    // ── Mouse Handlers ──────────────────────────────────────────────────────
+    // ── Wheel Handler (non-passive to allow preventDefault) ───────────────────
+    // React's onWheel is passive by default, so e.preventDefault() is silently
+    // ignored. We must attach a non-passive listener directly on the canvas
+    // element to prevent the browser from scrolling the page on wheel events.
 
-    const handleWheel = useCallback(
-      (e: React.WheelEvent) => {
+    useEffect(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const onWheel = (e: WheelEvent) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
         zoomRef.current = Math.max(0.2, Math.min(5, zoomRef.current * delta));
         draw();
-      },
-      [draw],
-    );
+      };
+
+      canvas.addEventListener("wheel", onWheel, { passive: false });
+      return () => canvas.removeEventListener("wheel", onWheel);
+    }, [draw]);
+
+    // ── Mouse Handlers ──────────────────────────────────────────────────────
+
+null
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
       isDraggingRef.current = true;
@@ -461,7 +473,6 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       <canvas
         ref={canvasRef}
         className={className ?? "w-full h-full"}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

@@ -6,6 +6,7 @@
 import { Layers, ArrowDownToLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNesting } from "./context";
 import { SHEET_WIDTH, SHEET_HEIGHT } from "./constants";
 import type { SheetLayout } from "./types";
@@ -15,7 +16,7 @@ export function SheetListPanel() {
 
   if (job.layouts.length === 0) {
     return (
-      <div className="flex h-full flex-col border-l border-white/[0.06] bg-card/50">
+      <div className="flex h-full min-h-0 flex-col border-l border-white/[0.06] bg-card/50">
         <div className="border-b border-white/[0.06] px-3 py-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Sheets
@@ -31,7 +32,7 @@ export function SheetListPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col border-l border-white/[0.06] bg-card/50">
+    <div className="flex h-full min-h-0 flex-col border-l border-white/[0.06] bg-card/50">
       {/* Header */}
       <div className="border-b border-white/[0.06] px-3 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -40,7 +41,7 @@ export function SheetListPanel() {
       </div>
 
       {/* Sheet List */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <ScrollArea className="min-h-0 flex-1 p-2">
         <div className="space-y-1.5">
           {job.layouts.map((layout, index) => (
             <SheetCard
@@ -53,7 +54,7 @@ export function SheetListPanel() {
             />
           ))}
         </div>
-      </div>
+      </ScrollArea>
 
       {/* Footer stats */}
       <div className="border-t border-white/[0.06] px-3 py-2">
@@ -122,7 +123,7 @@ function SheetCard({
             {utilization}%
           </Badge>
           <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
-            Mode {layout.mode}
+            {layout.mode === "A" ? "Margin" : layout.alignment === "centered" ? "Centered" : "Bottom-Left"}
           </Badge>
         </div>
       </div>

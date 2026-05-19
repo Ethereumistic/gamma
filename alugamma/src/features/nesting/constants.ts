@@ -12,6 +12,10 @@ export const SHEET_HEIGHT = 3200;
 /** Standard margin for Mode A packing in mm */
 export const MARGIN = 35;
 
+/** Layout utilization threshold below which Mode B sheets use bottom-left
+ *  alignment instead of centering. Expressed as a percentage (0–100). */
+export const BOTTOM_LEFT_THRESHOLD = 70;
+
 /** Usable area width in Mode A (sheet - 2×margin) */
 export const USABLE_WIDTH = SHEET_WIDTH - 2 * MARGIN; // 1180
 

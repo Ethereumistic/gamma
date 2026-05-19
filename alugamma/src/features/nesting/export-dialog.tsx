@@ -52,7 +52,15 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               </div>
               <div>
                 <span className="text-muted-foreground">Mode:</span>{" "}
-                <span className="font-mono">{job.mode === "A" ? "Standard Margin" : "Full Span"}</span>
+                <span className="font-mono">
+                  {job.mode === "A"
+                    ? "Standard Margin"
+                    : job.layouts.every(l => l.alignment === "centered")
+                      ? "Full Span (Centered)"
+                      : job.layouts.every(l => l.alignment === "bottom-left")
+                        ? "Full Span (Bottom-Left)"
+                        : "Full Span (Mixed)"}
+                </span>
               </div>
             </div>
           </div>

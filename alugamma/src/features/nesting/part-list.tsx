@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNesting } from "./context";
@@ -205,7 +206,7 @@ export function PartListPanel() {
 
   return (
     <div
-      className="flex h-full flex-col border-r border-white/[0.06] bg-card/50"
+      className="flex h-full min-h-0 flex-col border-r border-white/[0.06] bg-card/50"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -272,7 +273,7 @@ export function PartListPanel() {
       />
 
       {/* Drag-and-drop zone / part list area */}
-      <div className="relative flex-1 overflow-y-auto">
+      <ScrollArea className="min-h-0 flex-1">
         {/* Drag overlay */}
         {isDragging && (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/50 bg-primary/10 backdrop-blur-sm">
@@ -342,9 +343,7 @@ export function PartListPanel() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Footer stats */}
+      </ScrollArea>
       {job.parts.length > 0 && (
         <div className="border-t border-white/[0.06] px-3 py-2">
           <p className="text-[10px] text-muted-foreground/60">

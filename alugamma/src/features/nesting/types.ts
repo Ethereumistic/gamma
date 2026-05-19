@@ -20,6 +20,13 @@ export type PartDirection = "T" | "B" | "L" | "R" | null;
 export type RotationDeg = 0 | 90;
 export type PackingMode = "A" | "B";
 
+/** How parts are positioned on the sheet:
+ *  - "margin":       Mode A — parts anchored at (35, 35) with margin
+ *  - "bottom-left":  Mode B, low utilization — parts anchored at bottom-left
+ *  - "centered":     Mode B, high utilization — parts centered on sheet
+ */
+export type LayoutAlignment = "margin" | "bottom-left" | "centered";
+
 // ── Geometric Primitives ──────────────────────────────────────────────────
 
 export type Segment = {
@@ -96,6 +103,7 @@ export type SheetLayout = {
   id: string;
   sheetIndex: number;
   mode: PackingMode;
+  alignment: LayoutAlignment;
   placements: Placement[];
   repeatCount: number;
   sheetName: string;

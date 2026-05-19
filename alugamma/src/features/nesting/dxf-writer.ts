@@ -179,7 +179,8 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   });
 
   // ── Inject sheet label as TEXT entity ─────────────────
-  const labelText = `${layout.sheetName}_x${layout.repeatCount}`;
+  const alignmentLabel = layout.alignment === "centered" ? "C" : layout.alignment === "bottom-left" ? "BL" : "M";
+  const labelText = `${layout.sheetName}_x${layout.repeatCount}_${alignmentLabel}`;
   const textHeight = 50;
   const textX = SHEET_WIDTH / 2;
   const textY = SHEET_HEIGHT + 80;

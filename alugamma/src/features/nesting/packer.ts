@@ -14,6 +14,7 @@ import {
   USABLE_WIDTH,
   USABLE_HEIGHT,
   MARGIN,
+  BOTTOM_LEFT_THRESHOLD,
   MAX_SHEETS,
 } from "./constants";
 import {
@@ -24,6 +25,7 @@ import {
   type Placement,
   type SheetLayout,
   type PackingMode,
+  type LayoutAlignment,
   type PackedBin,
 } from "./types";
 import { detectPackingMode, createLayoutId } from "./types";
@@ -325,6 +327,19 @@ class MaxRectsPacker {
   }
 }
 
+// ── Layout Utilization Helper ─────────────────────────────────────────────────
+
+/** Compute the material utilization percentage for a single layout.
+ *  Returns: (total part area / sheet area) × 100 */
+function computeLayoutUtilization(placements: Placement[]): number {
+  const sheetArea = SHEET_WIDTH * SHEET_HEIGHT;
+  const partArea = placements.reduce(
+    (sum, pl) => sum + pl.packWidth * pl.packHeight,
+    0,
+  );
+  return (partArea / sheetArea) * 100;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 function runSinglePacker(
@@ -515,18 +530,35 @@ export function packAllParts(parts: NestPart[]): {
       });
     }
 
-    // Compute centering offset for Mode B
+    // Compute alignment offset
     let offsetX: number;
     let offsetY: number;
+    let alignment: LayoutAlignment;
 
     if (mode === "B") {
       const layoutW = Math.max(...placements.map((pl) => pl.packX + pl.packWidth));
       const layoutH = Math.max(...placements.map((pl) => pl.packY + pl.packHeight));
-      offsetX = (SHEET_WIDTH - layoutW) / 2;
-      offsetY = (SHEET_HEIGHT - layoutH) / 2;
+      const utilization = computeLayoutUtilization(placements);
+
+      if (utilization < BOTTOM_LEFT_THRESHOLD) {
+        // Low utilization: anchor at bottom-left.
+        // X: push toward left edge with MARGIN, clamped so nothing exceeds sheet.
+        // Y: push toward bottom edge (high Y in canvas coords where Y↓) with MARGIN
+        //    from the bottom, clamped so nothing exceeds sheet. This makes the
+        //    layout appear at the bottom-left of the preview canvas and the DXF.
+        offsetX = Math.min(MARGIN, Math.max(0, (SHEET_WIDTH - layoutW) / 2));
+        offsetY = Math.max(0, SHEET_HEIGHT - layoutH - Math.min(MARGIN, Math.max(0, (SHEET_HEIGHT - layoutH) / 2)));
+        alignment = "bottom-left";
+      } else {
+        // High utilization: center the layout on the sheet
+        offsetX = (SHEET_WIDTH - layoutW) / 2;
+        offsetY = (SHEET_HEIGHT - layoutH) / 2;
+        alignment = "centered";
+      }
     } else {
       offsetX = MARGIN;
       offsetY = MARGIN;
+      alignment = "margin";
     }
 
     // Compute repeat count
@@ -543,6 +575,7 @@ export function packAllParts(parts: NestPart[]): {
       id: createLayoutId(bi),
       sheetIndex: bi,
       mode,
+      alignment,
       placements,
       repeatCount,
       sheetName,

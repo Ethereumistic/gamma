@@ -110,7 +110,7 @@ function NestingAppInner() {
       </div>
 
       {/* ── 3-Column Layout ── */}
-      <div className="grid flex-1 grid-cols-[280px,1fr,260px] overflow-hidden">
+      <div className="grid flex-1 grid-cols-[280px,1fr,260px] overflow-hidden min-h-0">
         {/* ── Left: Parts List ── */}
         <PartListPanel />
 
