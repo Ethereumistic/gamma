@@ -5,25 +5,41 @@ import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 
 interface Props {
-  onFile: (file: File) => void
+  onFile?: (file: File) => void
+  onFiles?: (files: File[]) => void   // NEW: bulk callback
   disabled?: boolean
   compact?: boolean
+  multiple?: boolean                  // NEW: enables multi-file
 }
 
-export function DXFDropZone({ onFile, disabled, compact }: Props) {
+export function DXFDropZone({ onFile, onFiles, disabled, compact, multiple }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     if (disabled) return
-    const file = e.dataTransfer.files[0]
-    if (file && file.name.toLowerCase().endsWith(".dxf")) onFile(file)
+    if (onFiles && multiple) {
+      const files = Array.from(e.dataTransfer.files).filter(f =>
+        f.name.toLowerCase().endsWith(".dxf"),
+      )
+      if (files.length > 0) onFiles(files)
+    } else {
+      const file = e.dataTransfer.files[0]
+      if (file && file.name.toLowerCase().endsWith(".dxf")) onFile?.(file)
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (disabled) return
-    const file = e.target.files?.[0]
-    if (file) onFile(file)
+    if (onFiles && multiple) {
+      const files = Array.from(e.target.files ?? []).filter(f =>
+        f.name.toLowerCase().endsWith(".dxf"),
+      )
+      if (files.length > 0) onFiles(files)
+    } else {
+      const file = e.target.files?.[0]
+      if (file) onFile?.(file)
+    }
   }
 
   if (compact) {
@@ -36,7 +52,7 @@ export function DXFDropZone({ onFile, disabled, compact }: Props) {
         title="Drop or click to browse for a new DXF file"
       >
         <Plus className="h-4 w-4 text-slate-400" />
-        <input ref={inputRef} type="file" accept=".dxf" className="hidden" onChange={handleChange} />
+        <input ref={inputRef} type="file" accept=".dxf" className="hidden" onChange={handleChange} multiple={multiple} />
       </div>
     )
   }
@@ -49,7 +65,7 @@ export function DXFDropZone({ onFile, disabled, compact }: Props) {
     >
       <div className="mb-6 flex flex-col items-center gap-3">
         <span className="text-5xl text-slate-500 mb-2">📄</span>
-        <h3 className="text-xl font-semibold text-slate-300">Drop your DXF file here</h3>
+        <h3 className="text-xl font-semibold text-slate-300">{multiple ? "Drop your DXF files here" : "Drop your DXF file here"}</h3>
         <p className="text-sm text-slate-500">or click the button below to browse your files</p>
       </div>
       <Button
@@ -66,6 +82,7 @@ export function DXFDropZone({ onFile, disabled, compact }: Props) {
         accept=".dxf"
         style={{ display: "none" }}
         onChange={handleChange}
+        multiple={multiple}
       />
     </div>
   )
