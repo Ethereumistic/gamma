@@ -248,6 +248,34 @@ export const deleteNcProgram = mutation({
   },
 });
 
+export const batchDeleteNcPrograms = mutation({
+  args: {
+    projectId: v.id("projects"),
+    ncProgramIds: v.array(v.id("nc_programs")),
+  },
+  handler: async (ctx, args) => {
+    await requireProjectManager(ctx, args.projectId);
+    let deletedCount = 0;
+    for (const ncProgramId of args.ncProgramIds) {
+      const existing = await ctx.db.get(ncProgramId);
+      if (existing) {
+        await ctx.db.delete(ncProgramId);
+        deletedCount++;
+      }
+    }
+    // Batch-adjust ncProgramCount
+    if (deletedCount > 0) {
+      const project = await ctx.db.get(args.projectId);
+      if (project) {
+        await ctx.db.patch(args.projectId, {
+          ncProgramCount: Math.max(0, (project.ncProgramCount ?? deletedCount) - deletedCount),
+        });
+      }
+    }
+    return deletedCount;
+  },
+});
+
 export const toggleStar = mutation({
   args: {
     projectId: v.id("projects"),

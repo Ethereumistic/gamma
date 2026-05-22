@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "convex/react";
 import { toast } from "sonner";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -10,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useWorkspace } from "@/features/workspace/context";
 import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
 import { PreviewCanvas } from "@/features/sheet-metal/preview-canvas";
@@ -20,6 +23,9 @@ import {
   Clock,
   Pencil,
   Trash2,
+  Download,
+  CheckSquare,
+  X,
 } from "lucide-react";
 
 // ─── Design Card (unchanged) ────────────────────────────────────────────────
@@ -96,12 +102,18 @@ function NcProgramRow({
   onRename,
   onDelete,
   onToggleStar,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   program: any;
   projectId: string;
   onRename: (id: Id<"nc_programs">, name: string) => void;
   onDelete: (id: Id<"nc_programs">) => void;
   onToggleStar: (id: Id<"nc_programs">) => void;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: (id: Id<"nc_programs">) => void;
 }) {
   const navigate = useNavigate();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -127,7 +139,22 @@ function NcProgramRow({
   };
 
   return (
-    <div className="group flex items-center gap-3 px-4 py-3 rounded-xl border border-white/5 bg-black/20 hover:bg-white/[0.02] hover:border-white/10 transition-all">
+    <div
+      className={`group flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
+        selected
+          ? "border-emerald-500/40 bg-emerald-500/5"
+          : "border-white/5 bg-black/20 hover:bg-white/[0.02] hover:border-white/10"
+      }`}
+    >
+      {/* Selection checkbox */}
+      {selectable && (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggleSelect(program._id)}
+          className={`shrink-0 ${selected ? "border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500" : ""}`}
+        />
+      )}
+
       {/* Star */}
       <button
         onClick={() => onToggleStar(program._id)}
@@ -245,6 +272,74 @@ function NcProgramRow({
   );
 }
 
+// ─── Selection Toolbar ────────────────────────────────────────────────────────
+
+function SelectionToolbar({
+  selectedCount,
+  totalCount,
+  allSelected,
+  onToggleSelectAll,
+  onDownloadZip,
+  onDeleteSelected,
+  onClearSelection,
+  isDownloading,
+  isDeleting,
+}: {
+  selectedCount: number;
+  totalCount: number;
+  allSelected: boolean;
+  onToggleSelectAll: () => void;
+  onDownloadZip: () => void;
+  onDeleteSelected: () => void;
+  onClearSelection: () => void;
+  isDownloading: boolean;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 mb-2">
+      <Checkbox
+        checked={allSelected}
+        onCheckedChange={onToggleSelectAll}
+        className="border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+      />
+      <span className="text-xs text-emerald-400 font-medium whitespace-nowrap">
+        {selectedCount} selected
+      </span>
+      <div className="h-4 w-px bg-emerald-500/20" />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2.5 text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+        onClick={onDownloadZip}
+        disabled={isDownloading}
+      >
+        <Download className="h-3.5 w-3.5 mr-1.5" />
+        {isDownloading ? "Zipping..." : "Download ZIP"}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2.5 text-[11px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
+        onClick={onDeleteSelected}
+        disabled={isDeleting}
+      >
+        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+        {isDeleting ? "Deleting..." : "Delete Selected"}
+      </Button>
+      <div className="flex-1" />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 p-0 text-slate-500 hover:text-white"
+        onClick={onClearSelection}
+        title="Clear selection"
+      >
+        <X className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 // ─── Project Detail Page ────────────────────────────────────────────────────
 
 export default function ProjectDetailPage() {
@@ -261,8 +356,103 @@ export default function ProjectDetailPage() {
 
   const updateNcProgram = useMutation(api.nc_programs.updateNcProgram);
   const deleteNcProgramMutation = useMutation(api.nc_programs.deleteNcProgram);
+  const batchDeleteNcProgramsMutation = useMutation(api.nc_programs.batchDeleteNcPrograms);
   const toggleStarMutation = useMutation(api.nc_programs.toggleStar);
 
+  // ── Selection state ───────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<Id<"nc_programs">>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+
+  const toggleSelect = useCallback((id: Id<"nc_programs">) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      if (next.size === 0) {
+        setSelectionMode(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+    setConfirmBatchDelete(false);
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (!ncPrograms) return;
+    if (selectedIds.size === ncPrograms.length) {
+      // Deselect all
+      clearSelection();
+    } else {
+      // Select all
+      setSelectedIds(new Set(ncPrograms.map((p: any) => p._id)));
+    }
+  }, [ncPrograms, selectedIds.size, clearSelection]);
+
+  const enterSelectionMode = useCallback(() => {
+    setSelectionMode(true);
+  }, []);
+
+  // ── Batch download as ZIP ────────────────────────────────────────────────
+  const handleDownloadZip = useCallback(async () => {
+    if (!ncPrograms || selectedIds.size === 0) return;
+
+    setIsDownloading(true);
+    try {
+      const zip = new JSZip();
+      const selectedPrograms = ncPrograms.filter((p: any) => selectedIds.has(p._id));
+
+      for (const program of selectedPrograms) {
+        const filename = `${program.name}.nc`;
+        zip.file(filename, program.ncCode);
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const project = projects.find((p) => p.id === projectId);
+      const zipName = project
+        ? `${project.name.replace(/\s+/g, "_")}-NC-Programs.zip`
+        : `nc-programs-${new Date().toISOString().slice(0, 10)}.zip`;
+
+      saveAs(blob, zipName);
+      toast.success(`Downloaded ${selectedPrograms.length} NC program${selectedPrograms.length > 1 ? "s" : ""} as ZIP`);
+    } catch (e: any) {
+      toast.error("Download failed", { description: e.message });
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [ncPrograms, selectedIds, projectId, projects]);
+
+  // ── Batch delete ─────────────────────────────────────────────────────────
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+
+    setIsDeleting(true);
+    try {
+      const idsArray = Array.from(selectedIds);
+      const deletedCount = await batchDeleteNcProgramsMutation({
+        projectId: projectId as Id<"projects">,
+        ncProgramIds: idsArray,
+      });
+      toast.success(`Deleted ${deletedCount} program${deletedCount > 1 ? "s" : ""}`);
+      clearSelection();
+    } catch (e: any) {
+      toast.error("Delete failed", { description: e.message });
+    } finally {
+      setIsDeleting(false);
+      setConfirmBatchDelete(false);
+    }
+  }, [selectedIds, batchDeleteNcProgramsMutation, projectId, clearSelection]);
+
+  // ── Single-item handlers ──────────────────────────────────────────────────
   const handleRename = async (programId: Id<"nc_programs">, name: string) => {
     try {
       await updateNcProgram({
@@ -276,13 +466,20 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleDelete = async (programId: Id<"nc_programs">) => {
+  const handleDelete = async (ncProgramId: Id<"nc_programs">) => {
     try {
       await deleteNcProgramMutation({
         projectId: projectId as Id<"projects">,
-        ncProgramId: programId,
+        ncProgramId,
       });
       toast.success("Deleted");
+      // Also remove from selection if present
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ncProgramId);
+        if (next.size === 0) setSelectionMode(false);
+        return next;
+      });
     } catch (e: any) {
       toast.error("Delete failed", { description: e.message });
     }
@@ -354,6 +551,8 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const allSelected = ncPrograms.length > 0 && selectedIds.size === ncPrograms.length;
+
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-10 lg:px-8">
       <Card className="border-white/10 bg-card/85">
@@ -416,6 +615,69 @@ export default function ProjectDetailPage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
+                  {/* ── Selection toolbar ── */}
+                  {selectionMode && selectedIds.size > 0 && (
+                    <SelectionToolbar
+                      selectedCount={selectedIds.size}
+                      totalCount={ncPrograms.length}
+                      allSelected={allSelected}
+                      onToggleSelectAll={toggleSelectAll}
+                      onDownloadZip={handleDownloadZip}
+                      onDeleteSelected={() => {
+                        if (confirmBatchDelete) {
+                          handleDeleteSelected();
+                        } else {
+                          setConfirmBatchDelete(true);
+                        }
+                      }}
+                      onClearSelection={clearSelection}
+                      isDownloading={isDownloading}
+                      isDeleting={isDeleting}
+                    />
+                  )}
+
+                  {/* Confirm batch delete bar */}
+                  {selectionMode && selectedIds.size > 0 && confirmBatchDelete && (
+                    <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/5 mb-1">
+                      <span className="text-xs text-red-400 font-medium">
+                        Delete {selectedIds.size} program{selectedIds.size > 1 ? "s" : ""}? This cannot be undone.
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px] text-red-400 hover:bg-red-500/10"
+                        onClick={handleDeleteSelected}
+                        disabled={isDeleting}
+                      >
+                        Yes, delete
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px] text-slate-400"
+                        onClick={() => setConfirmBatchDelete(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Select all / enter selection mode row */}
+                  {ncPrograms.length > 0 && !selectionMode && (
+                    <div className="flex items-center gap-2 mb-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px] text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10"
+                        onClick={enterSelectionMode}
+                      >
+                        <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                        Select
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Program rows */}
                   {ncPrograms.map((program: any) => (
                     <NcProgramRow
                       key={program._id}
@@ -424,6 +686,9 @@ export default function ProjectDetailPage() {
                       onRename={handleRename}
                       onDelete={handleDelete}
                       onToggleStar={handleToggleStar}
+                      selectable={selectionMode}
+                      selected={selectedIds.has(program._id)}
+                      onToggleSelect={toggleSelect}
                     />
                   ))}
                 </div>
