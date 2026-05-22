@@ -86,7 +86,8 @@ Placement ── one part instance on a sheet
 SheetLayout ── one unique arrangement on a sheet
   id: string                   layout identifier
   sheetIndex: number
-  mode: "A"|"B"                A=margin, B=full-span centered
+  mode: "A"|"B"                A=margin, B=full-span (centered or bottom-left)
+  alignment: "margin"|"centered"|"bottom-left"  how offsets were chosen
   placements: Placement[]
   repeatCount: number          how many times to cut this exact sheet
   sheetName: string            e.g. "sheet_001_1335"
@@ -125,7 +126,7 @@ There are **three** coordinate systems. Keeping them distinct is critical:
 
 **Transforms:**
 - **Mode A Packing → Sheet:** `sheet_x = pack_x + 35`, `sheet_y = pack_y + 35`
-- **Mode B Packing → Sheet:** `sheet_x = pack_x + offset_x`, `sheet_y = pack_y + offset_y` (centering computed per-layout)
+- **Mode B Packing → Sheet:** `sheet_x = pack_x + offset_x`, `sheet_y = pack_y + offset_y` (bottom-left or centered, computed per-layout based on utilization)
 - **Part-local → Sheet (0°):** `sheet_x = pack_x + offset_x + CUT_OFFSET + local_x`, `sheet_y = pack_y + offset_y + CUT_OFFSET + local_y`
 - **Part-local → Sheet (90°):** `sheet_x = pack_x + offset_x + l0Height + CUT_OFFSET − local_y`, `sheet_y = pack_y + offset_y + CUT_OFFSET + local_x`
 
@@ -152,6 +153,7 @@ The deduplicator uses the mathematical equivalent of this pipeline via `computeI
 | `SHEET_WIDTH` | 1250 | Physical sheet width in mm |
 | `SHEET_HEIGHT` | 3200 | Physical sheet height in mm |
 | `MARGIN` | 35 | Margin for Mode A placement |
+| `BOTTOM_LEFT_THRESHOLD` | 70 | Utilization % below which Mode B uses bottom-left alignment |
 | `USABLE_WIDTH` | 1180 | Sheet width minus 2×margin |
 | `USABLE_HEIGHT` | 3130 | Sheet height minus 2×margin |
 | `CUT_OFFSET` | 3 | CUT layer offset outward from Layer 0 |
@@ -228,7 +230,7 @@ Input: NestPart[] (parts with counts)
       │
       ▼
 [6] Build SheetLayouts from packed bins
-      │   - Compute centering offset (Mode B) or margin offset (Mode A)
+      │   - Compute alignment offset (Mode B: bottom-left or centered; Mode A: margin)
       │   - Compute repeat count per sheet (bottleneck determines repeats)
       │   - Validate production: warn on under/over-production
       │
@@ -272,17 +274,58 @@ sheet.repeat_count = min(repeats_needed across all part types on this sheet)
 
 The **bottleneck part** (the one that requires the most repeats) determines how many times the sheet is cut. Over-production of other parts is acceptable waste.
 
-### 6.6 Mode B Centering
+### 6.6 Mode B Alignment (Bottom-Left / Centered)
 
-After all items are placed in Mode B, the packer computes:
+After all items are placed in Mode B, the packer computes **per-layout utilization** and chooses an alignment:
+
 ```
-layout_w = max(packX + packWidth) across all placements
-layout_h = max(packY + packHeight) across all placements
-offset_x = (SHEET_WIDTH - layout_w) / 2    // SHEET_WIDTH = 1250
-offset_y = (SHEET_HEIGHT - layout_h) / 2    // SHEET_HEIGHT = 3200
+utilization = (Σ packWidth × packHeight) / (SHEET_WIDTH × SHEET_HEIGHT) × 100
 ```
 
-This gives equal margins on left/right and top/bottom, centering the layout on the sheet.
+**If utilization < 70% (BOTTOM_LEFT_THRESHOLD):**
+
+The layout is sparse, so parts are anchored at the **bottom-left** of the sheet with a MARGIN offset, clamped so parts never exceed sheet boundaries:
+
+```
+offset_x = Math.min(MARGIN, Math.max(0, (SHEET_WIDTH - layout_w) / 2))
+offset_y = Math.max(0, SHEET_HEIGHT - layout_h - Math.min(MARGIN, Math.max(0, (SHEET_HEIGHT - layout_h) / 2)))
+alignment = "bottom-left"
+```
+
+X offset works like a hard margin from the left: MARGIN (35mm) when the layout is narrow, shrinking toward centering when the layout is wide.
+
+Y offset anchors the layout toward the **bottom** of the sheet (high Y in the coordinate system where Y increases downward on screen and in DXF output). When the layout is short, there's a MARGIN gap at the bottom; as the layout fills the sheet, offset smoothly approaches centering.
+
+**If utilization ≥ 70%:**
+
+The layout uses most of the sheet, so parts are **centered** with equal margins:
+
+```
+offset_x = (SHEET_WIDTH - layout_w) / 2
+offset_y = (SHEET_HEIGHT - layout_h) / 2
+alignment = "centered"
+```
+
+**Mode A** always uses `offset_x = offset_y = MARGIN` with `alignment = "margin"`.
+
+The `alignment` field on `SheetLayout` is consumed by the UI (badge in sheet-list, label in export-dialog, indicator in preview-canvas) and the DXF writer (suffix on the sheet label: `_M`, `_BL`, `_C`)
+
+#### Edge-case safety (bottom-left clamp)
+
+| Scenario | layout_w | `(SHEET_WIDTH - layout_w) / 2` | `Math.min(MARGIN, ...)` | Result |
+|----------|----------|--------------------------------|------------------------|--------|
+| Small layout | 500 | 375 | 35 | Left-anchored with 35mm margin |
+| Wide layout | 1220 | 15 | 15 | Near-centering, stays in bounds |
+| Full-width | 1250 | 0 | 0 | Offset 0, flush to edge |
+
+The Y clamp follows the same pattern from the bottom edge:
+
+| Scenario | layout_h | Bottom margin | Result |
+|----------|----------|--------------|--------|
+| Short layout | 500 | 35 | Bottom-anchored with 35mm margin |
+| Tall layout | 2800 | 35 | Bottom-anchored with 35mm margin |
+| Near-full | 3130 | 35 | Bottom-anchored with 35mm gap |
+| Full-height | 3200 | 0 | Offset 0, flush to edge |
 
 ---
 
@@ -386,7 +429,7 @@ The writer builds the DXF in these steps:
       ▼
 2. Add sheet frame (4 LINE paths via addRectLines)
    ┌─ Mode A: outer 1250×3200 + inner 1180×3130 margin rectangle
-   └─ Mode B: outer 1250×3200 + inner centered rectangle
+   └─ Mode B: outer 1250×3200 + inner guide rectangle (positioned by offsetX/offsetY)
       │
       ▼
 3. For each placement, add per-part non-CUT geometry:
@@ -414,7 +457,7 @@ The writer builds the DXF in these steps:
 
 ### 8.4 Label Injection
 
-The sheet label (`sheetName_xrepeatCount`) is added as a DXF TEXT entity positioned at `(SHEET_WIDTH/2, SHEET_HEIGHT + 80)` with text height 50mm on the SHEETS layer. Since Maker.js doesn't support TEXT entities natively, the label is injected by locating the ENTITIES section in the generated DXF string and inserting the TEXT group codes before the next ENDSEC.
+The sheet label (`sheetName_xrepeatCount_alignmentCode`) is added as a DXF TEXT entity positioned at `(SHEET_WIDTH/2, SHEET_HEIGHT + 80)` with text height 50mm on the SHEETS layer. The alignment code is `_M` (margin), `_BL` (bottom-left), or `_C` (centered). Since Maker.js doesn't support TEXT entities natively, the label is injected by locating the ENTITIES section in the generated DXF string and inserting the TEXT group codes before the next ENDSEC.
 
 This is done by the `injectBeforeEndsec()` helper, which finds the ENTITIES section header and the next ENDSEC, then splices the entity DXF text in between.
 
@@ -426,7 +469,7 @@ This is done by the `injectBeforeEndsec()` helper, which finds the ENTITIES sect
 
 **Mode B:**
 - Outer 1250×3200 rectangle
-- Inner dashed rectangle around the centered layout (computed dynamically from `offsetX`, `offsetY`, and the max extent of all placements)
+- Inner dashed rectangle around the layout (positioned by `offsetX`, `offsetY`, and the max extent of all placements). For `bottom-left` alignment this rectangle hugs the bottom-left of the sheet; for `centered` alignment it is centered.
 
 Note: The inner rectangle dimensions are computed from the actual placements in the layout (`Math.max(...placements.map(pl => pl.packX + pl.packWidth))`), not stored as layout properties.
 
@@ -575,7 +618,7 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
 - HTML5 Canvas with **pan** (mouse drag) and **zoom** (scroll wheel)
 - Color-coded layers (CUT=red, Layer 0=white, sheet border=gray, labels=amber)
 - Shows sheet boundary, margin guides (dashed), placed parts with labels
-- Mode A: 35mm margin rectangle; Mode B: centered guide rectangle
+- Mode A: 35mm margin rectangle; Mode B: alignment guide rectangle (bottom-left or centered)
 - **Per-part geometry rendering:** Uses the same Maker.js model extraction (`extractDxfModel`) as the DXF writer. Each part's base model is deep-cloned, then transformed through the same 3-step pipeline (normalize → rotate & align → translate) using `makerjs.model.moveRelative` and `makerjs.model.rotate`. The transformed model is walked via `makerjs.model.walk()` to draw all path types (lines, arcs, circles) with layer-appropriate colors.
 - **Label positioning:** Part names are drawn at the center of the Layer 0 bbox in sheet space. For 90° rotation, `l0Width` and `l0Height` swap in sheet space, and an `l0ShiftX = l0Height` offset accounts for the alignment shift.
 - **Deduplicated CUT lines:** Rendered on top of part geometry using `collectAndDeduplicate()` (cached in `layout.dedupedCutSegments` if available, otherwise computed on-the-fly).
@@ -584,13 +627,14 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
 ### 11.4 Sheet List Panel
 
 - Lists all layouts with thumbnail info
-- Each card shows: sheet name, repeat count, utilization %, mode badge
+- Each card shows: sheet name, repeat count, utilization %, alignment badge (Margin / Centered / Bottom-Left)
 - Click to select → updates the preview canvas
 - Export button per layout
 
 ### 11.5 Export Dialog
 
 - Shows number of layouts and total sheets to cut
+- Shows mode description: "Standard Margin" (Mode A), "Full Span (Centered)" / "Full Span (Bottom-Left)" / "Full Span (Mixed)" (Mode B, depending on alignments)
 - Lists warnings (over/under-production)
 - Exports all layouts as a ZIP of individual DXF files
 

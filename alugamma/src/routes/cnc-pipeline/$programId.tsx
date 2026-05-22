@@ -9,7 +9,7 @@ import { LayerControls, LAYER_COLORS, getLayerColor } from "@/features/cnc-pipel
 import { SequencePill } from "@/features/cnc-pipeline/components/SequencePill";
 import { AddLayerDropdown } from "@/features/cnc-pipeline/components/AddLayerDropdown";
 import { usePlayback } from "@/features/cnc-pipeline/hooks/usePlayback";
-import type { GeometryResponse, CustomSequence } from "@/features/cnc-pipeline/types";
+import type { GeometryResponse, CustomSequence, IdSequence } from "@/features/cnc-pipeline/types";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -68,7 +68,7 @@ export default function CNCProgramViewerPage() {
   const [currentEstimatedTime, setCurrentEstimatedTime] = useState(0);
 
   // ── Layer sequence state ──────────────────────────────────────────────────
-  const [layerSequence, setLayerSequence] = useState<CustomSequence>([]);
+  const [layerSequence, setLayerSequence] = useState<IdSequence>([]);
 
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
 
@@ -141,25 +141,28 @@ export default function CNCProgramViewerPage() {
       // Initialize layer sequence from program's saved custom sequence or default
       if (program.customSequence && Array.isArray(program.customSequence) && program.customSequence.length > 0) {
         const seq = program.customSequence;
-        // Detect format: if second element is a string id (not a number), translate to numbers
-        if (typeof seq[0][1] === "string") {
-          // New id-based format — translate to number-based for this viewer
-          setLayerSequence(seq.map(([layer, toolId]) => {
-            const tool = resolvedTools[toolId as string];
-            return [layer, tool?.number ?? 0] as [string, number];
-          }))
-        } else {
-          setLayerSequence(seq as CustomSequence)
-        }
+        // Always normalize to id-based format
+        setLayerSequence(seq.map(([layer, toolRef]) => {
+          if (typeof toolRef === "string") {
+            // Already id-based
+            return [layer, toolRef] as [string, string];
+          } else {
+            // Legacy number-based — migrate to id
+            const toolNum = Number(toolRef);
+            const match = Object.entries(resolvedTools).find(([, t]) => t.number === toolNum);
+            // Prefer tool that has this layer in its layers dict
+            const layerMatch = Object.entries(resolvedTools)
+              .filter(([, t]) => t.number === toolNum && layer in t.layers);
+            const resolvedId = layerMatch.length > 0 ? layerMatch[0][0] : (match ? match[0] : Object.keys(resolvedTools)[0] ?? "prav");
+            return [layer, resolvedId] as [string, string];
+          }
+        }))
       } else {
         const detectedLayers = program.contoursByLayer
           ? Object.keys(program.contoursByLayer)
           : []
         const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
-        setLayerSequence(defaultSeq.map(([layer, toolId]) => {
-          const tool = resolvedTools[toolId];
-          return [layer, tool?.number ?? 0] as [string, number];
-        }))
+        setLayerSequence(defaultSeq)
       }
     }
   }, [program, loadedProgramId]);
@@ -215,14 +218,13 @@ export default function CNCProgramViewerPage() {
     if (!program) return false
     const detectedLayers = program.contoursByLayer ? Object.keys(program.contoursByLayer) : []
     const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
-      .map(([layer, toolId]) => [layer, resolvedTools[toolId]?.number ?? 0] as [string, number])
     return JSON.stringify(layerSequence) !== JSON.stringify(defaultSeq)
-  }, [layerSequence, program, resolvedLayerToolMap, resolvedTools])
+  }, [layerSequence, program, resolvedLayerToolMap])
 
   const hasRegenerated = selectedAlgorithm !== (program?.algorithm) || isCustomOrder;
   const isDirty = hasRegenerated || (program && editName !== program.name);
 
-  async function handleRegenerate(newAlgorithm?: string, newSequence?: CustomSequence) {
+  async function handleRegenerate(newAlgorithm?: string, newSequence?: IdSequence) {
     if (!program?.contoursByLayer || !program?.stockBbox) return;
 
     const algo = newAlgorithm ?? selectedAlgorithm
@@ -235,7 +237,6 @@ export default function CNCProgramViewerPage() {
     try {
       const detectedLayers = Object.keys(program.contoursByLayer)
       const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
-        .map(([layer, toolId]) => [layer, resolvedTools[toolId]?.number ?? 0] as [string, number])
       const customSeq = JSON.stringify(seq) === JSON.stringify(defaultSeq) ? undefined : seq
 
       const result = await regenerate({
@@ -367,7 +368,7 @@ export default function CNCProgramViewerPage() {
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
               Sequence
             </span>
-            {layerSequence.map(([layer, toolNum], idx) => (
+            {layerSequence.map(([layer, toolId], idx) => (
               <div key={layer} className="flex items-center">
                 {idx > 0 && (
                   <span className="text-slate-600 mx-0.5">→</span>
@@ -375,7 +376,7 @@ export default function CNCProgramViewerPage() {
                 <SequencePill
                   layer={layer}
                   color={getLayerColor(layer)}
-                  toolLabel={`T${toolNum}`}
+                  toolLabel={`T${resolvedTools[toolId]?.number ?? 0}`}
                   disabled={isRegenerating || !program?.contoursByLayer}
                   onRemove={() => {
                     const newSeq = [...layerSequence]
@@ -390,18 +391,17 @@ export default function CNCProgramViewerPage() {
                   }}
                   currentIndex={idx}
                   totalCount={layerSequence.length}
-                  availableTools={Object.values(resolvedTools)
-                    .sort((a, b) => a.number - b.number)
-                    .map((t) => ({
-                      value: String(t.number),
+                  availableTools={Object.entries(resolvedTools)
+                    .sort(([, a], [, b]) => a.number - b.number)
+                    .map(([key, t]) => ({
+                      value: key,
                       label: `T${t.number}`,
-                      description: t.name,
+                      description: `${t.name} (${t.id})`,
                     }))}
-                  currentToolValue={String(toolNum)}
+                  currentToolValue={toolId}
                   onToolChange={(val) => {
-                    const toolNum = parseInt(val, 10)
                     const newSeq = [...layerSequence]
-                    newSeq[idx] = [layerSequence[idx][0], toolNum]
+                    newSeq[idx] = [layerSequence[idx][0], val]
                     handleRegenerate(undefined, newSeq)
                   }}
                 />
@@ -417,7 +417,8 @@ export default function CNCProgramViewerPage() {
                 ...Object.keys(resolvedLayerToolMap),
               ])
               return [...allLayerKeys].filter((l) => !assigned.has(l)).map((layer) => {
-                const toolNum = resolvedLayerToolMap[layer] ? resolvedTools[resolvedLayerToolMap[layer]]?.number ?? 0 : 0
+                const toolId = resolvedLayerToolMap[layer] ?? Object.keys(resolvedTools).sort((a, b) => resolvedTools[a].number - resolvedTools[b].number)[0] ?? "prav"
+                const toolNum = resolvedTools[toolId]?.number ?? 0
                 return {
                   layer,
                   color: getLayerColor(layer),
@@ -426,10 +427,8 @@ export default function CNCProgramViewerPage() {
               })
             })()}
             onAddLayer={(layer) => {
-              const toolNum = resolvedLayerToolMap[layer]
-                ? resolvedTools[resolvedLayerToolMap[layer]]?.number ?? 0
-                : 0
-              const newSeq = [...layerSequence, [layer, toolNum] as [string, number]]
+              const toolId = resolvedLayerToolMap[layer] ?? Object.keys(resolvedTools).sort((a, b) => resolvedTools[a].number - resolvedTools[b].number)[0] ?? "prav"
+              const newSeq = [...layerSequence, [layer, toolId] as [string, string]]
               handleRegenerate(undefined, newSeq)
             }}
             disabled={isRegenerating}
@@ -465,7 +464,6 @@ export default function CNCProgramViewerPage() {
                               if (!program) return
                               const detectedLayers = program.contoursByLayer ? Object.keys(program.contoursByLayer) : []
                               const defaultSeq = deriveDefaultSequence(program.scenario, detectedLayers, resolvedLayerToolMap)
-                                .map(([layer, toolId]) => [layer, resolvedTools[toolId]?.number ?? 0] as [string, number])
                               handleRegenerate(undefined, defaultSeq)
                             }}
                           >
@@ -478,8 +476,9 @@ export default function CNCProgramViewerPage() {
                         Reorder layers to change CNC execution order. This affects tool change sequence in the NC program.
                       </p>
                       <div className="space-y-1">
-                        {layerSequence.map(([layer, toolNum], idx) => {
+                        {layerSequence.map(([layer, toolId], idx) => {
                           const color = getLayerColor(layer)
+                          const tool = resolvedTools[toolId]
                           return (
                             <div
                               key={layer}
@@ -496,7 +495,7 @@ export default function CNCProgramViewerPage() {
                                 {layer}
                               </span>
                               <span className="text-[10px] font-mono text-slate-500 ml-auto">
-                                T{toolNum}
+                                T{tool?.number ?? "?"}
                               </span>
                               <div className="flex items-center gap-0.5 ml-2">
                                 <Button

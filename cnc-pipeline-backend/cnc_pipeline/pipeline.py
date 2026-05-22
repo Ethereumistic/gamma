@@ -35,6 +35,8 @@ def _resolve_custom_sequence(custom_sequence, tools: dict[str, dict]) -> list[tu
     """Validate and resolve a custom_sequence to [(layer, tool_id), ...].
     Handles both new format [[layer, tool_id], ...] and legacy [[layer, tool_number], ...].
     """
+    from .config import LAYER_TOOL_MAP
+
     validated = []
     for entry in custom_sequence:
         if not isinstance(entry, list) or len(entry) < 2:
@@ -48,11 +50,28 @@ def _resolve_custom_sequence(custom_sequence, tools: dict[str, dict]) -> list[tu
         elif isinstance(tool_ref, (int, float)):
             # Legacy format: tool_number → find matching tool ID
             tool_num = int(tool_ref)
-            # Find tool with this number
-            matches = [tid for tid, t in tools.items() if t["number"] == tool_num]
-            if not matches:
-                raise ValueError(f"Unknown tool number in custom_sequence: T{tool_num} for layer {layer}")
-            tool_id = matches[0]  # Use first match
+
+            if tool_num == 0:
+                # Tool number 0 is a placeholder — resolve from LAYER_TOOL_MAP
+                # or fall back to the first available tool
+                if layer in LAYER_TOOL_MAP and LAYER_TOOL_MAP[layer] in tools:
+                    tool_id = LAYER_TOOL_MAP[layer]
+                else:
+                    # Fall back to first available tool sorted by number
+                    sorted_tools = sorted(tools.items(), key=lambda x: x[1]["number"])
+                    if sorted_tools:
+                        tool_id = sorted_tools[0][0]
+                    else:
+                        raise ValueError(f"No tools available for custom_sequence layer {layer}")
+            else:
+                # Find tool(s) with this number
+                matches = [tid for tid, t in tools.items() if t["number"] == tool_num]
+                if not matches:
+                    raise ValueError(f"Unknown tool number in custom_sequence: T{tool_num} for layer {layer}")
+                # When multiple tools share a pocket number, prefer the one whose
+                # layers dict explicitly lists this layer; otherwise use first match
+                layer_match = [tid for tid in matches if layer in tools[tid].get("layers", {})]
+                tool_id = layer_match[0] if layer_match else matches[0]
         else:
             raise ValueError(f"Invalid tool reference in custom_sequence: {tool_ref}")
 

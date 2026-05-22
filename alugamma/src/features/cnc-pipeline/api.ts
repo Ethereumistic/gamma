@@ -1,6 +1,6 @@
 // src/features/cnc-pipeline/api.ts
 
-import type { GenerateResponse, GeometryResponse, PreviewResponse, RegenerateResponse, StoredContour, StockBbox, CustomSequence } from "./types"
+import type { GenerateResponse, GeometryResponse, PreviewResponse, RegenerateResponse, StoredContour, StockBbox, CustomSequence, IdSequence } from "./types"
 
 const BASE = import.meta.env.VITE_CNC_API_URL || "https://cnc.alubeta.com"
 
@@ -54,7 +54,7 @@ export interface RegeneratePayload {
   scenario: string
   algorithm: string
   tool_overrides?: Record<string, any>
-  custom_sequence?: CustomSequence
+  custom_sequence?: CustomSequence | IdSequence
 }
 
 export async function regenerate(payload: RegeneratePayload): Promise<RegenerateResponse> {
