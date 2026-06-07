@@ -167,12 +167,10 @@ DXF layer colors (ACI codes and canvas CSS):
 - `FREZ` → ACI 6 (magenta) / canvas `#d946ef`
 - `FREZ_135` → ACI 1 (red) / canvas `#ef4444`
 - `HOLES` → ACI 2 (yellow) / canvas `#eab308`
-- `SHEETS` → ACI 4 (cyan) with true-color override RGB(39,118,187) / canvas `rgb(39,118,187)`
+- `SHEETS` → ACI 4 (cyan) / canvas `rgb(39,118,187)`
 - Custom/unknown layers → ACI 30 (orange) / canvas `#f97316`
 
-The `SHEETS` layer uses a DXF true-color override (group code 420) to achieve the exact RGB(39, 118, 187) dark-cyan color. For other layers, the nearest ACI color is used. Unknown or custom-named layers default to orange (ACI 30) so they are easily distinguishable.
-
-Helper functions `getAciColor(layer)` and `getCanvasColor(layer)` in `constants.ts` resolve the correct color for any layer name, falling back to orange for unrecognized layers.
+The canvas uses the exact RGB values for each layer, while DXF output uses the closest ACI color codes for maximum compatibility across all CAD software. Unknown or custom-named layers default to orange (ACI 30). Helper functions `getAciColor(layer)` and `getCanvasColor(layer)` in `constants.ts` resolve the correct color for any layer name.
 
 ---
 
@@ -414,7 +412,7 @@ Each `SheetLayout` produces one `.dxf` file generated in two stages:
 1. **Maker.js model construction** — Build an `IModel` containing all geometry (sheet frame lines, per-part non-CUT geometry as sub-models, deduplicated CUT line paths)
 2. **Maker.js DXF export** — `makerjs.exporter.toDXF()` converts the model to a complete DXF string with proper layers and colors
 3. **Label injection** — TEXT entities for the sheet title, per-part name labels, and repetition count are injected into the DXF string before ENDSEC
-4. **Layer color post-processing** — The DXF string is post-processed to apply true-color overrides (group code 420) for the SHEETS layer and to change unknown layer colors to ACI 30 (orange)
+4. **Layer color post-processing** — Unknown/custom layer colors are changed to ACI 30 (orange) in the LAYER table entries for maximum DXF compatibility
 
 The approach mirrors the sheet-metal feature, which also uses Maker.js for DXF output.
 
@@ -466,7 +464,6 @@ The writer builds the DXF in these steps:
       │
       ▼
 8. Post-process DXF string:
-      │   - Add true-color (group code 420) for SHEETS layer → RGB(39, 118, 187)
       │   - Change unknown layer ACI colors to 30 (orange)
       │
       ▼
@@ -807,7 +804,7 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
       │   ├── Walk model to collect all used layers → build layerOptions
       │   │   (known layers get specific ACI colors; unknown layers get ACI 30 = orange)
       │   ├── Export via makerjs.exporter.toDXF() with complete layerOptions
-      │   ├── Post-process DXF: add true-color (420) for SHEETS layer, fix unknown layer colors
+      │   ├── Post-process DXF: change unknown layer colors to ACI 30 (orange)
       │   └── Inject TEXT entities before ENDSEC:
       │       ├── Sheet title at top-left (left-aligned, height 50mm)
       │       ├── Per-part name labels at center of L0 bbox (center-aligned, height 20mm)
@@ -901,7 +898,7 @@ The frontend nesting output is compatible with `split_sheets.py` and `merge_dxf_
 - FREZ_135 lines are on the `FREZ_135` layer (ACI color 1 = red)
 - HOLES are on the `HOLES` layer (ACI color 2 = yellow)
 - Layer 0 outlines are white (ACI 7)
-- SHEETS layer uses true-color RGB(39,118,187) (dark cyan) with ACI 4 fallback
+- SHEETS layer uses ACI 4 (cyan) in DXF; canvas uses exact RGB(39,118,187)
 - Custom/unknown layers default to ACI 30 (orange)
 - Sheet title label is on the `SHEETS` layer at top-left
 - Per-part name labels are on the `SHEETS` layer at the center of each part's L0 bbox

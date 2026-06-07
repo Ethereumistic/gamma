@@ -14,7 +14,6 @@ import {
   LAYER_SHEETS,
   LAYER_ZERO,
   LAYER_COLORS,
-  LAYER_TRUE_COLORS,
   DEFAULT_LAYER_ACI_COLOR,
   getAciColor,
 } from "./constants";
@@ -50,8 +49,7 @@ function injectBeforeEndsec(dxfString: string, entityDxf: string): string {
 }
 
 /** Post-process DXF string to fix layer colors:
- *  1. Add true color (group code 420) for SHEETS layer
- *  2. Change unknown layer colors to orange (ACI 30) */
+ *  Change unknown layer colors to orange (ACI 30). */
 function postProcessDxfLayerColors(dxfString: string): string {
   const lineEnding = dxfString.includes("\r\n") ? "\r\n" : "\n";
   const lines = dxfString.split(lineEnding);
@@ -79,15 +77,6 @@ function postProcessDxfLayerColors(dxfString: string): string {
       if (!knownLayers.has(layerName) && layerName !== "DEFPOINTS" && layerName !== "") {
         if (colorValueIdx >= 0 && colorValueIdx < lines.length) {
           lines[colorValueIdx] = String(DEFAULT_LAYER_ACI_COLOR);
-          modified = true;
-        }
-      }
-
-      // Add true color for SHEETS layer
-      if (layerName === "SHEETS" && colorValueIdx >= 0 && colorValueIdx < lines.length) {
-        const trueColor = LAYER_TRUE_COLORS[LAYER_SHEETS];
-        if (trueColor !== undefined) {
-          lines.splice(colorValueIdx + 1, 0, "420", String(trueColor));
           modified = true;
         }
       }

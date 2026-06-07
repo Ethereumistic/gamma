@@ -56,12 +56,6 @@ export const LAYER_COLORS: Record<string, number> = {
   [LAYER_HOLES]: 2,       // yellow
 };
 
-/** True color overrides for DXF layers (24-bit RGB: R + G*256 + B*65536).
- *  Applied as group code 420 in the LAYER table entry. */
-export const LAYER_TRUE_COLORS: Record<string, number> = {
-  [LAYER_SHEETS]: 39 + 118 * 256 + 187 * 65536, // RGB(39, 118, 187) dark cyan
-};
-
 /** Default ACI color for layers not in LAYER_COLORS (orange) */
 export const DEFAULT_LAYER_ACI_COLOR = 30;
 
