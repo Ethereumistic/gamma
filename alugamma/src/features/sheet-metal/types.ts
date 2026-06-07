@@ -97,6 +97,14 @@ export const SIDE_KEY_TO_DIR: Record<SideKey, string> = {
   left: "L",
 };
 
+/** Reverse map: nesting direction code → sheet-metal SideKey */
+export const DIR_TO_SIDE_KEY: Record<string, SideKey> = {
+  T: "top",
+  R: "right",
+  B: "bottom",
+  L: "left",
+};
+
 export type Rect = {
   x0: number;
   y0: number;

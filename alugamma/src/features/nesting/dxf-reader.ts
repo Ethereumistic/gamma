@@ -513,19 +513,39 @@ export function createNestPartFromDesign(
       y2: s.y2,
     }));
 
-  // Direction: always null for sheet-metal imports — the arrow is visual metadata
-  // for the DXF, not a packing constraint. The nesting algorithm rotates freely
-  // for optimal placement. Overrides can still force a direction if needed.
-  const direction: PartDirection = overrides?.direction ?? null;
+  // ── Direction and count from the export name (source of truth) ───────
+  // The export name encodes direction and count via the established suffix
+  // convention: basename_<DIR>_x<count> . This is the same parser used for
+  // drag-and-drop imports, so both paths produce identical results.
+  const parsed = parseFilename(design.exportName + ".dxf");
 
-  // Count: always use metadataCount regardless of includeMetadata.
-  // includeMetadata controls the filename suffix only; the count is always
-  // meaningful for nesting (how many copies of this part to pack).
-  const count = overrides?.count ?? (design.model.metadataCount || 1);
+  // Backwards compatibility: if the export name has no count suffix (old design
+  // format where count was only in model.metadataCount), fall back to model fields.
+  let count = parsed.count;
+  if (count === 1 && (design.model.metadataCount || 0) > 1) {
+    count = design.model.metadataCount;
+  }
 
-  return createNestPartFromGeometry(
+  // Direction: parsed from export name for display (UI badges), but nesting
+  // always treats sheet-metal parts as freely rotatable — the arrow is visual
+  // metadata for the CNC operator, not a packing constraint.
+  let direction: PartDirection = overrides?.direction ?? parsed.direction;
+
+  // Backwards compat: if name has no direction suffix but model had it set
+  if (!direction && !parsed.direction && design.model.arrowDirection) {
+    // Map SideKey to PartDirection for legacy models that stored arrow direction
+    const legacyDirMap: Record<string, PartDirection> = { top: "T", right: "R", bottom: "B", left: "L" };
+    direction = legacyDirMap[design.model.arrowDirection] ?? null;
+  }
+
+  // Override count if explicitly provided
+  if (overrides?.count !== undefined) {
+    count = overrides.count;
+  }
+
+  const part = createNestPartFromGeometry(
     design.exportName,
-    direction,
+    direction,  // stored for display/badges
     count,
     l0Width,
     l0Height,
@@ -533,6 +553,13 @@ export function createNestPartFromDesign(
     design.id,
     dxfContent,
   );
+
+  // Sheet-metal parts: arrow direction is visual metadata for the CNC operator,
+  // not a packing constraint. Force rotation to be unlocked / free.
+  part.rotationLocked = false;
+  part.allowedRotation = -1;
+
+  return part;
 }
 
 // ────────────────────────────────────────────────────────────────────────────────

@@ -27,7 +27,7 @@ import { useWorkspace } from "@/features/workspace/context";
 import { api } from "../../convex/_generated/api";
 import { buildDxf } from "@/features/sheet-metal/dxf";
 import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
-import { SIDE_KEY_TO_DIR, normalizeSheetMetalModel } from "@/features/sheet-metal/types";
+import { normalizeSheetMetalModel } from "@/features/sheet-metal/types";
 import { Id } from "../../convex/_generated/dataModel";
 
 function BatchExportDialog({
@@ -108,15 +108,11 @@ function BatchExportDialog({
                     const geometry = computeSheetMetalGeometry(design.model as any);
                     const dxfString = buildDxf(geometry, design.exportName, design.model as any);
 
+                    // The export name already encodes direction and count via the
+                    // suffix convention (e.g. "7-8_T_x10"), so no includeMetadata gate needed.
                     let filename = design.exportName.toLowerCase().endsWith(".dxf")
                         ? design.exportName.replace(/\.dxf$/i, "")
                         : design.exportName;
-
-                    if (m.includeMetadata) {
-                        const dir = SIDE_KEY_TO_DIR[m.arrowDirection] ?? "T";
-                        const count = m.metadataCount || 1;
-                        filename = `${filename}_${dir}_x${count}`;
-                    }
 
                     zip.file(`${filename}.dxf`, dxfString);
                     successCount++;

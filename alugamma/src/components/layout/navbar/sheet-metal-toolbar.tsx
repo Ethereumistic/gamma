@@ -9,6 +9,8 @@ import { ExportSettingsDialog } from "@/features/sheet-metal/export-settings-dia
 import { FormulaBar } from "@/features/sheet-metal/formula-bar";
 import { type ParseError, parseFormula, serializeFormula } from "@/features/sheet-metal/formula";
 import { useSheetMetal } from "@/features/sheet-metal/context";
+import { parseDesignName } from "@/features/sheet-metal/context";
+import { type SideKey } from "@/features/sheet-metal/types";
 import { useWorkspace } from "@/features/workspace/context";
 import { NavNumberField } from "./nav-number-field";
 
@@ -18,12 +20,12 @@ export function SheetMetalToolbar() {
     model,
     designName,
     setDesignName,
+    setDesignCount,
+    setDesignDirection,
     setBaseValue,
     setIncludeName,
     setIncludeArrow,
     setArrowDirection,
-    setIncludeMetadata,
-    setMetadataCount,
     setInvert,
     setRubberband,
     replaceModel,
@@ -136,8 +138,25 @@ export function SheetMetalToolbar() {
               e.stopPropagation();
             }
           }}
-          placeholder="e.g. facade-panel-01"
+          placeholder="e.g. facade-panel-01_B_x7"
           className="h-8 border-white/10 bg-black/20 text-xs"
+        />
+      </div>
+
+      {/* Count + Direction (derived from design name) */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">×</span>
+        <Input
+          type="number"
+          min={1}
+          max={9999}
+          value={parseDesignName(designName).count}
+          onChange={(e) => setDesignCount(Math.max(1, parseInt(e.target.value) || 1))}
+          className="h-8 w-14 border-white/10 bg-black/20 text-xs"
+        />
+        <DirectionDropdown
+          value={parseDesignName(designName).direction}
+          onChange={setDesignDirection}
         />
       </div>
 
@@ -192,8 +211,6 @@ export function SheetMetalToolbar() {
           onSetIncludeName={setIncludeName}
           onSetIncludeArrow={setIncludeArrow}
           onSetArrowDirection={setArrowDirection}
-          onSetIncludeMetadata={setIncludeMetadata}
-          onSetMetadataCount={setMetadataCount}
           onSetRubberband={setRubberband}
         />
         <Button
@@ -213,6 +230,59 @@ export function SheetMetalToolbar() {
         >
           {isSaving ? "Saving..." : "Save + Export DXF"}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Direction Dropdown ──────────────────────────────────────────────────────
+// Compact 5-option dropdown for setting part direction in the navbar.
+// None = free rotation (no _DIR suffix), T/B/L/R = locked arrow direction.
+
+type DirectionOption = {
+  value: SideKey | null;
+  label: string;
+  icon: string;
+};
+
+const DIRECTION_OPTIONS: DirectionOption[] = [
+  { value: null, label: "None", icon: "∅" },
+  { value: "top", label: "Top", icon: "↑" },
+  { value: "right", label: "Right", icon: "→" },
+  { value: "bottom", label: "Bottom", icon: "↓" },
+  { value: "left", label: "Left", icon: "←" },
+];
+
+function DirectionDropdown({
+  value,
+  onChange,
+}: {
+  value: SideKey | null;
+  onChange: (dir: SideKey | null) => void;
+}) {
+  const selected = DIRECTION_OPTIONS.find((o) => o.value === value) ?? DIRECTION_OPTIONS[0];
+
+  return (
+    <div className="relative">
+      <select
+        value={value === null ? "none" : value}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "none" ? null : (v as SideKey));
+        }}
+        className="h-8 appearance-none rounded-md border border-white/10 bg-black/20 px-2 pr-6 text-xs text-foreground hover:border-white/20 focus:outline-none focus:ring-1 focus:ring-white/20"
+        title="Part direction (arrow orientation)"
+      >
+        {DIRECTION_OPTIONS.map((opt) => (
+          <option key={opt.value ?? "none"} value={opt.value ?? "none"}>
+            {opt.icon} {opt.label}
+          </option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center">
+        <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 12 12" fill="none">
+          <path d="M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </div>
     </div>
   );

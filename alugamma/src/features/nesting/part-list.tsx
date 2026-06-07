@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNesting } from "./context";
 import { createNestPartFromFile, createNestPartFromDesign } from "./dxf-reader";
-import { createNestPart } from "./types";
+import { createNestPart, parseFilename } from "./types";
 import type { NestPart, PartDirection } from "./types";
 import { useWorkspace } from "@/features/workspace/context";
 import { api } from "../../../convex/_generated/api";
@@ -396,8 +396,19 @@ export function PartListPanel() {
                 {filteredDesigns.map((design) => {
                   const isSelected = selectedDesignIds.has(design.id);
                   const m = normalizeSheetMetalModel(design.model);
-                  const dir = { top: "↑T", right: "→R", bottom: "↓B", left: "←L" }[m.arrowDirection];
-                  const count = m.metadataCount || 1;
+                  // Parse count and direction from export name (source of truth)
+                  // with backwards-compat fallback to model fields for old designs.
+                  const parsed = parseFilename(design.exportName + ".dxf");
+                  const dirMap: Record<string, string> = { T: "↑T", B: "↓B", L: "←L", R: "→R" };
+                  let dir = parsed.direction ? dirMap[parsed.direction] : null;
+                  let count = parsed.count;
+                  // Backwards compat: fall back to model fields if no suffix in name
+                  if (!dir) {
+                    dir = { top: "↑T", right: "→R", bottom: "↓B", left: "←L" }[m.arrowDirection] ?? null;
+                  }
+                  if (count === 1 && (m.metadataCount || 0) > 1) {
+                    count = m.metadataCount;
+                  }
 
                   return (
                     <label

@@ -13,6 +13,7 @@ import {
   createInnerFrezMeasurement,
   normalizeSheetMetalModel,
   SIDE_KEY_TO_DIR,
+  DIR_TO_SIDE_KEY,
   type CornerKey,
   type CornerReliefAxis,
   type FrezMode,
@@ -23,7 +24,38 @@ import {
   type HoleData,
   type FeatureKind,
 } from "@/features/sheet-metal/types";
+import { parseFilename } from "@/features/nesting/types";
 import { useWorkspace } from "@/features/workspace/context";
+
+// ── Design Name ↔ Count/Direction Helpers ───────────────────────────────────
+// The design name is the source of truth for count and direction via the
+// established filename suffix convention: basename_<DIR>_x<count>
+// e.g. "7-8_T_x10" → { basename: "7-8", direction: "top", count: 10 }
+
+function parseDesignName(name: string): { basename: string; direction: SideKey | null; count: number } {
+  // Add fake .dxf extension so parseFilename works on bare design names
+  const parsed = parseFilename(name + ".dxf");
+  const dir: SideKey | null = parsed.direction ? (DIR_TO_SIDE_KEY[parsed.direction] ?? null) : null;
+  return {
+    basename: parsed.name,
+    direction: dir,
+    count: parsed.count,
+  };
+}
+
+function buildDesignName(basename: string, direction: SideKey | null, count: number): string {
+  let result = basename;
+  if (direction) {
+    result += `_${SIDE_KEY_TO_DIR[direction]}`;
+  }
+  if (count > 1) {
+    result += `_x${count}`;
+  }
+  return result;
+}
+
+/** Parse direction and count from a design name (re-exported for toolbar use) */
+export { parseDesignName };
 
 function replaceMeasurement<T extends { amount: number }>(items: T[], index: number, amount: number) {
   return items.map((item, itemIndex) =>
@@ -67,6 +99,8 @@ type SheetMetalContextType = {
   setArrowDirection: (direction: SideKey) => void;
   setIncludeMetadata: (value: boolean) => void;
   setMetadataCount: (count: number) => void;
+  setDesignCount: (count: number) => void;
+  setDesignDirection: (direction: SideKey | null) => void;
   setInvert: (axis: "invertX" | "invertY", value: boolean) => void;
   addFlange: (side: SideKey) => void;
   addFrez: (side: SideKey) => void;
@@ -242,6 +276,25 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     setModel((current) => ({
       ...current,
       metadataCount: Math.max(1, Math.round(count)),
+    }));
+  }
+
+  function setDesignCount(count: number) {
+    const clamped = Math.max(1, Math.round(count));
+    const { basename, direction } = parseDesignName(designName);
+    const newName = buildDesignName(basename, direction, clamped);
+    setDesignName(newName);
+    setModel((current) => ({ ...current, metadataCount: clamped }));
+  }
+
+  function setDesignDirection(direction: SideKey | null) {
+    const { basename, count } = parseDesignName(designName);
+    const newName = buildDesignName(basename, direction, count);
+    setDesignName(newName);
+    setModel((current) => ({
+      ...current,
+      arrowDirection: direction ?? current.arrowDirection,
+      includeArrow: direction !== null ? true : current.includeArrow,
     }));
   }
 
@@ -573,7 +626,21 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
 
     setRawModel(cloneModel(design.model));
     setHistory([]);
-    setDesignName(design.name);
+    // Use design.name (which may lack suffix) but sync metadata from model fields
+    // into the name so they\'re always present going forward.
+    const parsed = parseDesignName(design.name);
+    // Backwards compat: if the name has no count/direction suffix but the model
+    // has non-default values, bake them into the name now.
+    let dir: SideKey | null = parsed.direction;
+    let count = parsed.count;
+    if (!parsed.direction && design.model.arrowDirection) {
+      dir = design.model.arrowDirection as SideKey;
+    }
+    if (parsed.count === 1 && (design.model.metadataCount || 0) > 1) {
+      count = design.model.metadataCount;
+    }
+    const syncedName = buildDesignName(parsed.basename, dir, count);
+    setDesignName(syncedName);
     setSelectedDesignId(design.id);
     setIsNewDesign(false);
     toast.success(`Loaded "${design.name}".`);
@@ -593,6 +660,13 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     }
 
     const normalizedModel = normalizeSheetMetalModel(model);
+
+    // Sync metadata fields from the design name (source of truth)
+    const parsed = parseDesignName(trimmedDesignName);
+    normalizedModel.metadataCount = parsed.count;
+    if (parsed.direction) {
+      normalizedModel.arrowDirection = parsed.direction;
+    }
 
     setIsSaving(true);
     const loadingToastId = toast.loading(options?.markExported ? "Saving design and recording export..." : "Saving design...");
@@ -631,11 +705,8 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
     const link = document.createElement("a");
 
     let filename = sanitizeFileName(designName);
-    if (model.includeMetadata) {
-      const dir = SIDE_KEY_TO_DIR[model.arrowDirection] ?? "T";
-      const count = model.metadataCount || 1;
-      filename = `${filename}_${dir}_x${count}`;
-    }
+    // The design name already encodes direction and count via suffix convention
+    // (e.g. "7-8_T_x10"), so no conditional includeMetadata gate is needed.
 
     link.href = URL.createObjectURL(blob);
     link.download = `${filename}.dxf`;
@@ -662,6 +733,8 @@ export function SheetMetalProvider({ children }: { children: ReactNode }) {
         setArrowDirection,
         setIncludeMetadata,
         setMetadataCount,
+        setDesignCount,
+        setDesignDirection,
         setInvert,
         addFlange,
         addFrez,
