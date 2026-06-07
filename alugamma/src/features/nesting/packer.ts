@@ -27,8 +27,10 @@ import {
   type PackingMode,
   type LayoutAlignment,
   type PackedBin,
+  computeLayoutUtilization,
+  detectPackingMode,
+  createLayoutId,
 } from "./types";
-import { detectPackingMode, createLayoutId } from "./types";
 
 // ── Free-rectangle management ─────────────────────────────────────────────
 
@@ -327,19 +329,6 @@ class MaxRectsPacker {
   }
 }
 
-// ── Layout Utilization Helper ─────────────────────────────────────────────────
-
-/** Compute the material utilization percentage for a single layout.
- *  Returns: (total part area / sheet area) × 100 */
-function computeLayoutUtilization(placements: Placement[]): number {
-  const sheetArea = SHEET_WIDTH * SHEET_HEIGHT;
-  const partArea = placements.reduce(
-    (sum, pl) => sum + pl.packWidth * pl.packHeight,
-    0,
-  );
-  return (partArea / sheetArea) * 100;
-}
-
 // ── Public API ─────────────────────────────────────────────────────────────
 
 function runSinglePacker(
@@ -564,12 +553,11 @@ export function packAllParts(parts: NestPart[]): {
     // Compute repeat count
     const repeatCount = computeRepeatCount(placements, parts);
 
-    // Assign sheet name
-    const dominant = placements.reduce((prev, curr) =>
-      curr.packWidth * curr.packHeight > prev.packWidth * prev.packHeight ? curr : prev,
-    );
-    const dominantPart = parts.find((p) => p.id === dominant.partId);
-    const sheetName = `sheet_${bi + 1}_${dominantPart?.name ?? "unknown"}`;
+    // Compute utilization
+    const utilizationPercent = Math.round(computeLayoutUtilization(placements));
+
+    // Assign sheet name using the format: {number}_r{repeat}_{mode}_p{parts}_u{util}
+    const sheetName = `${bi + 1}_r${repeatCount}_${mode}_p${placements.length}_u${utilizationPercent}`;
 
     layouts.push({
       id: createLayoutId(bi),
@@ -582,6 +570,7 @@ export function packAllParts(parts: NestPart[]): {
       offsetX,
       offsetY,
       dedupedCutSegments: [], // will be populated by deduplicator
+      utilizationPercent,
     });
   }
 

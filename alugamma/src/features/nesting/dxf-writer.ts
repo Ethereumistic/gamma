@@ -14,8 +14,12 @@ import {
   LAYER_SHEETS,
   LAYER_ZERO,
   LAYER_COLORS,
+  LAYER_TRUE_COLORS,
+  DEFAULT_LAYER_ACI_COLOR,
+  getAciColor,
 } from "./constants";
 import type { SheetLayout, NestPart } from "./types";
+import { formatSheetTitle } from "./types";
 import { collectAndDeduplicate } from "./deduplicator";
 import { extractDxfModel } from "./dxf-reader";
 
@@ -43,6 +47,55 @@ function injectBeforeEndsec(dxfString: string, entityDxf: string): string {
   if (endsecMatch === -1) return dxfString;
   const formatted = entityDxf.replace(/\n/g, lineEnding);
   return dxfString.slice(0, endsecMatch) + formatted + dxfString.slice(endsecMatch);
+}
+
+/** Post-process DXF string to fix layer colors:
+ *  1. Add true color (group code 420) for SHEETS layer
+ *  2. Change unknown layer colors to orange (ACI 30) */
+function postProcessDxfLayerColors(dxfString: string): string {
+  const lineEnding = dxfString.includes("\r\n") ? "\r\n" : "\n";
+  const lines = dxfString.split(lineEnding);
+  const knownLayers = new Set(Object.keys(LAYER_COLORS));
+  let modified = false;
+
+  let i = 0;
+  while (i < lines.length) {
+    // Find start of a LAYER entity: "0" followed by "LAYER"
+    if (lines[i]?.trim() === "0" && lines[i + 1]?.trim() === "LAYER") {
+      let layerName = "";
+      let colorValueIdx = -1; // Index of the color VALUE line (line after "62")
+      let j = i + 2; // Skip "0" and "LAYER"
+
+      // Process group code/value pairs until next entity (group code 0)
+      while (j < lines.length - 1 && lines[j]?.trim() !== "0") {
+        const code = lines[j]?.trim();
+        const value = lines[j + 1]?.trim() || "";
+        if (code === "2") layerName = value;
+        if (code === "62") colorValueIdx = j + 1; // value line index
+        j += 2;
+      }
+
+      // Change unknown layer colors to orange (ACI 30)
+      if (!knownLayers.has(layerName) && layerName !== "DEFPOINTS" && layerName !== "") {
+        if (colorValueIdx >= 0 && colorValueIdx < lines.length) {
+          lines[colorValueIdx] = String(DEFAULT_LAYER_ACI_COLOR);
+          modified = true;
+        }
+      }
+
+      // Add true color for SHEETS layer
+      if (layerName === "SHEETS" && colorValueIdx >= 0 && colorValueIdx < lines.length) {
+        const trueColor = LAYER_TRUE_COLORS[LAYER_SHEETS];
+        if (trueColor !== undefined) {
+          lines.splice(colorValueIdx + 1, 0, "420", String(trueColor));
+          modified = true;
+        }
+      }
+    }
+    i++;
+  }
+
+  return modified ? lines.join(lineEnding) : dxfString;
 }
 
 // ── Main DXF Writer ─────────────────────────────────────────────────────────
@@ -136,14 +189,9 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
 
     // 2. Rotate and align
     if (placement.rotation === 90) {
-      // Rotate 90° CCW around origin, then shift so rotated CUT bbox aligns with (0,0).
-      // After CCW rotation, the bbox shifts left by l0Height.
-      // Adding (l0Height + CUT_OFFSET) in X and CUT_OFFSET in Y brings
-      // the CUT bbox lower-left back to (0,0), matching the 0° case.
       makerjs.model.rotate(instance, 90, [0, 0]);
       makerjs.model.moveRelative(instance, [part.l0Height + CUT_OFFSET, CUT_OFFSET]);
     } else {
-      // No rotation — shift so CUT bbox is at (0,0)
       makerjs.model.moveRelative(instance, [CUT_OFFSET, CUT_OFFSET]);
     }
 
@@ -153,7 +201,7 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     mainModel.models![`${part.id}_${i}`] = instance;
   }
 
-  // ── Deduplicated CUT lines ───────────────────────────
+  // ── Deduplicated CUT lines ────────────────────────────────────────────────
   const dedupedCut = collectAndDeduplicate(
     layout.placements,
     parts,
@@ -168,9 +216,26 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   }
 
   // ── Build DXF via MakerJs (same method as sheet-metal) ──
+
+  // Walk the model to collect all used layers and build complete layerOptions
+  const usedLayers = new Set<string>();
+  makerjs.model.walk(mainModel, {
+    onPath: (walked) => {
+      const layer = walked.layer || (walked.pathContext as any).layer || "0";
+      if (layer) usedLayers.add(layer);
+    },
+  });
+
   const layerOptions: Record<string, { color: number }> = {};
+  // Add all used layers with their correct ACI colors
+  for (const layer of usedLayers) {
+    layerOptions[layer] = { color: getAciColor(layer) };
+  }
+  // Also ensure known layers are always defined (even if empty)
   for (const [layer, color] of Object.entries(LAYER_COLORS)) {
-    layerOptions[layer] = { color };
+    if (!(layer in layerOptions)) {
+      layerOptions[layer] = { color };
+    }
   }
 
   let dxfString = makerjs.exporter.toDXF(mainModel, {
@@ -178,14 +243,71 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     layerOptions,
   });
 
-  // ── Inject sheet label as TEXT entity ─────────────────
-  const alignmentLabel = layout.alignment === "centered" ? "C" : layout.alignment === "bottom-left" ? "BL" : "M";
-  const labelText = `${layout.sheetName}_x${layout.repeatCount}_${alignmentLabel}`;
-  const textHeight = 50;
-  const textX = SHEET_WIDTH / 2;
-  const textY = SHEET_HEIGHT + 80;
-  const textDxf = `0\nTEXT\n8\n${LAYER_SHEETS}\n10\n${textX}\n20\n${textY}\n40\n${textHeight}\n1\n${labelText}\n`;
-  dxfString = injectBeforeEndsec(dxfString, textDxf);
+  // ── Post-process DXF: fix layer colors (true color for SHEETS, orange for unknown) ──
+  dxfString = postProcessDxfLayerColors(dxfString);
+
+  // ── Inject label TEXT entities ────────────────────────────────────────────
+  // Build all entity DXF strings
+  let entityDxf = "";
+
+  const lineEnding = dxfString.includes("\r\n") ? "\r\n" : "\n";
+
+  // ── Sheet title (top-left, above the sheet) ──
+  // Format: {number}_r{repeat}_{mode}_p{parts}_u{util}%
+  const titleText = formatSheetTitle(layout);
+  const titleX = 10; // Left-aligned, small margin from left edge
+  const titleY = SHEET_HEIGHT + 80; // Above the sheet
+  const titleHeight = 50;
+  entityDxf += `0${lineEnding}TEXT${lineEnding}`;
+  entityDxf += `8${lineEnding}${LAYER_SHEETS}${lineEnding}`; // Layer
+  entityDxf += `10${lineEnding}${titleX}${lineEnding}`; // Insertion X
+  entityDxf += `20${lineEnding}${titleY}${lineEnding}`; // Insertion Y
+  entityDxf += `40${lineEnding}${titleHeight}${lineEnding}`; // Text height
+  entityDxf += `1${lineEnding}${titleText}${lineEnding}`; // Text content
+
+  // ── Per-part name labels (centered on L0 bbox) ──
+  const partMap = new Map(parts.map((p) => [p.id, p]));
+  for (const placement of layout.placements) {
+    const part = partMap.get(placement.partId);
+    if (!part) continue;
+
+    const l0ShiftX = placement.rotation === 90 ? part.l0Height : 0;
+    const labelW = placement.rotation === 90 ? part.l0Height : part.l0Width;
+    const labelH = placement.rotation === 90 ? part.l0Width : part.l0Height;
+    const labelTextX =
+      placement.packX + layout.offsetX + CUT_OFFSET + l0ShiftX + labelW / 2;
+    const labelTextY =
+      placement.packY + layout.offsetY + CUT_OFFSET + labelH / 2;
+
+    // Center-aligned text: use group code 72=1 (center) and provide alignment point (11/21)
+    entityDxf += `0${lineEnding}TEXT${lineEnding}`;
+    entityDxf += `8${lineEnding}${LAYER_SHEETS}${lineEnding}`; // Layer
+    entityDxf += `10${lineEnding}${labelTextX}${lineEnding}`; // First alignment X
+    entityDxf += `20${lineEnding}${labelTextY}${lineEnding}`; // First alignment Y
+    entityDxf += `40${lineEnding}20${lineEnding}`; // Text height
+    entityDxf += `1${lineEnding}${part.name}${lineEnding}`; // Text content
+    entityDxf += `72${lineEnding}1${lineEnding}`; // Horizontal alignment: center
+    entityDxf += `11${lineEnding}${labelTextX}${lineEnding}`; // Second alignment X
+    entityDxf += `21${lineEnding}${labelTextY}${lineEnding}`; // Second alignment Y
+  }
+
+  // ── Repetition count label (bottom-right, below the sheet) ──
+  // Shows just the repetition number for this sheet
+  const repeatX = SHEET_WIDTH - 10; // Right-aligned, small margin from right
+  const repeatY = -80; // Below the sheet
+  const repeatHeight = 80;
+  entityDxf += `0${lineEnding}TEXT${lineEnding}`;
+  entityDxf += `8${lineEnding}${LAYER_SHEETS}${lineEnding}`; // Layer
+  entityDxf += `10${lineEnding}${repeatX}${lineEnding}`; // Insertion X
+  entityDxf += `20${lineEnding}${repeatY}${lineEnding}`; // Insertion Y
+  entityDxf += `40${lineEnding}${repeatHeight}${lineEnding}`; // Text height
+  entityDxf += `1${lineEnding}${String(layout.repeatCount)}${lineEnding}`; // Text content
+  entityDxf += `72${lineEnding}2${lineEnding}`; // Horizontal alignment: right
+  entityDxf += `11${lineEnding}${repeatX}${lineEnding}`; // Second alignment X
+  entityDxf += `21${lineEnding}${repeatY}${lineEnding}`; // Second alignment Y
+
+  // Inject all entities before ENDSEC
+  dxfString = injectBeforeEndsec(dxfString, entityDxf);
 
   return dxfString;
 }
@@ -213,8 +335,8 @@ export async function exportAllSheetsAsZip(
 
   for (const layout of layouts) {
     const dxfContent = writeNestSheetDxf(layout, parts);
-    const filename = `${layout.sheetName}_x${layout.repeatCount}.dxf`;
-    zip.file(filename, dxfContent);
+    const filename = formatSheetTitle(layout);
+    zip.file(`${filename}.dxf`, dxfContent);
   }
 
   const blob = await zip.generateAsync({ type: "blob" });

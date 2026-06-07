@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNesting } from "./context";
-import { SHEET_WIDTH, SHEET_HEIGHT } from "./constants";
 import type { SheetLayout } from "./types";
 
 export function SheetListPanel() {
@@ -81,13 +80,8 @@ function SheetCard({
   onSelect: () => void;
   onExport: () => void;
 }) {
-  // Compute utilization
-  const partArea = layout.placements.reduce(
-    (s, pl) => s + pl.packWidth * pl.packHeight,
-    0,
-  );
-  const sheetArea = SHEET_WIDTH * SHEET_HEIGHT;
-  const utilization = Math.round((partArea / sheetArea) * 100);
+  // Use pre-computed utilization from layout
+  const utilization = layout.utilizationPercent;
 
   return (
     <div

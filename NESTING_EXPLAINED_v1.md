@@ -90,9 +90,10 @@ SheetLayout ── one unique arrangement on a sheet
   alignment: "margin"|"centered"|"bottom-left"  how offsets were chosen
   placements: Placement[]
   repeatCount: number          how many times to cut this exact sheet
-  sheetName: string            e.g. "sheet_001_1335"
+  sheetName: string            e.g. "1_r12_A_p6_u83"
   offsetX, offsetY: number     packing→sheet coordinate offset
   dedupedCutSegments: Segment[] filled after deduplication
+  utilizationPercent: number   material utilization as % (0–100, rounded)
 
 NestJob ── top-level state object
   id, name: string
@@ -160,13 +161,18 @@ The deduplicator uses the mathematical equivalent of this pipeline via `computeI
 | `COINCIDENCE_TOL` | 0.01 | Dedup tolerance in mm |
 | `MAX_SHEETS` | 200 | Maximum bins the packer opens |
 
-DXF layers and their ACI color codes:
-- `CUT` → 1 (red)
-- `0` → 7 (white/black)
-- `FREZ` → 6 (magenta)
-- `FREZ_135` → 4 (cyan)
-- `HOLES` → 5 (blue)
-- `SHEETS` → 7 (white/black)
+DXF layer colors (ACI codes and canvas CSS):
+- `CUT` → ACI 3 (green) / canvas `#22c55e`
+- `0` → ACI 7 (white/black) / canvas `#ffffff`
+- `FREZ` → ACI 6 (magenta) / canvas `#d946ef`
+- `FREZ_135` → ACI 1 (red) / canvas `#ef4444`
+- `HOLES` → ACI 2 (yellow) / canvas `#eab308`
+- `SHEETS` → ACI 4 (cyan) with true-color override RGB(39,118,187) / canvas `rgb(39,118,187)`
+- Custom/unknown layers → ACI 30 (orange) / canvas `#f97316`
+
+The `SHEETS` layer uses a DXF true-color override (group code 420) to achieve the exact RGB(39, 118, 187) dark-cyan color. For other layers, the nearest ACI color is used. Unknown or custom-named layers default to orange (ACI 30) so they are easily distinguishable.
+
+Helper functions `getAciColor(layer)` and `getCanvasColor(layer)` in `constants.ts` resolve the correct color for any layer name, falling back to orange for unrecognized layers.
 
 ---
 
@@ -407,7 +413,8 @@ Each `SheetLayout` produces one `.dxf` file generated in two stages:
 
 1. **Maker.js model construction** — Build an `IModel` containing all geometry (sheet frame lines, per-part non-CUT geometry as sub-models, deduplicated CUT line paths)
 2. **Maker.js DXF export** — `makerjs.exporter.toDXF()` converts the model to a complete DXF string with proper layers and colors
-3. **Label injection** — A TEXT entity for the sheet label is injected into the DXF string before ENDSEC
+3. **Label injection** — TEXT entities for the sheet title, per-part name labels, and repetition count are injected into the DXF string before ENDSEC
+4. **Layer color post-processing** — The DXF string is post-processed to apply true-color overrides (group code 420) for the SHEETS layer and to change unknown layer colors to ACI 30 (orange)
 
 The approach mirrors the sheet-metal feature, which also uses Maker.js for DXF output.
 
@@ -451,15 +458,75 @@ The writer builds the DXF in these steps:
 5. Export via Maker.js: makerjs.exporter.toDXF(mainModel, { units, layerOptions })
       │
       ▼
-6. Inject sheet label TEXT entity before ENDSEC
-      text = "sheetName_xrepeatCount" at (SHEET_WIDTH/2, SHEET_HEIGHT+80), height 50
+6. Walk model to collect all used layer names → build complete layerOptions map
+      │   (known layers get their ACI colors; unknown layers get ACI 30 = orange)
+      │
+      ▼
+7. Export via Maker.js: makerjs.exporter.toDXF(mainModel, { units, layerOptions })
+      │
+      ▼
+8. Post-process DXF string:
+      │   - Add true-color (group code 420) for SHEETS layer → RGB(39, 118, 187)
+      │   - Change unknown layer ACI colors to 30 (orange)
+      │
+      ▼
+9. Inject TEXT entities before ENDSEC:
+      │   - Sheet title at top-left (left-aligned)
+      │   - Per-part name labels at center of each part's L0 bbox
+      │   - Repetition count at bottom-right (right-aligned)
+      │
+      ▼
+10. Return complete DXF string
 ```
 
-### 8.4 Label Injection
+### 8.4 Label Injection & DXF Entities
 
-The sheet label (`sheetName_xrepeatCount_alignmentCode`) is added as a DXF TEXT entity positioned at `(SHEET_WIDTH/2, SHEET_HEIGHT + 80)` with text height 50mm on the SHEETS layer. The alignment code is `_M` (margin), `_BL` (bottom-left), or `_C` (centered). Since Maker.js doesn't support TEXT entities natively, the label is injected by locating the ENTITIES section in the generated DXF string and inserting the TEXT group codes before the next ENDSEC.
+Three types of TEXT entities are injected into the DXF output:
 
-This is done by the `injectBeforeEndsec()` helper, which finds the ENTITIES section header and the next ENDSEC, then splices the entity DXF text in between.
+**1. Sheet Title** — positioned at top-left of the sheet, left-aligned:
+- Position: `(10, SHEET_HEIGHT + 80)` (just above the sheet, left margin)
+- Text: the sheet name in the format `{number}_r{repeat}_{mode}_p{parts}_u{util}%`
+- Example: `1_r12_A_p6_u83` — sheet 1, repeat 12 times, mode A, 6 parts, 83% utilization
+- Layer: SHEETS, height: 50mm
+- Horizontal alignment: left (default)
+
+**2. Per-Part Name Labels** — positioned at the center of each part's L0 bbox:
+- For 0° rotation: center of `(packX + offsetX + CUT_OFFSET + l0Width/2, packY + offsetY + CUT_OFFSET + l0Height/2)`
+- For 90° rotation: center accounts for the `l0Height` X-shift and swapped dimensions
+- Layer: SHEETS, height: 20mm
+- Horizontal alignment: center (DXF group code 72=1, with second alignment point 11/21)
+- These labels are crucial for production so operators can mark parts during cutting
+
+**3. Repetition Count Label** — positioned at the bottom-right, below the sheet:
+- Position: `(SHEET_WIDTH − 10, −80)` (bottom-right, below the sheet)
+- Text: just the repeat count number (e.g., `12` or `33`)
+- Layer: SHEETS, height: 80mm
+- Horizontal alignment: right (DXF group code 72=2, with second alignment point 11/21)
+- This provides a clear, large-number indicator for how many times the CNC operator must run this sheet
+
+Since Maker.js doesn't support TEXT entities natively, all labels are injected by the `injectBeforeEndsec()` helper, which finds the ENTITIES section header and the next ENDSEC, then splices the entity DXF text in between.
+
+### 8.4.1 Sheet Naming Format
+
+The sheet name follows a structured format that encodes all production metadata directly in the filename and the sheet title:
+
+```
+{sheet_number}_r{repeat_count}_{mode}_{parts_inside}_u{utilization_percent}
+```
+
+Examples:
+- `1_r12_A_p6_u83` — first sheet, repeat 12 times, mode A (margin), 6 parts, 83% utilization
+- `35_r2_A_p1_u17` — 35th sheet, repeat 2 times, mode A, 1 part, 17% utilization
+- `3_r1_B_p4_u62` — 3rd sheet, repeat once, mode B (full-span), 4 parts, 62% utilization
+
+This format is generated by `formatSheetTitle(layout)` in `types.ts` and used consistently across:
+- DXF file filenames (e.g., `1_r12_A_p6_u83.dxf`)
+- Sheet title labels inside the DXF
+- Canvas preview labels
+- Sheet list panel display names
+- ZIP export filenames
+
+The `utilizationPercent` field on `SheetLayout` is computed during packing as `Math.round(partArea / sheetArea × 100)`, where `sheetArea = 1250 × 3200 mm²`.
 
 ### 8.5 Sheet Frame Drawing
 
@@ -475,9 +542,9 @@ Note: The inner rectangle dimensions are computed from the actual placements in 
 
 ### 8.6 Export Functions
 
-- `writeNestSheetDxf(layout, parts)` → builds Maker.js model, exports to DXF string, injects label, returns the complete DXF string
+- `writeNestSheetDxf(layout, parts)` → builds Maker.js model, exports to DXF string, post-processes layer colors, injects labels (title + per-part + repetition), returns the complete DXF string
 - `downloadDxf(content, filename)` → creates a Blob and triggers browser download
-- `exportAllSheetsAsZip(layouts, parts)` → creates a ZIP of all DXF files using JSZip and triggers download
+- `exportAllSheetsAsZip(layouts, parts)` → creates a ZIP of all DXF files using JSZip, filenames use `formatSheetTitle()` format, triggers download
 
 ---
 
@@ -616,18 +683,24 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
 ### 11.3 Preview Canvas
 
 - HTML5 Canvas with **pan** (mouse drag) and **zoom** (scroll wheel)
-- Color-coded layers (CUT=red, Layer 0=white, sheet border=gray, labels=amber)
-- Shows sheet boundary, margin guides (dashed), placed parts with labels
+- Color-coded layers (CUT=green, Layer 0=white, FREZ=magenta, FREZ_135=red, HOLES=yellow, SHEETS=dark cyan, custom=orange)
+- Y-coordinate is flipped so the canvas matches the DXF export (Y-up convention): `sy(y) = offsetY + (SHEET_HEIGHT − y) × scale`
+- Arcs are rendered with negated angles and `anticlockwise=true` to match the Y-flipped coordinate system
+- Shows sheet boundary, margin guides (dashed), placed parts with name labels
 - Mode A: 35mm margin rectangle; Mode B: alignment guide rectangle (bottom-left or centered)
 - **Per-part geometry rendering:** Uses the same Maker.js model extraction (`extractDxfModel`) as the DXF writer. Each part's base model is deep-cloned, then transformed through the same 3-step pipeline (normalize → rotate & align → translate) using `makerjs.model.moveRelative` and `makerjs.model.rotate`. The transformed model is walked via `makerjs.model.walk()` to draw all path types (lines, arcs, circles) with layer-appropriate colors.
-- **Label positioning:** Part names are drawn at the center of the Layer 0 bbox in sheet space. For 90° rotation, `l0Width` and `l0Height` swap in sheet space, and an `l0ShiftX = l0Height` offset accounts for the alignment shift.
+- **Part name labels:** Each placed part shows its name (e.g., "4-18" or "corner") at the center of its Layer 0 bbox. For 90° rotation, `l0Width` and `l0Height` swap in sheet space, and an `l0ShiftX = l0Height` offset accounts for the alignment shift. Labels use `textBaseline = "middle"` for vertical centering.
+- **Sheet title:** Displayed above the sheet at top-left, showing the formatted sheet name (`1_r12_A_p6_u83`). Left-aligned to prevent overflow.
+- **Repetition count:** Displayed below the sheet at bottom-right, showing just the repeat count number for quick reference by the CNC operator.
+- **Y-flip rendering:** The canvas uses `sy(y) = offsetY + (SHEET_HEIGHT − y) × scale` to flip the Y axis, matching DXF output where Y increases upward. All rectangle drawing uses `fillDxfRect`/`strokeDxfRect` helpers that compute the correct top-left canvas position from DXF bottom-left coordinates. Arcs use negated angles with `anticlockwise=true` to render correctly after Y-flip.
 - **Deduplicated CUT lines:** Rendered on top of part geometry using `collectAndDeduplicate()` (cached in `layout.dedupedCutSegments` if available, otherwise computed on-the-fly).
 - Uses manual pan/zoom via refs (no `react-zoom-pan-pinch` dependency)
 
 ### 11.4 Sheet List Panel
 
 - Lists all layouts with thumbnail info
-- Each card shows: sheet name, repeat count, utilization %, alignment badge (Margin / Centered / Bottom-Left)
+- Each card shows: sheet name (in the format `1_r12_A_p6_u83`), utilization %, alignment badge (Margin / Centered / Bottom-Left)
+- Utilization is read from `layout.utilizationPercent` (pre-computed during packing)
 - Click to select → updates the preview canvas
 - Export button per layout
 
@@ -731,10 +804,17 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
       │   │   ├── Sheet frame: 4-line rectangles on SHEETS layer
       │   │   ├── Per-part: extractDxfModel() → deep-clone → normalize → rotate/shift → translate
       │   │   └── CUT lines: deduplicated LINE paths on LAYER_CUT
-      │   ├── Export via makerjs.exporter.toDXF() with layer colors
-      │   └── Inject sheet label TEXT entity before ENDSEC
+      │   ├── Walk model to collect all used layers → build layerOptions
+      │   │   (known layers get specific ACI colors; unknown layers get ACI 30 = orange)
+      │   ├── Export via makerjs.exporter.toDXF() with complete layerOptions
+      │   ├── Post-process DXF: add true-color (420) for SHEETS layer, fix unknown layer colors
+      │   └── Inject TEXT entities before ENDSEC:
+      │       ├── Sheet title at top-left (left-aligned, height 50mm)
+      │       ├── Per-part name labels at center of L0 bbox (center-aligned, height 20mm)
+      │       └── Repetition count at bottom-right (right-aligned, height 80mm)
       │
       └─ jszip: bundles all DXFs into a ZIP and downloads
+         Each DXF filename uses format: `{number}_r{repeat}_{mode}_p{parts}_u{util}.dxf`
 ```
 
 ---
@@ -816,8 +896,16 @@ This matches the nesting filename parser (`parseFilename`) which extracts direct
 The frontend nesting output is compatible with `split_sheets.py` and `merge_dxf_files.py`:
 - Same layer names: `CUT`, `FREZ`, `FREZ_135`, `HOLES`, `0`, `SHEETS`
 - Sheet boundary is exactly 1250×3200mm at origin (0,0)
-- CUT lines are on the `CUT` layer (ACI color 1 = red)
-- Labels are on the `SHEETS` layer above the sheet boundary
+- CUT lines are on the `CUT` layer (ACI color 3 = green)
+- FREZ lines are on the `FREZ` layer (ACI color 6 = magenta)
+- FREZ_135 lines are on the `FREZ_135` layer (ACI color 1 = red)
+- HOLES are on the `HOLES` layer (ACI color 2 = yellow)
+- Layer 0 outlines are white (ACI 7)
+- SHEETS layer uses true-color RGB(39,118,187) (dark cyan) with ACI 4 fallback
+- Custom/unknown layers default to ACI 30 (orange)
+- Sheet title label is on the `SHEETS` layer at top-left
+- Per-part name labels are on the `SHEETS` layer at the center of each part's L0 bbox
+- Repetition count label is on the `SHEETS` layer at bottom-right below the sheet
 
 ### 14.3 Convex Persistence (future)
 
@@ -842,3 +930,7 @@ The `NestJob` type is designed to be serializable. Adding persistence requires:
 | Web Worker packing | Synchronous on main thread | Offload to worker for >500 parts |
 | Guillotine cuts | Not implemented | Add as alternative packing algorithm |
 | Nesting optimizations | MaxRects only | Add skyline, guillotine-cut algorithms |
+| Canvas visualization | ✅ Y-flipped to match DXF export, correct arc direction | |
+| DXF per-part labels | ✅ Center-aligned TEXT on SHEETS layer | |
+| DXF layer colors | ✅ Production-standard colors with true-color support for SHEETS | |
+| Naming format | ✅ `{num}_r{repeat}_{mode}_p{parts}_u{util}%` encoded in filename | |

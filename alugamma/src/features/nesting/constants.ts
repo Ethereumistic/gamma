@@ -48,28 +48,51 @@ export const NON_CUT_LAYERS = [LAYER_ZERO, LAYER_FREZ, LAYER_FREZ_135, LAYER_HOL
 
 /** ACI color codes for DXF output */
 export const LAYER_COLORS: Record<string, number> = {
-  [LAYER_SHEETS]: 7,   // white/black
-  [LAYER_CUT]: 1,      // red
-  [LAYER_ZERO]: 7,     // white/black
-  [LAYER_FREZ]: 6,     // magenta
-  [LAYER_FREZ_135]: 4, // cyan
-  [LAYER_HOLES]: 5,    // blue
+  [LAYER_SHEETS]: 4,      // cyan (close ACI; true color override applied for exact RGB)
+  [LAYER_CUT]: 3,         // green
+  [LAYER_ZERO]: 7,        // white/black
+  [LAYER_FREZ]: 6,        // magenta
+  [LAYER_FREZ_135]: 1,    // red
+  [LAYER_HOLES]: 2,       // yellow
 };
+
+/** True color overrides for DXF layers (24-bit RGB: R + G*256 + B*65536).
+ *  Applied as group code 420 in the LAYER table entry. */
+export const LAYER_TRUE_COLORS: Record<string, number> = {
+  [LAYER_SHEETS]: 39 + 118 * 256 + 187 * 65536, // RGB(39, 118, 187) dark cyan
+};
+
+/** Default ACI color for layers not in LAYER_COLORS (orange) */
+export const DEFAULT_LAYER_ACI_COLOR = 30;
 
 // ── Canvas Rendering Colors (CSS) ──────────────────────────────────────────
 
 export const CANVAS_COLORS: Record<string, string> = {
-  [LAYER_CUT]: "#ef4444",      // red-500
-  [LAYER_FREZ]: "#d946ef",    // fuchsia-500
-  [LAYER_FREZ_135]: "#22d3ee", // cyan-400
-  [LAYER_HOLES]: "#3b82f6",   // blue-500
-  [LAYER_ZERO]: "#ffffff",    // white
-  [LAYER_SHEETS]: "#9ca3af", // gray-400
-  sheetFill: "#1e293b",       // slate-800
-  marginFill: "#334155",     // slate-700
-  highlight: "#22c55e",      // green-500
-  label: "#fbbf24",          // amber-400
+  [LAYER_CUT]: "#22c55e",          // green-500
+  [LAYER_FREZ]: "#d946ef",        // fuchsia-500 (magenta)
+  [LAYER_FREZ_135]: "#ef4444",    // red-500
+  [LAYER_HOLES]: "#eab308",       // yellow-500
+  [LAYER_ZERO]: "#ffffff",        // white
+  [LAYER_SHEETS]: "rgb(39,118,187)", // dark cyan (exact RGB 39,118,187)
+  sheetFill: "#1e293b",           // slate-800
+  marginFill: "#334155",         // slate-700
+  highlight: "#22c55e",          // green-500
+  label: "#fbbf24",              // amber-400
+  _default: "#f97316",           // orange-500 (for any unknown/custom layer)
 };
+
+/** Get the ACI color code for a given layer name */
+export function getAciColor(layer: string): number {
+  if (layer in LAYER_COLORS) return LAYER_COLORS[layer];
+  if (layer === "DEFPOINTS" || layer === "") return 7;
+  return DEFAULT_LAYER_ACI_COLOR; // orange for unknown/custom layers
+}
+
+/** Get the canvas CSS color for a given layer name */
+export function getCanvasColor(layer: string): string {
+  if (layer in CANVAS_COLORS) return CANVAS_COLORS[layer];
+  return CANVAS_COLORS._default; // orange for unknown/custom layers
+}
 
 // ── Default New Job Name ──────────────────────────────────────────────────
 

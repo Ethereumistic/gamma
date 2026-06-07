@@ -170,9 +170,8 @@ export function NestingProvider({ children }: { children: ReactNode }) {
 
       try {
         const dxfContent = writeNestSheetDxf(layout, job.parts);
-        const filename = `${layout.sheetName}_x${layout.repeatCount}`;
-        downloadDxf(dxfContent, filename);
-        toast.success(`Exported ${filename}.dxf`);
+        downloadDxf(dxfContent, layout.sheetName);
+        toast.success(`Exported ${layout.sheetName}.dxf`);
       } catch (error) {
         console.error("Export error:", error);
         toast.error("Failed to export DXF.");

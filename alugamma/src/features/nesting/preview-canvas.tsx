@@ -2,6 +2,7 @@
 // Nesting Feature — Preview Canvas
 // HTML5 Canvas renderer for sheet layouts with pan/zoom.
 // Draws all part layers (0, FREZ, FREZ_135, HOLES, CUT, SHEETS).
+// Y-coordinate is flipped to match DXF output (Y-up in DXF, Y-down on canvas).
 // ────────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -20,11 +21,12 @@ import {
   MARGIN,
   CUT_OFFSET,
   CANVAS_COLORS,
-  LAYER_SHEETS,
-  LAYER_ZERO,
   LAYER_CUT,
+  LAYER_SHEETS,
+  getCanvasColor,
 } from "./constants";
 import type { SheetLayout, NestPart } from "./types";
+import { formatSheetTitle } from "./types";
 import { collectAndDeduplicate } from "./deduplicator";
 import { extractDxfModel } from "./dxf-reader";
 
@@ -55,25 +57,6 @@ function drawLine(
   ctx.stroke();
 }
 
-function drawRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  strokeColor: string,
-  fillColor?: string,
-  lineWidth: number = 1,
-) {
-  if (fillColor) {
-    ctx.fillStyle = fillColor;
-    ctx.fillRect(x, y, w, h);
-  }
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = lineWidth;
-  ctx.strokeRect(x, y, w, h);
-}
-
 // ── Component Props ────────────────────────────────────────────────────────
 
 type PreviewCanvasProps = {
@@ -102,13 +85,13 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
           const { x0, y0, x1, y1 } = part.l0Bbox;
           const fb: makerjs.IModel = { paths: {} };
           const l1 = new makerjs.paths.Line([x0, y0], [x1, y0]) as makerjs.IPath;
-          l1.layer = LAYER_ZERO;
+          l1.layer = "0";
           const l2 = new makerjs.paths.Line([x1, y0], [x1, y1]) as makerjs.IPath;
-          l2.layer = LAYER_ZERO;
+          l2.layer = "0";
           const l3 = new makerjs.paths.Line([x1, y1], [x0, y1]) as makerjs.IPath;
-          l3.layer = LAYER_ZERO;
+          l3.layer = "0";
           const l4 = new makerjs.paths.Line([x0, y1], [x0, y0]) as makerjs.IPath;
-          l4.layer = LAYER_ZERO;
+          l4.layer = "0";
           fb.paths = { l1, l2, l3, l4 };
           model = fb;
         }
@@ -124,9 +107,10 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       if (!canvas) return { scale: 1, offsetX: 0, offsetY: 0 };
 
       // Fit the sheet in the canvas with some padding
+      // Extra vertical space for labels above and below the sheet
       const padding = 40;
       const scaleX = (canvas.width - 2 * padding) / SHEET_WIDTH;
-      const scaleY = (canvas.height - 2 * padding) / (SHEET_HEIGHT + 150);
+      const scaleY = (canvas.height - 2 * padding) / (SHEET_HEIGHT + 200);
       const baseScale = Math.min(scaleX, scaleY);
 
       const scale = baseScale * zoomRef.current;
@@ -151,18 +135,32 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       ctx.fillStyle = "#080c14";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Helper to convert sheet coords to canvas coords
+      // Helper to convert DXF (Y-up) coordinates to canvas (Y-down) coordinates.
+      // DXF origin (0,0) is bottom-left; canvas origin is top-left.
+      // We flip Y so that DXF y=0 maps to the bottom of the canvas sheet area.
       const sx = (x: number) => offsetX + x * scale;
-      const sy = (y: number) => offsetY + y * scale;
+      const sy = (y: number) => offsetY + (SHEET_HEIGHT - y) * scale;
+
+      // Helper to draw a filled/stroked rect in DXF coordinates.
+      // (x, y) = bottom-left corner in DXF space; w, h = dimensions.
+      const fillDxfRect = (x: number, y: number, w: number, h: number, fillColor: string) => {
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(sx(x), sy(y + h), w * scale, h * scale);
+      };
+      const strokeDxfRect = (
+        x: number, y: number, w: number, h: number,
+        strokeColor: string, lineWidth: number = 1,
+      ) => {
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = lineWidth;
+        ctx.strokeRect(sx(x), sy(y + h), w * scale, h * scale);
+      };
 
       // ── Draw sheet background ──
-      ctx.fillStyle = CANVAS_COLORS.sheetFill;
-      ctx.fillRect(sx(0), sy(0), SHEET_WIDTH * scale, SHEET_HEIGHT * scale);
+      fillDxfRect(0, 0, SHEET_WIDTH, SHEET_HEIGHT, CANVAS_COLORS.sheetFill);
 
       // ── Draw sheet border ──
-      ctx.strokeStyle = CANVAS_COLORS[LAYER_SHEETS] ?? "#9ca3af";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(sx(0), sy(0), SHEET_WIDTH * scale, SHEET_HEIGHT * scale);
+      strokeDxfRect(0, 0, SHEET_WIDTH, SHEET_HEIGHT, CANVAS_COLORS[LAYER_SHEETS] ?? "rgb(39,118,187)", 2);
 
       if (!layout || layout.placements.length === 0) {
         // Draw "No layout" text
@@ -185,34 +183,24 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.strokeStyle = CANVAS_COLORS.marginFill;
         ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
-        ctx.strokeRect(
-          sx(m),
-          sy(m),
-          (SHEET_WIDTH - 2 * m) * scale,
-          (SHEET_HEIGHT - 2 * m) * scale,
-        );
+        strokeDxfRect(m, m, SHEET_WIDTH - 2 * m, SHEET_HEIGHT - 2 * m, CANVAS_COLORS.marginFill, 1);
         ctx.setLineDash([]);
       } else {
         // Mode B: draw alignment guide (centered or bottom-left)
-        const guideX1 = layout.offsetX;
-        const guideY1 = layout.offsetY;
+        const guideX = layout.offsetX;
+        const guideY = layout.offsetY;
         const maxX = Math.max(
           ...layout.placements.map((p) => p.packX + p.packWidth),
         );
         const maxY = Math.max(
           ...layout.placements.map((p) => p.packY + p.packHeight),
         );
-        const guideX2 = layout.offsetX + maxX;
-        const guideY2 = layout.offsetY + maxY;
+        const guideW = maxX;
+        const guideH = maxY;
         ctx.strokeStyle = CANVAS_COLORS.marginFill;
         ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
-        ctx.strokeRect(
-          sx(guideX1),
-          sy(guideY1),
-          (guideX2 - guideX1) * scale,
-          (guideY2 - guideY1) * scale,
-        );
+        strokeDxfRect(guideX, guideY, guideW, guideH, CANVAS_COLORS.marginFill, 1);
         ctx.setLineDash([]);
       }
 
@@ -235,9 +223,6 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
           // 2. Rotate and align
           if (placement.rotation === 90) {
             // Rotate 90° CCW around origin, then shift so rotated CUT bbox aligns with (0,0).
-            // After CCW rotation, the bbox shifts left by l0Height.
-            // Adding (l0Height + CUT_OFFSET) in X and CUT_OFFSET in Y brings
-            // the CUT bbox lower-left back to (0,0), matching the 0° case.
             makerjs.model.rotate(instance, 90, [0, 0]);
             makerjs.model.moveRelative(instance, [part.l0Height + CUT_OFFSET, CUT_OFFSET]);
           } else {
@@ -254,23 +239,22 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
               const path = walked.pathContext;
               const offset = walked.offset;
               const layer = walked.layer;
-              const color = CANVAS_COLORS[layer] ?? "#ffffff";
+              const color = getCanvasColor(layer);
               ctx.strokeStyle = color;
               ctx.lineWidth = layer === LAYER_CUT ? 1.5 : 1;
 
               switch (path.type) {
                 case "line": {
                   const line = path as makerjs.IPathLine;
-                  ctx.beginPath();
-                  ctx.moveTo(
+                  drawLine(
+                    ctx,
                     sx(line.origin[0] + offset[0]),
                     sy(line.origin[1] + offset[1]),
-                  );
-                  ctx.lineTo(
                     sx(line.end[0] + offset[0]),
                     sy(line.end[1] + offset[1]),
+                    color,
+                    layer === LAYER_CUT ? 1.5 : 1,
                   );
-                  ctx.stroke();
                   break;
                 }
                 case "arc": {
@@ -278,14 +262,11 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
                   const cx = arc.origin[0] + offset[0];
                   const cy = arc.origin[1] + offset[1];
                   const r = arc.radius * scale;
-                  const startRad = (arc.startAngle * Math.PI) / 180;
-                  const endRad = (arc.endAngle * Math.PI) / 180;
+                  // Flip arc angles for Y-flip: negate angles and use anticlockwise
+                  const startRad = -(arc.startAngle * Math.PI) / 180;
+                  const endRad = -(arc.endAngle * Math.PI) / 180;
                   ctx.beginPath();
-                  // In canvas (Y-down), angles increase clockwise.
-                  // Maker.js angles increase CCW.  Since we don't flip Y,
-                  // mapping the angles directly with anticlockwise=false
-                  // sweeps in the CW screen direction, matching the mirrored geometry.
-                  ctx.arc(sx(cx), sy(cy), r, startRad, endRad, false);
+                  ctx.arc(sx(cx), sy(cy), r, startRad, endRad, true);
                   ctx.stroke();
                   break;
                 }
@@ -305,20 +286,20 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         }
 
         // CUT boundary guide (packing box)
-        ctx.strokeStyle = CANVAS_COLORS[LAYER_CUT] ?? "#ef4444";
+        const cutColor = getCanvasColor(LAYER_CUT);
         ctx.lineWidth = 0.5;
         ctx.setLineDash([3, 3]);
-        ctx.strokeRect(
-          sx(placement.packX + layout.offsetX),
-          sy(placement.packY + layout.offsetY),
-          placement.packWidth * scale,
-          placement.packHeight * scale,
+        strokeDxfRect(
+          placement.packX + layout.offsetX,
+          placement.packY + layout.offsetY,
+          placement.packWidth,
+          placement.packHeight,
+          cutColor,
+          0.5,
         );
         ctx.setLineDash([]);
 
-        // Part label (centered on Layer 0 bbox)
-        // For 90° rotation, l0Width and l0Height swap in sheet space,
-        // and the L0 bbox is offset by l0Height in X (alignment shift).
+        // Part label (centered on Layer 0 bbox in DXF coordinates)
         const l0ShiftX = placement.rotation === 90 ? part.l0Height : 0;
         const labelW = placement.rotation === 90 ? part.l0Height : part.l0Width;
         const labelH = placement.rotation === 90 ? part.l0Width : part.l0Height;
@@ -329,6 +310,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.fillStyle = CANVAS_COLORS.label;
         ctx.font = `${Math.max(8, 10 * scale)}px monospace`;
         ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
         ctx.fillText(part.name, sx(labelX), sy(labelY));
       }
 
@@ -344,34 +326,51 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
               layout.offsetY,
             );
 
+      const cutColor = getCanvasColor(LAYER_CUT);
       for (const seg of dedupedCut) {
-        ctx.beginPath();
-        ctx.moveTo(sx(seg.x1), sy(seg.y1));
-        ctx.lineTo(sx(seg.x2), sy(seg.y2));
-        ctx.strokeStyle = CANVAS_COLORS[LAYER_CUT] ?? "#ef4444";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        drawLine(
+          ctx,
+          sx(seg.x1), sy(seg.y1),
+          sx(seg.x2), sy(seg.y2),
+          cutColor,
+          1.5,
+        );
       }
 
-      // ── Draw sheet label ──
-      const labelText = `${layout.sheetName}_x${layout.repeatCount}`;
+      // ── Draw sheet label (top-left above the sheet) ──
+      // Format: {number}_r{repeat}_{mode}_p{parts}_u{utilization}%
+      const titleText = formatSheetTitle(layout);
       ctx.fillStyle = CANVAS_COLORS.label;
       ctx.font = `bold ${Math.max(12, 14 * scale)}px sans-serif`;
-      ctx.textAlign = "center";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
       ctx.fillText(
-        labelText,
-        sx(SHEET_WIDTH / 2),
+        titleText,
+        sx(10),
         sy(SHEET_HEIGHT + 40),
       );
 
-      // ── Draw mode indicator ──
+      // ── Draw mode indicator (left, below title) ──
       ctx.fillStyle = "#6b7280";
       ctx.font = `${Math.max(8, 10 * scale)}px sans-serif`;
       ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
       ctx.fillText(
         `Mode ${layout.mode} (${layout.alignment}) | ${layout.placements.length} parts | ×${layout.repeatCount}`,
         sx(10),
         sy(SHEET_HEIGHT + 60),
+      );
+
+      // ── Draw repetition count (bottom-right, below the sheet) ──
+      const repeatText = String(layout.repeatCount);
+      ctx.fillStyle = CANVAS_COLORS.label;
+      ctx.font = `bold ${Math.max(10, 14 * scale)}px sans-serif`;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(
+        repeatText,
+        sx(SHEET_WIDTH - 10),
+        sy(-30),
       );
     }, [layout, parts, getTransform, partModelMap]);
 
@@ -406,9 +405,6 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     }, [layout, parts, draw]);
 
     // ── Wheel Handler (non-passive to allow preventDefault) ───────────────────
-    // React's onWheel is passive by default, so e.preventDefault() is silently
-    // ignored. We must attach a non-passive listener directly on the canvas
-    // element to prevent the browser from scrolling the page on wheel events.
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -426,8 +422,6 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     }, [draw]);
 
     // ── Mouse Handlers ──────────────────────────────────────────────────────
-
-null
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
       isDraggingRef.current = true;

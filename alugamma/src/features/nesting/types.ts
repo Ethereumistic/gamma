@@ -114,7 +114,36 @@ export type SheetLayout = {
 
   // Deduplicated CUT segments (populated after dedup step)
   dedupedCutSegments: Segment[];
+
+  // Material utilization as a percentage (0–100, rounded)
+  utilizationPercent: number;
 };
+
+// ── Sheet Name Formatting ─────────────────────────────────────────────────
+// Format: {number}_r{repeat}_{mode}_p{parts}_u{utilization}
+// Example: 1_r12_A_p6_u83
+
+export function computeLayoutUtilization(placements: Placement[]): number {
+  const sheetArea = 1250 * 3200;
+  const partArea = placements.reduce(
+    (sum, pl) => sum + pl.packWidth * pl.packHeight,
+    0,
+  );
+  return (partArea / sheetArea) * 100;
+}
+
+export function formatSheetTitle(layout: SheetLayout): string {
+  const num = layout.sheetIndex + 1;
+  const r = layout.repeatCount;
+  const mode = layout.mode;
+  const p = layout.placements.length;
+  const u = layout.utilizationPercent;
+  return `${num}_r${r}_${mode}_p${p}_u${u}`;
+}
+
+export function formatSheetFilename(layout: SheetLayout): string {
+  return `${formatSheetTitle(layout)}.dxf`;
+}
 
 // ── Nest Job (Top-Level Aggregate) ────────────────────────────────────────
 
