@@ -8,7 +8,7 @@
 
 import { LAYER_CUT, LAYER_ZERO, CUT_OFFSET } from "./constants";
 import type { Segment, Rect, NestPart, PartDirection } from "./types";
-import { parseFilename, computeCutDimensions, createNestPart } from "./types";
+import { parseFilename, computeCutDimensions, createNestPart, directionToRotation } from "./types";
 import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
 import { buildDxf } from "@/features/sheet-metal/dxf";
 import { type SheetMetalModel } from "@/features/sheet-metal/types";
@@ -487,6 +487,7 @@ export function createNestPartFromDesign(
   overrides?: {
     count?: number;
     direction?: PartDirection;
+    respectDirection?: boolean;
   },
 ): NestPart {
   // Regenerate geometry from the parametric model — pure deterministic function
@@ -554,10 +555,21 @@ export function createNestPartFromDesign(
     dxfContent,
   );
 
-  // Sheet-metal parts: arrow direction is visual metadata for the CNC operator,
-  // not a packing constraint. Force rotation to be unlocked / free.
-  part.rotationLocked = false;
-  part.allowedRotation = -1;
+  // When respectDirection is enabled (default), the part's rotation is locked
+  // so the arrow always points UP. The directionToRotation() mapping handles
+  // all four directions: T→0°, R→90°, B→180°, L→270°.
+  // When respectDirection is disabled, the packer can rotate freely for
+  // optimal placement (arrow is just visual metadata for the CNC operator).
+  const respectDirection = overrides?.respectDirection ?? true;
+  if (respectDirection && direction) {
+    // Direction is set and must be respected — lock rotation
+    part.rotationLocked = true;
+    part.allowedRotation = directionToRotation(direction);
+  } else {
+    // No direction or direction not respected — free rotation
+    part.rotationLocked = false;
+    part.allowedRotation = -1;
+  }
 
   return part;
 }

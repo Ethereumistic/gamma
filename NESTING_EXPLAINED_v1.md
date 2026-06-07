@@ -34,8 +34,8 @@ src/features/nesting/
 
 src/features/sheet-metal/
 ├── dxf.ts                buildDxf() — generates DXF from parametric model
-├── export-settings-dialog.tsx  Settings modal with includeMetadata toggle
-└── context.tsx            SheetMetalProvider + exportDxf with metadata filenames
+├── export-settings-dialog.tsx  Settings modal (metadata section removed; count/direction now in navbar)
+└── context.tsx            SheetMetalProvider + exportDxf + parseDesignName/buildDesignName helpers
 
 src/routes/
 └── nesting.tsx            Route component (/nesting)
@@ -130,6 +130,8 @@ There are **three** coordinate systems. Keeping them distinct is critical:
 - **Mode B Packing → Sheet:** `sheet_x = pack_x + offset_x`, `sheet_y = pack_y + offset_y` (bottom-left or centered, computed per-layout based on utilization)
 - **Part-local → Sheet (0°):** `sheet_x = pack_x + offset_x + CUT_OFFSET + local_x`, `sheet_y = pack_y + offset_y + CUT_OFFSET + local_y`
 - **Part-local → Sheet (90°):** `sheet_x = pack_x + offset_x + l0Height + CUT_OFFSET − local_y`, `sheet_y = pack_y + offset_y + CUT_OFFSET + local_x`
+- **Part-local → Sheet (180°):** `sheet_x = pack_x + offset_x + l0Width + CUT_OFFSET − local_x`, `sheet_y = pack_y + offset_y + l0Height + CUT_OFFSET − local_y`
+- **Part-local → Sheet (270°):** `sheet_x = pack_x + offset_x + CUT_OFFSET + local_y`, `sheet_y = pack_y + offset_y + l0Width + CUT_OFFSET − local_x`
 
 Where `insert_x = pack_x + offset_x + CUT_OFFSET` and `insert_y = pack_y + offset_y + CUT_OFFSET`.
 
@@ -137,10 +139,14 @@ For 0° rotation, the local origin (0,0) maps to (insert_x, insert_y), placing t
 
 For 90° rotation, the local origin (0,0) maps to (pack_x + offset_x + l0Height + CUT_OFFSET, pack_y + offset_y + CUT_OFFSET), which compensates for the leftward bbox shift caused by CCW rotation. The CUT bbox lands at [pack_x + offset_x, pack_x + offset_x + cutHeight] × [pack_y + offset_y, pack_y + offset_y + cutWidth].
 
+For 180° rotation, the local origin (0,0) maps to (pack_x + offset_x + l0Width + CUT_OFFSET, pack_y + offset_y + l0Height + CUT_OFFSET), compensating for the full-axis shift caused by 180° rotation. The CUT bbox lands at the same [pack_x + offset_x, pack_x + offset_x + cutWidth] × [pack_y + offset_y, pack_y + offset_y + cutHeight] (dimensions unchanged since 180° doesn't swap w↔h).
+
+For 270° rotation, the local origin (0,0) maps to (pack_x + offset_x + CUT_OFFSET, pack_y + offset_y + l0Width + CUT_OFFSET), compensating for the downward bbox shift. The CUT bbox lands at [pack_x + offset_x, pack_x + offset_x + cutHeight] × [pack_y + offset_y, pack_y + offset_y + cutWidth] (same as 90° since both swap w↔h).
+
 **Maker.js Transform Pipeline (non-CUT geometry):**
 Both the DXF writer and preview canvas apply the same 3-step transform to part geometry using Maker.js operations:
 1. **Normalize** — `moveRelative([-l0Bbox.x0, -l0Bbox.y0])` shifts the L0 lower-left to (0,0) (effectively a no-op since `l0Bbox` is always `{x0:0, y0:0}` after normalization in `parseDxfContent`)
-2. **Rotate & align** — 0°: `moveRelative([CUT_OFFSET, CUT_OFFSET])`; 90°: `rotate(90, [0,0])` then `moveRelative([l0Height+CUT_OFFSET, CUT_OFFSET])`
+2. **Rotate & align** — 0°: `moveRelative([CUT_OFFSET, CUT_OFFSET])`; 90°: `rotate(90, [0,0])` then `moveRelative([l0Height+CUT_OFFSET, CUT_OFFSET])`; 180°: `rotate(180, [0,0])` then `moveRelative([l0Width+CUT_OFFSET, l0Height+CUT_OFFSET])`; 270°: `rotate(270, [0,0])` then `moveRelative([CUT_OFFSET, l0Width+CUT_OFFSET])`
 3. **Translate to sheet** — `moveRelative([packX+offsetX, packY+offsetY])`
 
 The deduplicator uses the mathematical equivalent of this pipeline via `computeInsertPosition()` + `transformCutSegment()`, which compute the same final coordinates using direct arithmetic instead of Maker.js transforms.
@@ -185,11 +191,15 @@ The parser is a **4-tier fallthrough** — it never throws an error:
 | `name_DIR.dxf` | `panel_R.dxf` | name="panel", dir=R, count=1 |
 | *any other filename* | `test-0.dxf` | name="test-0", dir=T, count=1 |
 
+> **Note:** This parser is used by **both** import paths: (1) drag-and-drop DXF file import, and (2) sheet-metal project import via `createNestPartFromDesign()`. In both cases the parser extracts direction and count from the same suffix convention, ensuring identical results regardless of how a part enters the nesting workflow. For project imports, the parser is called on `design.exportName + ".dxf"`, treating the export name as a virtual filename.
+
 **Default direction is T (top/upright).** When no direction suffix exists, the part is locked upright (rotationLocked=true, allowedRotation=0).
 
-The `direction` → rotation mapping:
-- T or B → `rotationLocked: true`, `allowedRotation: 0` (stay upright)
-- L or R → `rotationLocked: true`, `allowedRotation: 90` (already rotated 90°)
+The `direction` → rotation mapping (arrow must always point UP):
+- T → `rotationLocked: true`, `allowedRotation: 0` (arrow already up, no rotation)
+- R → `rotationLocked: true`, `allowedRotation: 90` (90° CCW: right→up)
+- B → `rotationLocked: true`, `allowedRotation: 180` (180°: down→up)
+- L → `rotationLocked: true`, `allowedRotation: 270` (270° CCW: left→up)
 - null → `rotationLocked: false`, `allowedRotation: -1` (packer can rotate freely)
 
 ---
@@ -252,16 +262,22 @@ The packer maintains a list of free rectangles per bin. When an item is placed:
 
 ### 6.4 Rotation Handling
 
-- `allowedRotation === 0` → dimensions are `cutWidth × cutHeight` (upright only)
-- `allowedRotation === 90` → dimensions are `cutHeight × cutWidth` (pre-rotated), `item.rotated = true`
-- `allowedRotation === -1` → both orientations tried; if packer swaps w↔h, `BestPosition.rotated = true`
+- `allowedRotation === 0` → dimensions are `cutWidth × cutHeight` (no rotation)
+- `allowedRotation === 90` → dimensions are `cutHeight × cutWidth` (90° CCW, swapped), `item.rotated = true`
+- `allowedRotation === 180` → dimensions are `cutWidth × cutHeight` (180°, no swap)
+- `allowedRotation === 270` → dimensions are `cutHeight × cutWidth` (270° CCW, swapped), `item.rotated = true`
+- `allowedRotation === -1` → both (0°/90°) orientations tried; if packer swaps w↔h, `BestPosition.rotated = true`
 
-In `packAllParts`, the final `rotation` field on each Placement is computed from both sources:
+In `packAllParts`, the final `rotation` field on each Placement:
 ```
-rotationDeg = rect.rotated || item.rotated ? 90 : 0
+if (part.allowedRotation === -1) {
+  rotation = rect.rotated ? 90 : 0;  // packer decides
+} else {
+  rotation = part.allowedRotation;     // locked to fixed angle (0/90/180/270)
+}
 ```
-- `rect.rotated` — set by the MaxRects packer when it swaps w↔h for a rotation-allowed item
-- `item.rotated` — set in `buildItems` when `allowedRotation === 90` (pre-rotated parts)
+- `rect.rotated` — set by the MaxRects packer when it swaps w↔h for a freely-rotatable item
+- `part.allowedRotation` — the fixed rotation angle for direction-locked parts
 
 This is more reliable than comparing dimensions, which fails for near-square parts where `cutWidth ≈ cutHeight`.
 
@@ -351,18 +367,26 @@ When coincident, the retained segment spans the **union** of both overlapping pr
 
 ```
 For each placement on a sheet:
-    ┌─────────────────────────────────────────────────────┐
-    │ Compute insert position via computeInsertPosition(): │
-    │ • 0°: insert = (packX + offsetX + CUT_OFFSET,       │
-    │               packY + offsetY + CUT_OFFSET)          │
-    │ • 90°: insert = (packX + offsetX + l0Height + CO,   │
-    │                packY + offsetY + CUT_OFFSET)         │
-    │                                                     │
-    │ Transform CUT segments from part-local → sheet:    │
-    │ • 0°: sheet = insert + local                        │
-    │ • 90°: sheet_x = insertX − local_y                  │
-    │         sheet_y = insertY + local_x                 │
-    └─────────────────────────────────────────────────────┘
+    ┌───────────────────────────────────────────────────────┐
+    │ Compute insert position via computeInsertPosition():   │
+    │ • 0°:   insert = (packX + offsetX + CUT_OFFSET,       │
+    │                 packY + offsetY + CUT_OFFSET)          │
+    │ • 90°:  insert = (packX + offsetX + l0Height + CO,   │
+    │                 packY + offsetY + CUT_OFFSET)         │
+    │ • 180°: insert = (packX + offsetX + l0Width + CO,    │
+    │                 packY + offsetY + l0Height + CO)      │
+    │ • 270°: insert = (packX + offsetX + CUT_OFFSET,      │
+    │                 packY + offsetY + l0Width + CO)       │
+    │                                                       │
+    │ Transform CUT segments from part-local → sheet:      │
+    │ • 0°:   sheet = insert + local                        │
+    │ • 90°:  sheet_x = insertX − local_y                  │
+    │         sheet_y = insertY + local_x                   │
+    │ • 180°: sheet_x = insertX − local_x                  │
+    │         sheet_y = insertY − local_y                   │
+    │ • 270°: sheet_x = insertX + local_y                  │
+    │         sheet_y = insertY − local_x                   │
+    └───────────────────────────────────────────────────────┘
             │
             ▼
     Collect all CUT segments into flat array
@@ -379,26 +403,46 @@ For each placement on a sheet:
 
 Complexity is O(n²) worst case, but typical sheets have <200 segments, so it runs in <10ms.
 
-### 7.4 Coordinate Transform for 90° Rotation
+### 7.4 Coordinate Transform for All Rotations
 
-The `computeInsertPosition()` function computes the alignment point in sheet space, taking the part's `l0Height` into account. For 0° rotation, the insert point is straightforward: pack position + layout offset + CUT_OFFSET. For 90° rotation, the leftward bbox shift from CCW rotation requires an additional `l0Height + CUT_OFFSET` shift in X.
+The `computeInsertPosition()` function computes the alignment point in sheet space, taking the part's `l0Height` or `l0Width` into account as needed. For each rotation:
 
 ```
-90° rotation transform:
-  sheet_x = insertX − local_y
-  sheet_y = insertY + local_x
+Rotation transforms:
+  0°:   sheet_x = insertX + local_x
+        sheet_y = insertY + local_y
+
+  90°:  sheet_x = insertX − local_y
+        sheet_y = insertY + local_x
+
+  180°: sheet_x = insertX − local_x
+        sheet_y = insertY − local_y
+
+  270°: sheet_x = insertX + local_y
+        sheet_y = insertY − local_x
 
 Where insertX and insertY come from computeInsertPosition():
-  0°:  insertX = packX + offsetX + CUT_OFFSET
-       insertY = packY + offsetY + CUT_OFFSET
-  90°: insertX = packX + offsetX + l0Height + CUT_OFFSET
-       insertY = packY + offsetY + CUT_OFFSET
+  0°:   insertX = packX + offsetX + CUT_OFFSET
+        insertY = packY + offsetY + CUT_OFFSET
+  90°:  insertX = packX + offsetX + l0Height + CUT_OFFSET
+        insertY = packY + offsetY + CUT_OFFSET
+  180°: insertX = packX + offsetX + l0Width + CUT_OFFSET
+        insertY = packY + offsetY + l0Height + CUT_OFFSET
+  270°: insertX = packX + offsetX + CUT_OFFSET
+        insertY = packY + offsetY + l0Width + CUT_OFFSET
 
-The (l0Height + CUT_OFFSET) X-shift for 90° rotation compensates for
-the leftward bbox shift caused by CCW rotation around the origin. Without
-this compensation, parts would extend l0Height mm past the left boundary.
-The CUT bbox lands at [packX+offsetX, packX+offsetX+cutHeight] ×
-[packY+offsetY, packY+offsetY+cutWidth] for 90°, matching the pack rectangle.
+The shift for each rotation compensates for the bbox displacement caused
+by CCW rotation around the origin:
+• 90°:  (l0Height + CUT_OFFSET) X-shift compensates for leftward shift
+• 180°: (l0Width + CUT_OFFSET) X-shift and (l0Height + CUT_OFFSET) Y-shift
+        compensate for full-axis displacement
+• 270°: (l0Width + CUT_OFFSET) Y-shift compensates for downward shift
+
+CUT bbox placement after each rotation:
+  0° and 180°: [packX+offsetX, packX+offsetX+cutWidth] ×
+              [packY+offsetY, packY+offsetY+cutHeight]
+  90° and 270°: [packX+offsetX, packX+offsetX+cutHeight] ×
+               [packY+offsetY, packY+offsetY+cutWidth]
 ```
 
 ---
@@ -761,8 +805,12 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
       ├─ buildDxf(geometry, exportName, model) → full DXF string
       ├─ l0Width = totalWidth - 2*offsetCut, l0Height = totalHeight - 2*offsetCut
       ├─ Extract CUT segments in local coordinates
-      ├─ Direction set to null (free rotation for optimal packing)
-      └─ Count set from metadataCount (always respected, regardless of includeMetadata)
+      ├─ Direction and count parsed from exportName via parseFilename()
+      │   (same parser as drag-and-drop: "panel_B_x3" → dir=B, count=3)
+      │   Backwards compat: fallback to model.metadataCount / model.arrowDirection
+      ├─ Direction stored for UI badges, rotation locked when respectDirection=true (default)
+      │   T→0°, R→90°, B→180°, L→270°  (arrow always points up)
+      └─ Count set from parsed export name (or override)
       │
       ▼
 5. User clicks "Pack" → same flow as below
@@ -835,11 +883,13 @@ This function:
 2. Calls `buildDxf(geometry, exportName, model)` to produce the full DXF content
 3. Computes L0 dimensions: `totalWidth - 2 * offsetCut` and `totalHeight - 2 * offsetCut` (subtracting the cut margin to get the nominal part size)
 4. Extracts CUT line segments from `geometry.shapes` filtered by `layer === "CUT"`, using absolute coordinates (which are already local-relative-to-L0-origin since the L0 outline starts at `(0, 0)` in the geometry engine)
-5. Sets `direction` to `null` (free rotation) — the arrow in the DXF is visual metadata for the operator, not a packing constraint. The nesting algorithm is free to rotate parts for optimal placement. Overrides can still force a direction if needed.
-6. Sets `count` from `metadataCount` — always respected regardless of the `includeMetadata` toggle. `includeMetadata` controls the export filename suffix only; the count is always meaningful for nesting (how many copies of this part to pack).
+5. **Parses direction and count from the export name** via `parseFilename(design.exportName + ".dxf")` — the same parser used for drag-and-drop DXF imports. The export name is the single source of truth, encoding both direction and count via the suffix convention (`basename_DIR_xCount`). This means a design named `panel_B_x3` automatically imports as 3 copies with direction B — identical behavior to dragging a `panel_B_x3.dxf` file into the drop zone. Backwards compatibility: if the export name has no suffix (old designs), falls back to `model.metadataCount` and `model.arrowDirection` fields.
+6. **Rotation policy controlled by `respectDirection` override** (default `true`). When `respectDirection` is enabled and the part has a direction, the part's rotation is locked so its arrow always points UP: T→0°, R→90°, B→180°, L→270°. When `respectDirection` is disabled (or direction is null), the packer can rotate freely (`allowedRotation = -1`) for optimal placement — the arrow becomes just visual metadata for the CNC operator. The import dialog's "Respect direction" checkbox (checked by default) controls this per-import. Overrides (via the `overrides` parameter) can still force a specific direction or count if needed.
 7. Returns a ready-to-use `NestPart` with `source: "sheet-metal"` and `designId` linking back to the Convex design
 
 **Key design decision: No Convex file storage for DXF.** The `SheetMetalModel` is a fully deterministic parametric description — given the same model, `computeSheetMetalGeometry() + buildDxf()` always produces identical output. DXF files are regenerated on-the-fly from the model, which is the single source of truth. This eliminates staleness bugs, storage costs, and sync complexity.
+
+**Key design decision: Export name as single source of truth for direction and count.** The direction (`_DIR`) and count (`_x<n>`) suffixes in the export name are parsed by the same `parseFilename()` parser used for drag-and-drop DXF imports. This means both import paths (file drop and project import) produce identical results for the same base name+suffix combination. The export name takes priority over legacy `model.metadataCount` and `model.arrowDirection` fields, which are only used as fallback for old designs that predate the suffix convention.
 
 **Coordinate normalization:** In the sheet-metal geometry engine, coordinates use absolute positioning where the L0 outline starts at `(0, 0)`. The CUT layer extends `offsetCut` mm beyond L0 on all sides. For nesting, `l0Width = totalWidth - 2 * offsetCut` and `l0Height = totalHeight - 2 * offsetCut`, and CUT lines are used as-is (they naturally extend beyond the L0 bounding box by `offsetCut` mm on each side). The `l0Bbox` is always `{x0: 0, y0: 0, x1: l0Width, y1: l0Height}`.
 
@@ -888,6 +938,8 @@ Examples:
 - `panel_R_x4.dxf` — name "panel", direction Right, count 4
 
 This matches the nesting filename parser (`parseFilename`) which extracts direction and count from DXF filenames, ensuring round-trip compatibility.
+
+**Import round-trip:** The same `parseFilename()` parser is also used by `createNestPartFromDesign()` when importing sheet-metal designs into nesting — it parses the direction and count suffixes directly from `design.exportName`. This means a design saved with name `panel_B_x3` will import into nesting with `direction=B` and `count=3`, identical to dragging a `panel_B_x3.dxf` file into the drop zone. The suffix convention is the shared contract between the sheet-metal editor and the nesting feature, ensuring consistent behavior regardless of how a part enters the nesting workflow.
 
 ### 14.3 With Python Backend (future)
 

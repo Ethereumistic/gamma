@@ -17,7 +17,7 @@ import {
 // ── Direction & Rotation ──────────────────────────────────────────────────
 
 export type PartDirection = "T" | "B" | "L" | "R" | null;
-export type RotationDeg = 0 | 90;
+export type RotationDeg = 0 | 90 | 180 | 270;
 export type PackingMode = "A" | "B";
 
 /** How parts are positioned on the sheet:
@@ -54,7 +54,7 @@ export type NestPart = {
   direction: PartDirection;
   count: number;
   rotationLocked: boolean;
-  allowedRotation: RotationDeg | -1; // 0=upright, 90=rotated, -1=both
+  allowedRotation: RotationDeg | -1; // 0/90/180/270=locked rotation, -1=free
 
   // Layer 0 bounding box dimensions
   l0Width: number;
@@ -263,10 +263,19 @@ export function parseFilename(filename: string): ParsedFilename {
 
 // ── Direction → Rotation Mapping ────────────────────────────────────────────
 
+/** Direction → required rotation so the arrow always points UP.
+ *  T → 0°  (arrow already up)
+ *  R → 90°  CCW (right→up)
+ *  B → 180° (down→up)
+ *  L → 270° CCW / 90° CW (left→up)
+ *  null → -1 (free rotation)
+ */
 export function directionToRotation(direction: PartDirection): RotationDeg | -1 {
   if (direction === null) return -1;
-  if (direction === "T" || direction === "B") return 0;
-  if (direction === "L" || direction === "R") return 90;
+  if (direction === "T") return 0;
+  if (direction === "R") return 90;
+  if (direction === "B") return 180;
+  if (direction === "L") return 270;
   return -1;
 }
 

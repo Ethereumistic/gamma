@@ -130,7 +130,7 @@ function transformCutSegment(
   localSeg: Segment,
   insertX: number,
   insertY: number,
-  rotation: 0 | 90,
+  rotation: 0 | 90 | 180 | 270,
 ): Segment {
   if (rotation === 0) {
     return {
@@ -139,22 +139,38 @@ function transformCutSegment(
       x2: insertX + localSeg.x2,
       y2: insertY + localSeg.y2,
     };
-  } else {
-    // 90° rotation: (x, y) → (-y, x) relative to insert point
+  } else if (rotation === 90) {
+    // 90° CCW: (x,y) → (-y, x) relative to insert point
     return {
       x1: insertX - localSeg.y1,
       y1: insertY + localSeg.x1,
       x2: insertX - localSeg.y2,
       y2: insertY + localSeg.x2,
     };
+  } else if (rotation === 180) {
+    // 180°: (x,y) → (-x, -y) relative to insert point
+    return {
+      x1: insertX - localSeg.x1,
+      y1: insertY - localSeg.y1,
+      x2: insertX - localSeg.x2,
+      y2: insertY - localSeg.y2,
+    };
+  } else {
+    // 270° CCW: (x,y) → (y, -x) relative to insert point
+    return {
+      x1: insertX + localSeg.y1,
+      y1: insertY - localSeg.x1,
+      x2: insertX + localSeg.y2,
+      y2: insertY - localSeg.x2,
+    };
   }
 }
 
 /** Compute the block insert position in sheet space for a placement.
- *  For 0° rotation: the L0 origin maps directly — pack + offset + CUT_OFFSET.
- *  For 90° rotation: an additional (l0Height + CUT_OFFSET) shift in X compensates
- *  for the leftward bbox shift caused by CCW rotation, so the CUT boundary
- *  aligns exactly with the pack rectangle. */
+ *  The insert position anchors the CUT boundary to the pack rectangle.
+ *  For 0° and 180° rotations, dimensions are (cutWidth × cutHeight).
+ *  For 90° and 270° rotations, dimensions are (cutHeight × cutWidth).
+ */
 function computeInsertPosition(
   placement: Placement,
   offsetX: number,
@@ -165,14 +181,26 @@ function computeInsertPosition(
     // After 90° CCW rotation, the geometry shifts left by l0Height.
     // Adding (l0Height + CUT_OFFSET) to X and CUT_OFFSET to Y realigns
     // the CUT bbox with the pack rectangle.
-    // Combined with transformCutSegment's (insertX − y) / (insertY + x) formula:
-    //   sheet_x = (packX + offsetX + l0H + 3) − local_y
-    //   which places CUT left edge at packX + offsetX, right edge at packX + offsetX + cutHeight.
     return {
       insertX: placement.packX + offsetX + part.l0Height + CUT_OFFSET,
       insertY: placement.packY + offsetY + CUT_OFFSET,
     };
+  } else if (placement.rotation === 180) {
+    // After 180° rotation, geometry shifts left by l0Width and down by l0Height.
+    // Adding (l0Width + CUT_OFFSET) to X and (l0Height + CUT_OFFSET) to Y realigns.
+    return {
+      insertX: placement.packX + offsetX + part.l0Width + CUT_OFFSET,
+      insertY: placement.packY + offsetY + part.l0Height + CUT_OFFSET,
+    };
+  } else if (placement.rotation === 270) {
+    // After 270° CCW rotation, geometry shifts down by l0Width.
+    // Adding CUT_OFFSET to X and (l0Width + CUT_OFFSET) to Y realigns.
+    return {
+      insertX: placement.packX + offsetX + CUT_OFFSET,
+      insertY: placement.packY + offsetY + part.l0Width + CUT_OFFSET,
+    };
   }
+  // 0° rotation: straightforward
   return {
     insertX: placement.packX + offsetX + CUT_OFFSET,
     insertY: placement.packY + offsetY + CUT_OFFSET,

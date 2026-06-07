@@ -364,18 +364,19 @@ function buildItems(parts: NestPart[]): PackItem[] {
       let h: number;
       let rotated: boolean;
 
-      if (part.allowedRotation === 0) {
-        // Upright only
+      if (part.allowedRotation === 0 || part.allowedRotation === 180) {
+        // 0° or 180° — same dimensions, no swap
         w = part.cutWidth;
         h = part.cutHeight;
         rotated = false;
-      } else if (part.allowedRotation === 90) {
-        // Rotated 90° only: swap dimensions
+      } else if (part.allowedRotation === 90 || part.allowedRotation === 270) {
+        // 90° or 270° — swapped dimensions
         w = part.cutHeight;
         h = part.cutWidth;
         rotated = true;
       } else {
-        // Both orientations allowed — pass natural dims, let packer decide
+        // Both orientations allowed (allowedRotation === -1)
+        // Pass natural dims, let packer decide
         w = part.cutWidth;
         h = part.cutHeight;
         rotated = false;
@@ -505,8 +506,14 @@ export function packAllParts(parts: NestPart[]): {
       const part = item.partData;
 
       // The packer explicitly reports whether it swapped w↔h for this item.
-      // This is more reliable than comparing dimensions (which fails for near-square parts).
-      const rotationDeg: 0 | 90 = rect.rotated || item.rotated ? 90 : 0;
+      // For locked rotations (0/90/180/270), use the part's fixed rotation directly.
+      // For free rotation (allowedRotation=-1), use packer's swap decision.
+      let rotationDeg: 0 | 90 | 180 | 270;
+      if (part.allowedRotation === -1) {
+        rotationDeg = rect.rotated ? 90 : 0;
+      } else {
+        rotationDeg = part.allowedRotation as 0 | 90 | 180 | 270;
+      }
 
       placements.push({
         partId: part.id,

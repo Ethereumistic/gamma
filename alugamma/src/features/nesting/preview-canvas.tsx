@@ -222,11 +222,16 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
 
           // 2. Rotate and align
           if (placement.rotation === 90) {
-            // Rotate 90° CCW around origin, then shift so rotated CUT bbox aligns with (0,0).
             makerjs.model.rotate(instance, 90, [0, 0]);
             makerjs.model.moveRelative(instance, [part.l0Height + CUT_OFFSET, CUT_OFFSET]);
+          } else if (placement.rotation === 180) {
+            makerjs.model.rotate(instance, 180, [0, 0]);
+            makerjs.model.moveRelative(instance, [part.l0Width + CUT_OFFSET, part.l0Height + CUT_OFFSET]);
+          } else if (placement.rotation === 270) {
+            makerjs.model.rotate(instance, 270, [0, 0]);
+            makerjs.model.moveRelative(instance, [CUT_OFFSET, part.l0Width + CUT_OFFSET]);
           } else {
-            // No rotation — shift so CUT bbox is at (0,0)
+            // 0° — no rotation
             makerjs.model.moveRelative(instance, [CUT_OFFSET, CUT_OFFSET]);
           }
 
@@ -300,9 +305,9 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.setLineDash([]);
 
         // Part label (centered on Layer 0 bbox in DXF coordinates)
-        const l0ShiftX = placement.rotation === 90 ? part.l0Height : 0;
-        const labelW = placement.rotation === 90 ? part.l0Height : part.l0Width;
-        const labelH = placement.rotation === 90 ? part.l0Width : part.l0Height;
+        const l0ShiftX = (placement.rotation === 90 || placement.rotation === 270) ? part.l0Height : 0;
+        const labelW = (placement.rotation === 90 || placement.rotation === 270) ? part.l0Height : part.l0Width;
+        const labelH = (placement.rotation === 90 || placement.rotation === 270) ? part.l0Width : part.l0Height;
         const labelX =
           placement.packX + layout.offsetX + CUT_OFFSET + l0ShiftX + labelW / 2;
         const labelY =

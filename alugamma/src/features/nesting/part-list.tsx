@@ -31,6 +31,7 @@ export function PartListPanel() {
   const [selectedDesignIds, setSelectedDesignIds] = useState<Set<string>>(new Set());
   const [importingFromProject, setImportingFromProject] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [respectDirection, setRespectDirection] = useState(true);
   const dragCounterRef = useRef(0);
 
   // Query designs for the current project
@@ -157,12 +158,15 @@ export function PartListPanel() {
       for (const design of projectDesigns) {
         if (!selectedDesignIds.has(design.id)) continue;
         try {
-          const part = createNestPartFromDesign({
-            id: design.id,
-            name: design.name,
-            exportName: design.exportName,
-            model: normalizeSheetMetalModel(design.model),
-          });
+          const part = createNestPartFromDesign(
+            {
+              id: design.id,
+              name: design.name,
+              exportName: design.exportName,
+              model: normalizeSheetMetalModel(design.model),
+            },
+            { respectDirection },
+          );
           addPart(part);
           imported++;
         } catch (e) {
@@ -451,8 +455,21 @@ export function PartListPanel() {
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <div className="text-[10px] text-muted-foreground">
-              {selectedDesignIds.size} selected
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Checkbox
+                  id="respect-direction"
+                  checked={respectDirection}
+                  onCheckedChange={(v) => setRespectDirection(v === true)}
+                  className="h-4 w-4 border-white/20 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500"
+                />
+                <label htmlFor="respect-direction" className="text-[11px] text-muted-foreground cursor-pointer select-none">
+                  Respect direction
+                </label>
+              </div>
+              <span className="text-[10px] text-muted-foreground/50">
+                {respectDirection ? "Arrow always points up" : "Free rotation for optimal fit"}
+              </span>
             </div>
             <div className="flex gap-2">
               <Button
