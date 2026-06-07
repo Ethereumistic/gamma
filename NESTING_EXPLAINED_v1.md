@@ -244,9 +244,17 @@ Input: NestPart[] (parts with counts)
       │
       ▼
 [6] Build SheetLayouts from packed bins
+      │   - Set repeatCount=1 per layout (packer already distributed all instances)
       │   - Compute alignment offset (Mode B: bottom-left or centered; Mode A: margin)
-      │   - Compute repeat count per sheet (bottleneck determines repeats)
-      │   - Validate production: warn on under/over-production
+      │
+      ▼
+[7] Deduplicate identical layouts
+      │   - Group layouts by fingerprint (mode, alignment, placement positions)
+      │   - Merge each group: keep one representative, sum repeatCounts
+      │   - Renumber and recompute sheet names
+      │
+      ▼
+[8] Validate production: warn on under/over-production
       │
       ▼
 Output: { layouts: SheetLayout[], mode: "A"|"B", warnings: string[] }
@@ -283,16 +291,36 @@ This is more reliable than comparing dimensions, which fails for near-square par
 
 ### 6.5 Repeat Count Computation
 
-For each sheet layout:
-```
-For each part type on this sheet:
-    instances_on_sheet = count of that part's placements on this sheet
-    repeats_needed = ceil(total_required / instances_on_sheet)
+The repeat count represents how many times a single sheet layout must be cut. The
+computation happens in two stages:
 
-sheet.repeat_count = min(repeats_needed across all part types on this sheet)
-```
+**Stage 1 — Initial placement (repeatCount = 1):**
 
-The **bottleneck part** (the one that requires the most repeats) determines how many times the sheet is cut. Over-production of other parts is acceptable waste.
+Since `buildItems` creates exactly `part.count` PackItems per part type, the packer
+distributes ALL required instances across bins. Cutting each layout once produces
+exactly the right number of parts. So after the packer produces bins, every
+layout starts with `repeatCount = 1`.
+
+**Stage 2 — Layout deduplication:**
+
+When the packer creates multiple bins with identical arrangements (common when a
+part type has `count > fits-per-sheet`), `deduplicateLayouts()` merges them into a
+single layout with a summed `repeatCount`. For example, 4 identical bins each
+with 5 placements merge into 1 layout with `repeatCount = 4`, meaning "cut this
+sheet 4 times" — 4 × 5 = 20 total parts.
+
+Two layouts are considered identical if they have the same mode, alignment, and
+exact same placement positions (compared via a fingerprint string). Instance
+indices are excluded from the fingerprint since they're just sequential numbering
+artifacts.
+
+**Production correctness:** After dedup, `validateProduction()` checks that total
+production matches demand. Since the packer placed all required instances and
+dedup preserves total production (merging sums repeatCounts), there should be no
+spurious OVER-PRODUCED or UNDER-PRODUCED warnings for single-part-type scenarios.
+For mixed parts, slight over-production may still occur when a layout contains
+parts with non-divisible counts (e.g., needing 7 of a part that appears 3 per sheet →
+ceil(7/3)×3 = 9, 2 over). This is acceptable waste.
 
 ### 6.6 Mode B Alignment (Bottom-Left / Centered)
 

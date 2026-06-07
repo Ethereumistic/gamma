@@ -401,27 +401,69 @@ function buildItems(parts: NestPart[]): PackItem[] {
   return items;
 }
 
-function computeRepeatCount(
-  placements: Placement[],
-  parts: NestPart[],
-): number {
-  // Count instances of each part type on this sheet
-  const instanceCounts = new Map<string, number>();
-  for (const pl of placements) {
-    instanceCounts.set(pl.partId, (instanceCounts.get(pl.partId) ?? 0) + 1);
+// ── Layout fingerprint for deduplication ──────────────────────────────────
+// Two layouts are considered identical if they have the same mode, alignment,
+// and the same set of placements (same part types at same positions with
+// same dimensions and rotations). The instanceIndex is excluded because it
+// is just a sequential numbering artifact — two bins packed with identical
+// parts will have different instanceIndex values but the same arrangement.
+
+function layoutFingerprint(layout: {
+  mode: string;
+  alignment: string;
+  placements: Placement[];
+}): string {
+  const entries = layout.placements
+    .map((pl) =>
+      `${pl.partId}:${pl.packX.toFixed(2)}:${pl.packY.toFixed(2)}:${pl.rotation}:${pl.packWidth.toFixed(2)}:${pl.packHeight.toFixed(2)}`
+    )
+    .sort()
+    .join("|");
+  return `${layout.mode}|${layout.alignment}|${entries}`;
+}
+
+// ── Deduplicate identical layouts ────────────────────────────────────────
+// When the packer distributes many instances of the same part across multiple
+// bins, those bins will have identical arrangements. Rather than outputting
+// N separate DXF files (each cut once), we merge them into 1 DXF file cut N
+// times. This is both correct and practical: the CNC operator gets fewer
+// programs and the sheet list clearly shows the repeat count.
+//
+// The dedup groups layouts by fingerprint (same mode + alignment + placement
+// positions), keeps one representative per group, and sums their
+// repeatCounts.
+
+function deduplicateLayouts(layouts: SheetLayout[]): SheetLayout[] {
+  if (layouts.length <= 1) return layouts;
+
+  // Group by fingerprint
+  const groups = new Map<string, SheetLayout[]>();
+  for (const layout of layouts) {
+    const fp = layoutFingerprint(layout);
+    if (!groups.has(fp)) groups.set(fp, []);
+    groups.get(fp)!.push(layout);
   }
 
-  // For each part type on this sheet, how many times does this sheet need to be cut?
-  const repeatsNeeded: number[] = [];
-  const partMap = new Map(parts.map((p) => [p.id, p]));
-
-  for (const [partId, countOnSheet] of instanceCounts) {
-    const part = partMap.get(partId);
-    if (!part) continue;
-    repeatsNeeded.push(Math.ceil(part.count / countOnSheet));
+  // Merge each group: keep one representative, sum repeatCounts
+  const merged: SheetLayout[] = [];
+  for (const group of groups.values()) {
+    const rep = { ...group[0] };
+    rep.repeatCount = group.reduce((sum, l) => sum + l.repeatCount, 0);
+    merged.push(rep);
   }
 
-  return repeatsNeeded.length > 0 ? Math.min(...repeatsNeeded) : 1;
+  // Renumber sequentially and recompute sheet names
+  merged.sort((a, b) => a.sheetIndex - b.sheetIndex);
+  for (let i = 0; i < merged.length; i++) {
+    merged[i] = {
+      ...merged[i],
+      sheetIndex: i,
+      id: createLayoutId(i),
+      sheetName: `${i + 1}_r${merged[i].repeatCount}_${merged[i].mode}_p${merged[i].placements.length}_u${merged[i].utilizationPercent}`,
+    };
+  }
+
+  return merged;
 }
 
 function validateProduction(
@@ -557,14 +599,11 @@ export function packAllParts(parts: NestPart[]): {
       alignment = "margin";
     }
 
-    // Compute repeat count
-    const repeatCount = computeRepeatCount(placements, parts);
-
     // Compute utilization
     const utilizationPercent = Math.round(computeLayoutUtilization(placements));
 
-    // Assign sheet name using the format: {number}_r{repeat}_{mode}_p{parts}_u{util}
-    const sheetName = `${bi + 1}_r${repeatCount}_${mode}_p${placements.length}_u${utilizationPercent}`;
+    // Assign temporary sheet name (will be recomputed after dedup)
+    const sheetName = `${bi + 1}_r1_${mode}_p${placements.length}_u${utilizationPercent}`;
 
     layouts.push({
       id: createLayoutId(bi),
@@ -572,7 +611,9 @@ export function packAllParts(parts: NestPart[]): {
       mode,
       alignment,
       placements,
-      repeatCount,
+      repeatCount: 1, // The packer already distributed all required instances across bins.
+                          // Cutting each layout once produces exactly the right quantities.
+                          // Dedup below will merge identical layouts and sum repeatCounts.
       sheetName,
       offsetX,
       offsetY,
@@ -581,8 +622,15 @@ export function packAllParts(parts: NestPart[]): {
     });
   }
 
-  // Validate production
-  const warnings = validateProduction(layouts, parts);
+  // Deduplicate identical layouts — when the packer creates multiple bins
+  // with identical arrangements (common for parts with count > fits-per-sheet),
+  // merge them into a single layout with a summed repeatCount.
+  // This produces the correct total-sheets-to-cut and avoids spurious
+  // OVER-PRODUCED warnings.
+  const dedupedLayouts = deduplicateLayouts(layouts);
 
-  return { layouts, mode, warnings };
+  // Validate production against the final (deduped) layouts
+  const warnings = validateProduction(dedupedLayouts, parts);
+
+  return { layouts: dedupedLayouts, mode, warnings };
 }

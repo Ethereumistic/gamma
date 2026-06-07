@@ -520,10 +520,16 @@ export function createNestPartFromDesign(
   // drag-and-drop imports, so both paths produce identical results.
   const parsed = parseFilename(design.exportName + ".dxf");
 
-  // Backwards compatibility: if the export name has no count suffix (old design
-  // format where count was only in model.metadataCount), fall back to model fields.
+  // Check if the export name contains an explicit count suffix (_xN).
+  // This distinguishes "name_x1" (explicit count 1, do not override)
+  // from "name" (no count suffix, count defaults to 1, may fall back to metadataCount).
+  const hasExplicitCountSuffix = /[._-][xX]\d+/.test(design.exportName);
+
   let count = parsed.count;
-  if (count === 1 && (design.model.metadataCount || 0) > 1) {
+  // Backwards compatibility: only use metadataCount when the export name has
+  // NO explicit _x<count> suffix and metadataCount is available. Once a user
+  // adds a count suffix, the suffix IS the source of truth.
+  if (!hasExplicitCountSuffix && count === 1 && (design.model.metadataCount || 0) > 1) {
     count = design.model.metadataCount;
   }
 
