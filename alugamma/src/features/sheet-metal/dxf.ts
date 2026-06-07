@@ -41,11 +41,17 @@ export function buildDxf(geometry: GeometryResult, designName: string, modelConf
   const cx = (geometry.baseRect.x0 + geometry.baseRect.x1) / 2;
   const cy = (geometry.baseRect.y0 + geometry.baseRect.y1) / 2;
 
-  // The arrow will be positioned slightly to the right of center
-  const arrowCx = cx + 420;
+  const textHeight = 64;
+  const estimatedWidth = designName.length * textHeight * 0.7;
 
   if (modelConfig.includeArrow) {
-    const arrowLines = getArrowPaths(modelConfig.arrowDirection, arrowCx, cy, 100);
+    // Arrow centered horizontally, positioned above the name label
+    const arrowLength = 50;
+    const arrowGap = 15; // gap between text top and arrow center
+    const arrowCx = cx;
+    const arrowCy = (cy - textHeight / 2) + textHeight + arrowGap + arrowLength / 2;
+
+    const arrowLines = getArrowPaths(modelConfig.arrowDirection, arrowCx, arrowCy, arrowLength);
     arrowLines.forEach((line, i) => {
       line.layer = "0";
       model.paths![`arrow_${i}`] = line;
@@ -63,11 +69,9 @@ export function buildDxf(geometry: GeometryResult, designName: string, modelConf
   });
 
   if (modelConfig.includeName && designName.trim()) {
-    const textHeight = 64;
-    const estimatedWidth = designName.length * textHeight * 0.7;
-    // position text to the left/center, leaving room for arrow on the right
-    const textX = modelConfig.includeArrow ? cx - 40 - estimatedWidth / 2 : cx - estimatedWidth / 2;
-    // vertical centering: subtract roughly half height
+    // Name centered horizontally on the part (no offset regardless of arrow)
+    const textX = cx - estimatedWidth / 2;
+    // Vertical centering: roughly centered on the part
     const textY = cy - textHeight / 2;
 
     const textDxf = `0\nTEXT\n8\n0\n10\n${textX}\n20\n${textY}\n40\n${textHeight}\n1\n${designName.trim()}\n`;

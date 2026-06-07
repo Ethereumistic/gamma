@@ -761,8 +761,8 @@ When `addPart` is called with a part whose `id` already exists, the counts are *
       ├─ buildDxf(geometry, exportName, model) → full DXF string
       ├─ l0Width = totalWidth - 2*offsetCut, l0Height = totalHeight - 2*offsetCut
       ├─ Extract CUT segments in local coordinates
-      ├─ Set direction from metadata (or arrowDirection with side-key mapping)
-      └─ Set count from metadata (or default 1)
+      ├─ Direction set to null (free rotation for optimal packing)
+      └─ Count set from metadataCount (always respected, regardless of includeMetadata)
       │
       ▼
 5. User clicks "Pack" → same flow as below
@@ -835,8 +835,9 @@ This function:
 2. Calls `buildDxf(geometry, exportName, model)` to produce the full DXF content
 3. Computes L0 dimensions: `totalWidth - 2 * offsetCut` and `totalHeight - 2 * offsetCut` (subtracting the cut margin to get the nominal part size)
 4. Extracts CUT line segments from `geometry.shapes` filtered by `layer === "CUT"`, using absolute coordinates (which are already local-relative-to-L0-origin since the L0 outline starts at `(0, 0)` in the geometry engine)
-5. Reads `includeMetadata`, `arrowDirection`, and `metadataCount` from the design model to set `direction` and `count`
-6. Returns a ready-to-use `NestPart` with `source: "sheet-metal"` and `designId` linking back to the Convex design
+5. Sets `direction` to `null` (free rotation) — the arrow in the DXF is visual metadata for the operator, not a packing constraint. The nesting algorithm is free to rotate parts for optimal placement. Overrides can still force a direction if needed.
+6. Sets `count` from `metadataCount` — always respected regardless of the `includeMetadata` toggle. `includeMetadata` controls the export filename suffix only; the count is always meaningful for nesting (how many copies of this part to pack).
+7. Returns a ready-to-use `NestPart` with `source: "sheet-metal"` and `designId` linking back to the Convex design
 
 **Key design decision: No Convex file storage for DXF.** The `SheetMetalModel` is a fully deterministic parametric description — given the same model, `computeSheetMetalGeometry() + buildDxf()` always produces identical output. DXF files are regenerated on-the-fly from the model, which is the single source of truth. This eliminates staleness bugs, storage costs, and sync complexity.
 

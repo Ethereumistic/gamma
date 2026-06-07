@@ -396,8 +396,8 @@ export function PartListPanel() {
                 {filteredDesigns.map((design) => {
                   const isSelected = selectedDesignIds.has(design.id);
                   const m = normalizeSheetMetalModel(design.model);
-                  const dir = m.includeMetadata ? { top: "↑T", right: "→R", bottom: "↓B", left: "←L" }[m.arrowDirection] : null;
-                  const count = m.includeMetadata ? m.metadataCount : 1;
+                  const dir = { top: "↑T", right: "→R", bottom: "↓B", left: "←L" }[m.arrowDirection];
+                  const count = m.metadataCount || 1;
 
                   return (
                     <label
@@ -419,7 +419,7 @@ export function PartListPanel() {
                               {dir}
                             </Badge>
                           )}
-                          {m.includeMetadata && count > 1 && (
+                          {count > 1 && (
                             <Badge variant="outline" className="h-4 px-1 text-[9px] text-amber-400">
                               ×{count}
                             </Badge>

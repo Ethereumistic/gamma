@@ -11,7 +11,7 @@ import type { Segment, Rect, NestPart, PartDirection } from "./types";
 import { parseFilename, computeCutDimensions, createNestPart } from "./types";
 import { computeSheetMetalGeometry } from "@/features/sheet-metal/geometry";
 import { buildDxf } from "@/features/sheet-metal/dxf";
-import { SIDE_KEY_TO_DIR, type SheetMetalModel } from "@/features/sheet-metal/types";
+import { type SheetMetalModel } from "@/features/sheet-metal/types";
 import makerjs from "makerjs";
 
 // ── DXF Entity Representation ─────────────────────────────────────────────
@@ -513,15 +513,15 @@ export function createNestPartFromDesign(
       y2: s.y2,
     }));
 
-  // Determine direction from model metadata or arrow
-  const direction: PartDirection =
-    overrides?.direction ??
-    (design.model.includeMetadata
-      ? (SIDE_KEY_TO_DIR[design.model.arrowDirection] as PartDirection)
-      : null);
+  // Direction: always null for sheet-metal imports — the arrow is visual metadata
+  // for the DXF, not a packing constraint. The nesting algorithm rotates freely
+  // for optimal placement. Overrides can still force a direction if needed.
+  const direction: PartDirection = overrides?.direction ?? null;
 
-  // Determine count from model metadata or override
-  const count = overrides?.count ?? (design.model.includeMetadata ? (design.model.metadataCount || 1) : 1);
+  // Count: always use metadataCount regardless of includeMetadata.
+  // includeMetadata controls the filename suffix only; the count is always
+  // meaningful for nesting (how many copies of this part to pack).
+  const count = overrides?.count ?? (design.model.metadataCount || 1);
 
   return createNestPartFromGeometry(
     design.exportName,
