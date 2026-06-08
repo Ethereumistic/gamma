@@ -17,10 +17,11 @@ import {
   DEFAULT_LAYER_ACI_COLOR,
   getAciColor,
 } from "./constants";
-import type { SheetLayout, NestPart } from "./types";
+import type { SheetLayout, NestPart, Segment } from "./types";
 import { formatSheetTitle } from "./types";
 import { collectAndDeduplicate } from "./deduplicator";
 import { extractDxfModel } from "./dxf-reader";
+import { joinSegmentsForLayer, joinStrategyForLayer } from "./line-joiner";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,136 @@ function postProcessDxfLayerColors(dxfString: string): string {
   }
 
   return modified ? lines.join(lineEnding) : dxfString;
+}
+
+// ── Line Joining: Extract, Join, and Replace ──────────────────────────────────
+//
+// Walks the Maker.js model tree to collect all LINE paths organized by layer,
+// applies per-layer joining strategies, removes the original LINE paths for
+// layers that need joining, and adds the joined lines as new top-level paths.
+//
+// This is the critical step that ensures CNC-ready DXF output:
+//   CUT, HOLES, custom → full join (merge all collinear segments)
+//   FREZ, FREZ_135    → orientation-aware join (same-angle collinear segments only)
+//   SHEETS, 0         → skip (no joining needed)
+
+interface CollectedLine {
+  layer: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** Key in the paths object, used for removal */
+  pathKey: string;
+  /** Reference to the paths object that contains this line */
+  pathsObj: Record<string, makerjs.IPath>;
+}
+
+/**
+ * Recursively walk a Maker.js model tree and collect all LINE paths
+ * with their world-space coordinates (accounting for model origins).
+ */
+function collectLinePaths(
+  model: makerjs.IModel,
+  offsetX: number = 0,
+  offsetY: number = 0,
+): CollectedLine[] {
+  const lines: CollectedLine[] = [];
+
+  // Accumulate this model's origin
+  const ox = offsetX + (model.origin ? model.origin[0] : 0);
+  const oy = offsetY + (model.origin ? model.origin[1] : 0);
+
+  // Collect LINE paths from this model level
+  if (model.paths) {
+    for (const [key, path] of Object.entries(model.paths)) {
+      if (path.type === "line") {
+        const line = path as makerjs.paths.Line;
+        lines.push({
+          layer: (line as any).layer || "0",
+          x1: line.origin[0] + ox,
+          y1: line.origin[1] + oy,
+          x2: line.end[0] + ox,
+          y2: line.end[1] + oy,
+          pathKey: key,
+          pathsObj: model.paths!,
+        });
+      }
+    }
+  }
+
+  // Recurse into sub-models
+  if (model.models) {
+    for (const subModel of Object.values(model.models)) {
+      lines.push(...collectLinePaths(subModel as makerjs.IModel, ox, oy));
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Apply per-layer line joining to a Maker.js model.
+ *
+ * 1. Collect all LINE paths from the model tree (with world-space coordinates)
+ * 2. Remove LINE paths for layers that need joining
+ * 3. Apply the appropriate joining strategy per layer
+ * 4. Add joined lines as new top-level paths
+ *
+ * Returns the number of lines removed and added for diagnostics.
+ */
+export function applyLineJoining(model: makerjs.IModel, nextId: () => string): {
+  removed: number;
+  added: number;
+} {
+  // Step 1: Collect all LINE paths with world-space coordinates
+  const collected = collectLinePaths(model);
+
+  // Group by layer
+  const byLayer = new Map<string, CollectedLine[]>();
+  for (const line of collected) {
+    if (!byLayer.has(line.layer)) byLayer.set(line.layer, []);
+    byLayer.get(line.layer)!.push(line);
+  }
+
+  // Step 2: For each layer that needs joining, remove original lines and add joined lines
+  let totalRemoved = 0;
+  let totalAdded = 0;
+
+  for (const [layer, lines] of byLayer) {
+    const strategy = joinStrategyForLayer(layer);
+    if (strategy === "skip") continue;
+
+    // Convert to segments
+    const segments: Segment[] = lines.map((l) => ({
+      x1: l.x1,
+      y1: l.y1,
+      x2: l.x2,
+      y2: l.y2,
+    }));
+
+    // Remove original LINE paths from the model
+    for (const line of lines) {
+      delete line.pathsObj[line.pathKey];
+      totalRemoved++;
+    }
+
+    // Apply joining
+    const joined = joinSegmentsForLayer(segments, layer);
+
+    // Add joined lines as new top-level paths
+    for (const seg of joined) {
+      const newLine = new makerjs.paths.Line(
+        [seg.x1, seg.y1],
+        [seg.x2, seg.y2],
+      ) as makerjs.IPath;
+      newLine.layer = layer;
+      model.paths![nextId()] = newLine;
+      totalAdded++;
+    }
+  }
+
+  return { removed: totalRemoved, added: totalAdded };
 }
 
 // ── Main DXF Writer ─────────────────────────────────────────────────────────
@@ -197,7 +328,15 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     mainModel.models![`${part.id}_${i}`] = instance;
   }
 
-  // ── Deduplicated CUT lines ────────────────────────────────────────────────
+  // ── Deduplicated CUT lines (pre-joined for CNC readiness) ──────────────
+  // Join CUT segments BEFORE adding them to the Maker.js model.
+  // Pre-joining directly on the Segment[] data is more reliable than
+  // relying on the model-walking approach in applyLineJoining because:
+  //   1. No Maker.js path-type matching — operates on plain coordinates
+  //   2. No model origin math — segments are already in sheet space
+  //   3. Deterministic regardless of model nesting or structure
+  // applyLineJoining still runs later for FREZ/HOLES/etc. and will
+  // harmlessly re-confirm the already-joined CUT lines.
   const dedupedCut = collectAndDeduplicate(
     layout.placements,
     parts,
@@ -205,11 +344,20 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     layout.offsetX,
     layout.offsetY,
   );
-  for (const seg of dedupedCut) {
+  const joinedCut = joinSegmentsForLayer(dedupedCut, LAYER_CUT);
+  for (const seg of joinedCut) {
     const line = new makerjs.paths.Line([seg.x1, seg.y1], [seg.x2, seg.y2]) as makerjs.IPath;
     line.layer = LAYER_CUT;
     mainModel.paths![nextPathId()] = line;
   }
+
+  // ── Apply line joining for remaining layers (FREZ, HOLES, custom) ────
+  // CUT lines are already pre-joined above, so applyLineJoining will
+  // confirm them (no-op) and process FREZ/FREZ_135/HOLES/etc.
+  //   FREZ, FREZ_135     →  orientation-aware join
+  //   HOLES, custom       →  full join
+  //   SHEETS, 0           →  skip
+  applyLineJoining(mainModel, nextPathId);
 
   // ── Build DXF via MakerJs (same method as sheet-metal) ──
 
@@ -245,7 +393,6 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   // ── Inject label TEXT entities ────────────────────────────────────────────
   // Build all entity DXF strings
   let entityDxf = "";
-
   const lineEnding = dxfString.includes("\r\n") ? "\r\n" : "\n";
 
   // ── Sheet title (top-left, above the sheet) ──
