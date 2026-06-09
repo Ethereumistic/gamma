@@ -206,3 +206,5 @@ venv/
 ### OpenNext ###
 .open-next/
 next-env.d.ts
+scripts/nesting/chained_output/
+scripts/nesting/nesting_sheets/

@@ -400,9 +400,9 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   const titleText = formatSheetTitle(layout);
   const titleX = 10; // Left-aligned, small margin from left edge
   const titleY = SHEET_HEIGHT + 80; // Above the sheet
-  const titleHeight = 50;
+  const titleHeight = 95.63;
   entityDxf += `0${lineEnding}TEXT${lineEnding}`;
-  entityDxf += `8${lineEnding}${LAYER_SHEETS}${lineEnding}`; // Layer
+  entityDxf += `8${lineEnding}0${lineEnding}`; // Layer 0
   entityDxf += `10${lineEnding}${titleX}${lineEnding}`; // Insertion X
   entityDxf += `20${lineEnding}${titleY}${lineEnding}`; // Insertion Y
   entityDxf += `40${lineEnding}${titleHeight}${lineEnding}`; // Text height
@@ -424,10 +424,10 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
 
     // Center-aligned text: use group code 72=1 (center) and provide alignment point (11/21)
     entityDxf += `0${lineEnding}TEXT${lineEnding}`;
-    entityDxf += `8${lineEnding}${LAYER_SHEETS}${lineEnding}`; // Layer
+    entityDxf += `8${lineEnding}0${lineEnding}`; // Layer 0
     entityDxf += `10${lineEnding}${labelTextX}${lineEnding}`; // First alignment X
     entityDxf += `20${lineEnding}${labelTextY}${lineEnding}`; // First alignment Y
-    entityDxf += `40${lineEnding}20${lineEnding}`; // Text height
+    entityDxf += `40${lineEnding}50${lineEnding}`; // Text height
     entityDxf += `1${lineEnding}${part.name}${lineEnding}`; // Text content
     entityDxf += `72${lineEnding}1${lineEnding}`; // Horizontal alignment: center
     entityDxf += `11${lineEnding}${labelTextX}${lineEnding}`; // Second alignment X
@@ -437,10 +437,10 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   // ── Repetition count label (bottom-right, below the sheet) ──
   // Shows just the repetition number for this sheet
   const repeatX = SHEET_WIDTH - 10; // Right-aligned, small margin from right
-  const repeatY = -80; // Below the sheet
-  const repeatHeight = 80;
+  const repeatY = -120; // Below the sheet, clear of the bottom edge
+  const repeatHeight = titleHeight;
   entityDxf += `0${lineEnding}TEXT${lineEnding}`;
-  entityDxf += `8${lineEnding}${LAYER_SHEETS}${lineEnding}`; // Layer
+  entityDxf += `8${lineEnding}0${lineEnding}`; // Layer 0
   entityDxf += `10${lineEnding}${repeatX}${lineEnding}`; // Insertion X
   entityDxf += `20${lineEnding}${repeatY}${lineEnding}`; // Insertion Y
   entityDxf += `40${lineEnding}${repeatHeight}${lineEnding}`; // Text height
