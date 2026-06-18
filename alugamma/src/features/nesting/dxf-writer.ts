@@ -49,6 +49,38 @@ function injectBeforeEndsec(dxfString: string, entityDxf: string): string {
   return dxfString.slice(0, endsecMatch) + formatted + dxfString.slice(endsecMatch);
 }
 
+/** Inject a named STYLE entry (Arial Bold) into the DXF STYLE table.
+ *  This makes TEXT entities that reference the style render with a TrueType
+ *  font instead of the default single-stroke txt.shx. Falls back gracefully
+ *  if the viewer doesn't have the font. */
+function injectLabelStyle(dxfString: string): string {
+  const nl = dxfString.includes("\r\n") ? "\r\n" : "\n";
+
+  // Find the STYLE table header: "0\nTABLE\n2\nSTYLE\n"
+  const marker = `0${nl}TABLE${nl}2${nl}STYLE${nl}`;
+  const tableStart = dxfString.indexOf(marker);
+  if (tableStart === -1) return dxfString; // No STYLE table, bail
+
+  // Find ENDTAB that closes the STYLE table
+  const endtabMarker = `0${nl}ENDTAB`;
+  const endtabIdx = dxfString.indexOf(endtabMarker, tableStart + marker.length);
+  if (endtabIdx === -1) return dxfString;
+
+  const styleEntry =
+    `0${nl}STYLE${nl}` +
+    `2${nl}NestLabel${nl}` +     // Style name
+    `70${nl}0${nl}` +             // Standard flags
+    `40${nl}0${nl}` +             // Fixed height (0 = not fixed)
+    `41${nl}1${nl}` +             // Width factor
+    `50${nl}0${nl}` +             // Oblique angle
+    `71${nl}0${nl}` +             // Text generation flags
+    `42${nl}1${nl}` +             // Last height used
+    `3${nl}arialbd.ttf${nl}` +   // Primary font (Arial Bold)
+    `4${nl}${nl}`;                // Big font (empty)
+
+  return dxfString.slice(0, endtabIdx) + styleEntry + dxfString.slice(endtabIdx);
+}
+
 /** Post-process DXF string to fix layer colors:
  *  Change unknown layer colors to orange (ACI 30). */
 function postProcessDxfLayerColors(dxfString: string): string {
@@ -390,6 +422,9 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   // ── Post-process DXF: fix layer colors (true color for SHEETS, orange for unknown) ──
   dxfString = postProcessDxfLayerColors(dxfString);
 
+  // ── Inject Arial Bold style into STYLE table ──
+  dxfString = injectLabelStyle(dxfString);
+
   // ── Inject label TEXT entities ────────────────────────────────────────────
   // Build all entity DXF strings
   let entityDxf = "";
@@ -403,6 +438,7 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   const titleHeight = 95.63;
   entityDxf += `0${lineEnding}TEXT${lineEnding}`;
   entityDxf += `8${lineEnding}0${lineEnding}`; // Layer 0
+  entityDxf += `7${lineEnding}NestLabel${lineEnding}`; // Style (Arial Bold)
   entityDxf += `10${lineEnding}${titleX}${lineEnding}`; // Insertion X
   entityDxf += `20${lineEnding}${titleY}${lineEnding}`; // Insertion Y
   entityDxf += `40${lineEnding}${titleHeight}${lineEnding}`; // Text height
@@ -425,6 +461,7 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     // Center-aligned text: use group code 72=1 (center) and provide alignment point (11/21)
     entityDxf += `0${lineEnding}TEXT${lineEnding}`;
     entityDxf += `8${lineEnding}0${lineEnding}`; // Layer 0
+    entityDxf += `7${lineEnding}NestLabel${lineEnding}`; // Style (Arial Bold)
     entityDxf += `10${lineEnding}${labelTextX}${lineEnding}`; // First alignment X
     entityDxf += `20${lineEnding}${labelTextY}${lineEnding}`; // First alignment Y
     entityDxf += `40${lineEnding}50${lineEnding}`; // Text height
@@ -441,6 +478,7 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   const repeatHeight = titleHeight;
   entityDxf += `0${lineEnding}TEXT${lineEnding}`;
   entityDxf += `8${lineEnding}0${lineEnding}`; // Layer 0
+  entityDxf += `7${lineEnding}NestLabel${lineEnding}`; // Style (Arial Bold)
   entityDxf += `10${lineEnding}${repeatX}${lineEnding}`; // Insertion X
   entityDxf += `20${lineEnding}${repeatY}${lineEnding}`; // Insertion Y
   entityDxf += `40${lineEnding}${repeatHeight}${lineEnding}`; // Text height
