@@ -466,7 +466,7 @@ export function parseDxfContent(dxfContent: string): ParsedDxfPart | null {
     }));
 
     return {
-      l0Bbox: { x0: 0, y0: 0, x1: l0Width, y1: l0Height },
+      l0Bbox,
       l0Width,
       l0Height,
       cutLines: localCutLines,
@@ -539,6 +539,7 @@ export function createNestPartFromGeometry(
   cutLines: Segment[],
   designId?: string,
   dxfContent?: string,
+  l0Bbox: Rect = { x0: 0, y0: 0, x1: l0Width, y1: l0Height },
 ): NestPart {
   const { cutWidth, cutHeight } = computeCutDimensions(l0Width, l0Height);
 
@@ -553,7 +554,7 @@ export function createNestPartFromGeometry(
     cutHeight,
     source: "sheet-metal",
     cutLines,
-    l0Bbox: { x0: 0, y0: 0, x1: l0Width, y1: l0Height },
+    l0Bbox,
     dxfContent,
     designId,
   });
@@ -583,11 +584,15 @@ export function createNestPartFromDesign(
   const dxfContent = buildDxf(geometry, design.exportName, design.model);
 
   // The geometry bounds include offsetCut (e.g. 3mm margin on all sides).
-  // Nesting expects l0Width/l0Height = the Layer 0 outline WITHOUT that margin, so
-  // we subtract 2 * offsetCut to get the nominal part dimensions.
-  const offsetCut = design.model.offsetCut ?? 3;
-  const l0Width = geometry.totalWidth - 2 * offsetCut;
-  const l0Height = geometry.totalHeight - 2 * offsetCut;
+  const l0Shapes = geometry.shapes.filter((s) => s.layer === "0");
+  const l0Bbox = computeShapeBbox(l0Shapes) ?? {
+    x0: geometry.baseRect.x0,
+    y0: geometry.baseRect.y0,
+    x1: geometry.baseRect.x1,
+    y1: geometry.baseRect.y1,
+  };
+  const l0Width = l0Bbox.x1 - l0Bbox.x0;
+  const l0Height = l0Bbox.y1 - l0Bbox.y0;
 
   // Extract CUT line segments from geometry.
   // In the geometry coordinate system, the L0 outline starts at (0, 0),
@@ -596,10 +601,10 @@ export function createNestPartFromDesign(
   const cutLines: Segment[] = geometry.shapes
     .filter((s) => s.layer === "CUT")
     .map((s) => ({
-      x1: s.x1,
-      y1: s.y1,
-      x2: s.x2,
-      y2: s.y2,
+      x1: s.x1 - l0Bbox.x0,
+      y1: s.y1 - l0Bbox.y0,
+      x2: s.x2 - l0Bbox.x0,
+      y2: s.y2 - l0Bbox.y0,
     }));
 
   // ── Direction and count from the export name (source of truth) ───────
@@ -647,6 +652,7 @@ export function createNestPartFromDesign(
     cutLines,
     design.id,
     dxfContent,
+    l0Bbox,
   );
 
   // When respectDirection is enabled (default), the part's rotation is locked
@@ -674,6 +680,23 @@ export function createNestPartFromDesign(
 // DXF writer can emit non‑CUT geometry ( Layer 0, FREZ, FREZ_135, HOLES )
 // using the same makerjs.exporter.toDXF pipeline as the sheet‑metal feature.
 // ────────────────────────────────────────────────────────────────────────────────
+
+function computeShapeBbox(
+  shapes: Array<{ x1: number; y1: number; x2: number; y2: number }>,
+): Rect | null {
+  if (shapes.length === 0) return null;
+
+  let bbox = emptyRect();
+  for (const shape of shapes) {
+    bbox = mergeRect(bbox, {
+      x0: Math.min(shape.x1, shape.x2),
+      y0: Math.min(shape.y1, shape.y2),
+      x1: Math.max(shape.x1, shape.x2),
+      y1: Math.max(shape.y1, shape.y2),
+    });
+  }
+  return bbox;
+}
 
 export function extractDxfModel(dxfContent: string): makerjs.IModel | null {
   try {

@@ -234,6 +234,84 @@ function extractCutEntities(dxf: string): { polylines: LwPolyline[]; lines: Line
   return { polylines, lines };
 }
 
+function extractLineEntitiesByLayer(dxf: string, targetLayer: string): Line[] {
+  const lines: Line[] = [];
+  const text = dxf.split(/\r?\n/);
+  let i = 0;
+  let inLine = false;
+  let layer = "";
+  let x1 = NaN, y1 = NaN, x2 = NaN, y2 = NaN;
+
+  const flush = () => {
+    if (inLine && layer === targetLayer) {
+      if (!Number.isNaN(x1) && !Number.isNaN(y1) && !Number.isNaN(x2) && !Number.isNaN(y2)) {
+        lines.push({ layer, x1, y1, x2, y2 });
+      }
+    }
+  };
+
+  while (i < text.length - 1) {
+    const code = text[i].trim();
+    const val = text[i + 1].trim();
+    i += 2;
+
+    if (code === "0") {
+      flush();
+      inLine = val === "LINE";
+      layer = "";
+      x1 = y1 = x2 = y2 = NaN;
+      continue;
+    }
+
+    if (!inLine) continue;
+    if (code === "8") layer = val;
+    else if (code === "10") x1 = Number(val);
+    else if (code === "20") y1 = Number(val);
+    else if (code === "11") x2 = Number(val);
+    else if (code === "21") y2 = Number(val);
+  }
+  flush();
+  return lines;
+}
+
+function bboxOfLines(lines: Line[]) {
+  const xs = lines.flatMap((line) => [line.x1, line.x2]);
+  const ys = lines.flatMap((line) => [line.y1, line.y2]);
+  return {
+    x0: Math.min(...xs),
+    y0: Math.min(...ys),
+    x1: Math.max(...xs),
+    y1: Math.max(...ys),
+  };
+}
+
+function bboxOfPoints(points: Array<{ x: number; y: number }>) {
+  return {
+    x0: Math.min(...points.map((p) => p.x)),
+    y0: Math.min(...points.map((p) => p.y)),
+    x1: Math.max(...points.map((p) => p.x)),
+    y1: Math.max(...points.map((p) => p.y)),
+  };
+}
+
+function shiftedRectangleDxf(): string {
+  const line = (layer: string, x1: number, y1: number, x2: number, y2: number) =>
+    `0\nLINE\n8\n${layer}\n10\n${x1}\n20\n${y1}\n11\n${x2}\n21\n${y2}\n`;
+
+  return [
+    "0\nSECTION\n2\nENTITIES\n",
+    line("0", 100, 200, 200, 200),
+    line("0", 200, 200, 200, 250),
+    line("0", 200, 250, 100, 250),
+    line("0", 100, 250, 100, 200),
+    line("CUT", 97, 197, 203, 197),
+    line("CUT", 203, 197, 203, 253),
+    line("CUT", 203, 253, 97, 253),
+    line("CUT", 97, 253, 97, 197),
+    "0\nENDSEC\n0\nEOF\n",
+  ].join("");
+}
+
 describe("regression: per-part CUT contours emitted as LWPOLYLINE entities", () => {
   it("gabrovo: 1 instance produces a single closed LWPOLYLINE", () => {
     const part = makePart("jx743me73n9e80t30am5gdnq19853wa4");
@@ -407,5 +485,48 @@ describe("regression: per-part CUT contours emitted as LWPOLYLINE entities", () 
 
     expect(parsed).not.toBeNull();
     expect(parsed!.cutLines.length).toBe(part.cutLines.length);
+  });
+
+  it("custom DXF import keeps CUT 3mm from Layer 0 when raw Layer 0 origin is shifted", () => {
+    const parsed = parseDxfContent(shiftedRectangleDxf());
+    expect(parsed).not.toBeNull();
+    expect(parsed!.l0Bbox).toEqual({ x0: 100, y0: 200, x1: 200, y1: 250 });
+    expect(parsed!.cutLines[0]).toEqual({ x1: -3, y1: -3, x2: 103, y2: -3 });
+
+    const part = createNestPart({
+      id: "shifted-custom-dxf",
+      name: "shifted-custom-dxf",
+      filename: "shifted-custom-dxf_T_x1",
+      direction: "T",
+      count: 1,
+      source: "custom-dxf",
+      l0Width: parsed!.l0Width,
+      l0Height: parsed!.l0Height,
+      l0Bbox: parsed!.l0Bbox,
+      cutLines: parsed!.cutLines,
+      dxfContent: shiftedRectangleDxf(),
+    });
+    const placement: Placement = {
+      partId: part.id,
+      instanceIndex: 0,
+      packX: 35,
+      packY: 35,
+      packWidth: part.cutWidth,
+      packHeight: part.cutHeight,
+      rotation: 0,
+    };
+    const layout = makeLayout(part, [placement]);
+    const dxf = writeNestSheetDxf(layout, [part]);
+    const l0Bbox = bboxOfLines(extractLineEntitiesByLayer(dxf, "0"));
+    const { polylines } = extractCutEntities(dxf);
+    expect(polylines.length).toBe(1);
+    const cutBbox = bboxOfPoints(polylines[0].points);
+
+    expect(l0Bbox).toEqual({ x0: 38, y0: 38, x1: 138, y1: 88 });
+    expect(cutBbox).toEqual({ x0: 35, y0: 35, x1: 141, y1: 91 });
+    expect(l0Bbox.x0 - cutBbox.x0).toBe(CUT_OFFSET);
+    expect(l0Bbox.y0 - cutBbox.y0).toBe(CUT_OFFSET);
+    expect(cutBbox.x1 - l0Bbox.x1).toBe(CUT_OFFSET);
+    expect(cutBbox.y1 - l0Bbox.y1).toBe(CUT_OFFSET);
   });
 });
