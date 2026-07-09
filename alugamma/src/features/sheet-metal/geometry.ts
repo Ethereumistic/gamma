@@ -9,6 +9,8 @@ import {
   type SheetMetalModel,
   type SideKey,
 } from "@/features/sheet-metal/types";
+import ClipperLib from "clipper-lib";
+import { computeCutPolylines } from "./geometry/polylines";
 
 type HorizontalNotch = {
   apexX: number;
@@ -1535,6 +1537,55 @@ function _computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
   };
 }
 
+function offsetCutLayerFromZeroGeometry(zeroCutShapes: LineShape[], offset: number): LineShape[] {
+  if (offset === 0) return zeroCutShapes;
+
+  const SCALE = 1000;
+  const polylines = computeCutPolylines(
+    zeroCutShapes.map((s) => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 })),
+  ).filter((polyline) => polyline.closed && polyline.points.length >= 4);
+
+  if (polylines.length === 0) return [];
+
+  const result: LineShape[] = [];
+
+  for (const polyline of polylines) {
+    const sourcePath = polyline.points.slice(0, -1).map((point) => ({
+      X: Math.round(point.x * SCALE),
+      Y: Math.round(point.y * SCALE),
+    }));
+
+    if (sourcePath.length < 3) continue;
+
+    const offsetter = new ClipperLib.ClipperOffset(2, 0.25 * SCALE);
+    const solution: Array<Array<{ X: number; Y: number }>> = [];
+    offsetter.AddPath(
+      sourcePath,
+      ClipperLib.JoinType.jtMiter,
+      ClipperLib.EndType.etClosedPolygon,
+    );
+    offsetter.Execute(solution, offset * SCALE);
+
+    for (const path of solution) {
+      if (path.length < 3) continue;
+      for (let i = 0; i < path.length; i++) {
+        const a = path[i];
+        const b = path[(i + 1) % path.length];
+        result.push({
+          type: "line",
+          layer: "CUT",
+          x1: a.X / SCALE,
+          y1: a.Y / SCALE,
+          x2: b.X / SCALE,
+          y2: b.Y / SCALE,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
 export function computeSheetMetalGeometry(model: SheetMetalModel): GeometryResult {
   const modelZeroOffset = { ...model, offsetCut: 0 };
   const zeroResult = _computeSheetMetalGeometry(modelZeroOffset);
@@ -1547,8 +1598,10 @@ export function computeSheetMetalGeometry(model: SheetMetalModel): GeometryResul
 
   const frezShapes = zeroResult.shapes.filter(s => s.layer === "FREZ");
   const holeShapes = zeroResult.shapes.filter(s => s.layer === "HOLES");
-  const zeroLayerShapes = zeroResult.shapes.filter(s => s.layer === "CUT").map(s => ({ ...s, layer: "0" as Layer }));
-  const cutLayerShapes = offsetResult.shapes.filter(s => s.layer === "CUT");
+  const zeroCutShapes = zeroResult.shapes.filter(s => s.layer === "CUT");
+  const zeroLayerShapes = zeroCutShapes.map(s => ({ ...s, layer: "0" as Layer }));
+  const offsetCutShapes = offsetCutLayerFromZeroGeometry(zeroCutShapes, model.offsetCut);
+  const cutLayerShapes = offsetCutShapes.length > 0 ? offsetCutShapes : offsetResult.shapes.filter(s => s.layer === "CUT");
 
   return {
     ...offsetResult,

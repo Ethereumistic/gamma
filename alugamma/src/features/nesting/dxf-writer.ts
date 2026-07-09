@@ -19,9 +19,9 @@ import {
 } from "./constants";
 import type { SheetLayout, NestPart, Segment } from "./types";
 import { formatSheetTitle } from "./types";
-import { collectAndDeduplicate } from "./deduplicator";
 import { extractDxfModel } from "./dxf-reader";
 import { joinSegmentsForLayer, joinStrategyForLayer } from "./line-joiner";
+import { computeCutPolylines } from "@/features/sheet-metal/geometry/polylines";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -360,32 +360,11 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
     mainModel.models![`${part.id}_${i}`] = instance;
   }
 
-  // ── Deduplicated CUT lines (pre-joined for CNC readiness) ──────────────
-  // Join CUT segments BEFORE adding them to the Maker.js model.
-  // Pre-joining directly on the Segment[] data is more reliable than
-  // relying on the model-walking approach in applyLineJoining because:
-  //   1. No Maker.js path-type matching — operates on plain coordinates
-  //   2. No model origin math — segments are already in sheet space
-  //   3. Deterministic regardless of model nesting or structure
-  // applyLineJoining still runs later for FREZ/HOLES/etc. and will
-  // harmlessly re-confirm the already-joined CUT lines.
-  const dedupedCut = collectAndDeduplicate(
-    layout.placements,
-    parts,
-    layout.mode,
-    layout.offsetX,
-    layout.offsetY,
-  );
-  const joinedCut = joinSegmentsForLayer(dedupedCut, LAYER_CUT);
-  for (const seg of joinedCut) {
-    const line = new makerjs.paths.Line([seg.x1, seg.y1], [seg.x2, seg.y2]) as makerjs.IPath;
-    line.layer = LAYER_CUT;
-    mainModel.paths![nextPathId()] = line;
-  }
+  // ── CUT contours ────────────────────────────────────────────────────────
+  // CUT contours are injected later as explicit LWPOLYLINE entities. Keeping
+  // them out of Maker.js line joining preserves V-notch relief contours.
 
   // ── Apply line joining for remaining layers (FREZ, HOLES, custom) ────
-  // CUT lines are already pre-joined above, so applyLineJoining will
-  // confirm them (no-op) and process FREZ/FREZ_135/HOLES/etc.
   //   FREZ, FREZ_135     →  orientation-aware join
   //   HOLES, custom       →  full join
   //   SHEETS, 0           →  skip
@@ -421,6 +400,7 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
 
   // ── Post-process DXF: fix layer colors (true color for SHEETS, orange for unknown) ──
   dxfString = postProcessDxfLayerColors(dxfString);
+  dxfString = ensureKnownLayerTableEntries(dxfString);
 
   // ── Inject Arial Bold style into STYLE table ──
   dxfString = injectLabelStyle(dxfString);
@@ -429,6 +409,7 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
   // Build all entity DXF strings
   let entityDxf = "";
   const lineEnding = dxfString.includes("\r\n") ? "\r\n" : "\n";
+  let injectedHandle = 0x5000;
 
   // ── Sheet title (top-left, above the sheet) ──
   // Format: {number}_r{repeat}_{mode}_p{parts}_u{util}%
@@ -446,6 +427,37 @@ export function writeNestSheetDxf(layout: SheetLayout, parts: NestPart[]): strin
 
   // ── Per-part name labels (centered on L0 bbox) ──
   const partMap = new Map(parts.map((p) => [p.id, p]));
+  for (const placement of layout.placements) {
+    const part = partMap.get(placement.partId);
+    if (!part) continue;
+
+    const { insertX, insertY } = getCutInsertPosition(placement, part, layout);
+    const transformed = part.cutLines.map((seg) =>
+      transformCutSegment(seg, insertX, insertY, placement.rotation),
+    );
+    const orderedPolylines = computeOrderedCutPolylines(transformed);
+    const polylines = orderedPolylines.length > 0
+      ? orderedPolylines
+      : isUnambiguousCutGraph(transformed)
+        ? computeCutPolylines(transformed)
+        : [];
+
+    if (polylines.length > 0) {
+      for (const polyline of polylines) {
+        entityDxf += emitCutPolylineDxf(
+          polyline.points,
+          polyline.closed,
+          lineEnding,
+          (injectedHandle++).toString(16).toUpperCase(),
+        );
+      }
+    } else {
+      for (const seg of transformed) {
+        entityDxf += emitCutLineDxf(seg, lineEnding);
+      }
+    }
+  }
+
   for (const placement of layout.placements) {
     const part = partMap.get(placement.partId);
     if (!part) continue;
@@ -527,4 +539,206 @@ export async function exportAllSheetsAsZip(
   link.download = "nesting_sheets.zip";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function ensureKnownLayerTableEntries(dxfString: string): string {
+  const nl = dxfString.includes("\r\n") ? "\r\n" : "\n";
+  const tableMarker = `0${nl}TABLE${nl}2${nl}LAYER${nl}`;
+  const tableStart = dxfString.indexOf(tableMarker);
+  if (tableStart === -1) return dxfString;
+
+  const endtabMarker = `0${nl}ENDTAB`;
+  const endtabIdx = dxfString.indexOf(endtabMarker, tableStart + tableMarker.length);
+  if (endtabIdx === -1) return dxfString;
+
+  const layerTable = dxfString.slice(tableStart, endtabIdx);
+  let additions = "";
+  for (const [layer, color] of Object.entries(LAYER_COLORS)) {
+    if (layerTable.includes(`2${nl}${layer}${nl}`)) continue;
+    additions +=
+      `0${nl}LAYER${nl}` +
+      `2${nl}${layer}${nl}` +
+      `70${nl}0${nl}` +
+      `62${nl}${color}${nl}` +
+      `6${nl}CONTINUOUS${nl}`;
+  }
+
+  if (!additions) return dxfString;
+  return dxfString.slice(0, endtabIdx) + additions + dxfString.slice(endtabIdx);
+}
+
+function transformCutSegment(
+  localSeg: Segment,
+  insertX: number,
+  insertY: number,
+  rotation: 0 | 90 | 180 | 270,
+): Segment {
+  if (rotation === 0) {
+    return {
+      x1: insertX + localSeg.x1,
+      y1: insertY + localSeg.y1,
+      x2: insertX + localSeg.x2,
+      y2: insertY + localSeg.y2,
+    };
+  }
+  if (rotation === 90) {
+    return {
+      x1: insertX - localSeg.y1,
+      y1: insertY + localSeg.x1,
+      x2: insertX - localSeg.y2,
+      y2: insertY + localSeg.x2,
+    };
+  }
+  if (rotation === 180) {
+    return {
+      x1: insertX - localSeg.x1,
+      y1: insertY - localSeg.y1,
+      x2: insertX - localSeg.x2,
+      y2: insertY - localSeg.y2,
+    };
+  }
+  return {
+    x1: insertX + localSeg.y1,
+    y1: insertY - localSeg.x1,
+    x2: insertX + localSeg.y2,
+    y2: insertY - localSeg.x2,
+  };
+}
+
+function getCutInsertPosition(
+  placement: SheetLayout["placements"][number],
+  part: NestPart,
+  layout: SheetLayout,
+): { insertX: number; insertY: number } {
+  if (placement.rotation === 90) {
+    return {
+      insertX: placement.packX + layout.offsetX + part.l0Height + CUT_OFFSET,
+      insertY: placement.packY + layout.offsetY + CUT_OFFSET,
+    };
+  }
+  if (placement.rotation === 180) {
+    return {
+      insertX: placement.packX + layout.offsetX + part.l0Width + CUT_OFFSET,
+      insertY: placement.packY + layout.offsetY + part.l0Height + CUT_OFFSET,
+    };
+  }
+  if (placement.rotation === 270) {
+    return {
+      insertX: placement.packX + layout.offsetX + CUT_OFFSET,
+      insertY: placement.packY + layout.offsetY + part.l0Width + CUT_OFFSET,
+    };
+  }
+  return {
+    insertX: placement.packX + layout.offsetX + CUT_OFFSET,
+    insertY: placement.packY + layout.offsetY + CUT_OFFSET,
+  };
+}
+
+function emitCutPolylineDxf(
+  points: Array<{ x: number; y: number }>,
+  closed: boolean,
+  lineEnding: string,
+  handle: string,
+): string {
+  const vertices = closed && points.length > 1
+    ? points.slice(0, -1)
+    : points;
+
+  let dxf = `0${lineEnding}POLYLINE${lineEnding}`;
+  dxf += `5${lineEnding}${handle}${lineEnding}`;
+  dxf += `8${lineEnding}${LAYER_CUT}${lineEnding}`;
+  dxf += `66${lineEnding}1${lineEnding}`;
+  dxf += `70${lineEnding}${closed ? 1 : 0}${lineEnding}`;
+  dxf += `10${lineEnding}0${lineEnding}`;
+  dxf += `20${lineEnding}0${lineEnding}`;
+  dxf += `30${lineEnding}0${lineEnding}`;
+  for (const point of vertices) {
+    dxf += `0${lineEnding}VERTEX${lineEnding}`;
+    dxf += `8${lineEnding}${LAYER_CUT}${lineEnding}`;
+    dxf += `10${lineEnding}${point.x}${lineEnding}`;
+    dxf += `20${lineEnding}${point.y}${lineEnding}`;
+    dxf += `30${lineEnding}0${lineEnding}`;
+  }
+  dxf += `0${lineEnding}SEQEND${lineEnding}`;
+  dxf += `8${lineEnding}${LAYER_CUT}${lineEnding}`;
+  return dxf;
+}
+
+function emitCutLineDxf(seg: Segment, lineEnding: string): string {
+  let dxf = `0${lineEnding}LINE${lineEnding}`;
+  dxf += `8${lineEnding}${LAYER_CUT}${lineEnding}`;
+  dxf += `10${lineEnding}${seg.x1}${lineEnding}`;
+  dxf += `20${lineEnding}${seg.y1}${lineEnding}`;
+  dxf += `11${lineEnding}${seg.x2}${lineEnding}`;
+  dxf += `21${lineEnding}${seg.y2}${lineEnding}`;
+  return dxf;
+}
+
+function isUnambiguousCutGraph(segments: Segment[]): boolean {
+  const endpointDegree = new Map<string, number>();
+  const key = (x: number, y: number) =>
+    `${Math.round(x * 100) / 100},${Math.round(y * 100) / 100}`;
+
+  for (const seg of segments) {
+    const a = key(seg.x1, seg.y1);
+    const b = key(seg.x2, seg.y2);
+    endpointDegree.set(a, (endpointDegree.get(a) ?? 0) + 1);
+    endpointDegree.set(b, (endpointDegree.get(b) ?? 0) + 1);
+  }
+
+  return [...endpointDegree.values()].every((degree) => degree <= 2);
+}
+
+function computeOrderedCutPolylines(segments: Segment[]): Array<{
+  points: Array<{ x: number; y: number }>;
+  closed: boolean;
+}> {
+  if (segments.length === 0) return [];
+
+  const polylines: Array<{
+    points: Array<{ x: number; y: number }>;
+    closed: boolean;
+  }> = [];
+  let current: Array<{ x: number; y: number }> = [];
+
+  for (const seg of segments) {
+    const start = { x: seg.x1, y: seg.y1 };
+    const end = { x: seg.x2, y: seg.y2 };
+
+    if (current.length === 0) {
+      current = [start, end];
+      continue;
+    }
+
+    const last = current[current.length - 1];
+    if (pointsAlmostEqual(last, start)) {
+      current.push(end);
+      continue;
+    }
+
+    if (current.length < 2) return [];
+    polylines.push({
+      points: current,
+      closed: pointsAlmostEqual(current[0], current[current.length - 1]),
+    });
+    current = [start, end];
+  }
+
+  if (current.length >= 2) {
+    polylines.push({
+      points: current,
+      closed: pointsAlmostEqual(current[0], current[current.length - 1]),
+    });
+  }
+
+  if (polylines.some((polyline) => !polyline.closed)) return [];
+
+  return polylines;
+}
+
+function pointsAlmostEqual(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): boolean {
+  return Math.abs(a.x - b.x) <= 0.01 && Math.abs(a.y - b.y) <= 0.01;
 }

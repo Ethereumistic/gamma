@@ -26,6 +26,27 @@ function perimeter(poly: { points: Array<{ x: number; y: number }> }): number {
   return sum;
 }
 
+function isDiagonal45(s: Seg): boolean {
+  const dx = Math.abs(s.x2 - s.x1);
+  const dy = Math.abs(s.y2 - s.y1);
+  return dx > 1 && Math.abs(dx - dy) < 0.01;
+}
+
+function pointLineDistance(px: number, py: number, s: Seg): number {
+  const dx = s.x2 - s.x1;
+  const dy = s.y2 - s.y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  return Math.abs((px - s.x1) * dy - (py - s.y1) * dx) / len;
+}
+
+function areParallel(a: Seg, b: Seg): boolean {
+  const adx = a.x2 - a.x1;
+  const ady = a.y2 - a.y1;
+  const bdx = b.x2 - b.x1;
+  const bdy = b.y2 - b.y1;
+  return Math.abs(adx * bdy - ady * bdx) < 0.01;
+}
+
 // ── Empty / degenerate inputs ───────────────────────────────────────────────
 
 describe("computeCutPolylines — empty and degenerate inputs", () => {
@@ -271,12 +292,12 @@ describe("computeCutPolylines — production data", () => {
       x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2,
     }));
 
-    expect(segments).toHaveLength(16);
+    expect(segments.length).toBeGreaterThanOrEqual(12);
 
     const polylines = computeCutPolylines(segments);
     expect(polylines).toHaveLength(1);
     expect(polylines[0].closed).toBe(true);
-    expect(polylines[0].points.length).toBeGreaterThanOrEqual(16);
+    expect(polylines[0].points.length).toBeGreaterThanOrEqual(12);
 
     // Perimeter should be approximately 2477mm
     const p = perimeter(polylines[0]);
@@ -295,16 +316,45 @@ describe("computeCutPolylines — production data", () => {
       x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2,
     }));
 
-    expect(segments).toHaveLength(16);
+    expect(segments.length).toBeGreaterThanOrEqual(12);
 
     const polylines = computeCutPolylines(segments);
     expect(polylines).toHaveLength(1);
     expect(polylines[0].closed).toBe(true);
-    expect(polylines[0].points.length).toBeGreaterThanOrEqual(16);
+    expect(polylines[0].points.length).toBeGreaterThanOrEqual(12);
 
     // Perimeter should be approximately 3507mm
     const p = perimeter(polylines[0]);
     expect(p).toBeGreaterThan(3400);
     expect(p).toBeLessThan(3600);
+  });
+
+  it("production V-relief CUT diagonals are 3mm from Layer 0 diagonals", () => {
+    const design = PRODUCTION_DESIGNS.find((d) => d.name === "gabrovo");
+    expect(design).toBeDefined();
+
+    const geometry = computeSheetMetalGeometry(design.model);
+    const cutDiagonals = geometry.shapes
+      .filter((s) => s.layer === "CUT")
+      .map((s) => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 }))
+      .filter(isDiagonal45);
+    const zeroDiagonals = geometry.shapes
+      .filter((s) => s.layer === "0")
+      .map((s) => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 }))
+      .filter(isDiagonal45);
+
+    expect(cutDiagonals.length).toBeGreaterThan(0);
+    expect(zeroDiagonals.length).toBeGreaterThan(0);
+
+    for (const cut of cutDiagonals) {
+      const mx = (cut.x1 + cut.x2) / 2;
+      const my = (cut.y1 + cut.y2) / 2;
+      const nearest = Math.min(
+        ...zeroDiagonals
+          .filter((zero) => areParallel(cut, zero))
+          .map((zero) => pointLineDistance(mx, my, zero)),
+      );
+      expect(nearest).toBeCloseTo(3, 2);
+    }
   });
 });

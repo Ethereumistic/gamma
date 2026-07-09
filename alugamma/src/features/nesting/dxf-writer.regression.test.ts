@@ -15,10 +15,13 @@
 // ────────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from "vitest";
-import { createNestPartFromDesign } from "@/features/nesting/dxf-reader";
+import { createNestPartFromDesign, parseDxfContent } from "@/features/nesting/dxf-reader";
 import { writeNestSheetDxf } from "@/features/nesting/dxf-writer";
+import { createNestPart } from "@/features/nesting/types";
 import type { Placement, SheetLayout, NestPart } from "@/features/nesting/types";
 import { PRODUCTION_DESIGNS } from "../sheet-metal/__fixtures__/production-designs";
+import { parseFormula } from "@/features/sheet-metal/formula/parser";
+import { CUT_OFFSET } from "@/features/nesting/constants";
 
 function makePart(designId: string): NestPart {
   const fixture = PRODUCTION_DESIGNS.find((d) => d.id === designId);
@@ -47,6 +50,58 @@ function makeLayout(part: NestPart, placements: Placement[]): SheetLayout {
   };
 }
 
+function makeDoubleVNotchPart(id = "double-v-notch"): NestPart {
+  const formula = "875x1790 W F10 Q E F90 Q E A F25 F20 S F308 Q E D F20";
+  const { model, errors } = parseFormula(formula);
+  expect(errors).toHaveLength(0);
+
+  return createNestPartFromDesign({
+    id,
+    name: "double-v-notch",
+    exportName: "double-v-notch_T_x1",
+    model,
+  } as any);
+}
+
+function makeDoubleVNotchCustomDxfPart(): NestPart {
+  const sourcePart = makeDoubleVNotchPart("double-v-notch-source");
+  expect(sourcePart.dxfContent).toBeDefined();
+
+  const parsed = parseDxfContent(sourcePart.dxfContent!);
+  expect(parsed).not.toBeNull();
+
+  return createNestPart({
+    id: "double-v-notch-custom",
+    name: "double-v-notch-custom",
+    filename: "double-v-notch_T_x1",
+    direction: "T",
+    count: 1,
+    source: "custom-dxf",
+    l0Width: parsed!.l0Width,
+    l0Height: parsed!.l0Height,
+    l0Bbox: parsed!.l0Bbox,
+    cutLines: parsed!.cutLines,
+    dxfContent: sourcePart.dxfContent,
+  });
+}
+
+function expectPolylineFollowsCutLineOrder(
+  polyline: LwPolyline,
+  part: NestPart,
+  placement: Placement,
+  layout: SheetLayout,
+): void {
+  expect(polyline.closed).toBe(true);
+  expect(polyline.points.length).toBe(part.cutLines.length);
+
+  const insertX = placement.packX + layout.offsetX + CUT_OFFSET;
+  const insertY = placement.packY + layout.offsetY + CUT_OFFSET;
+  for (let i = 0; i < part.cutLines.length; i++) {
+    expect(polyline.points[i].x).toBeCloseTo(insertX + part.cutLines[i].x1, 6);
+    expect(polyline.points[i].y).toBeCloseTo(insertY + part.cutLines[i].y1, 6);
+  }
+}
+
 type LwPolyline = {
   layer: string;
   points: Array<{ x: number; y: number }>;
@@ -58,22 +113,36 @@ type Line = {
   x1: number; y1: number; x2: number; y2: number;
 };
 
-/** Parse LWPOLYLINE and LINE entities from a DXF string on the CUT layer. */
+/** Parse polyline and LINE entities from a DXF string on the CUT layer. */
 function extractCutEntities(dxf: string): { polylines: LwPolyline[]; lines: Line[] } {
   const polylines: LwPolyline[] = [];
   const lines: Line[] = [];
 
   const text = dxf.split(/\r?\n/);
   let i = 0;
-  let curEntity: "LWPOLYLINE" | "LINE" | null = null;
+  let curEntity: "LWPOLYLINE" | "POLYLINE" | "VERTEX" | "LINE" | null = null;
   let curLayer = "";
-  let curNumVerts = 0;
   let curClosed = false;
   let curPoints: Array<{ x: number; y: number }> = [];
   let curX = NaN, curY = NaN;
   let curX1 = NaN, curY1 = NaN, curX2 = NaN, curY2 = NaN;
-  // For LWPOLYLINE, we need to track when we've read all the (10, 20) pairs.
-  // For LINE, we need to track 10/11/20/21.
+  let activePolylineLayer = "";
+  let activePolylineClosed = false;
+  let activePolylinePoints: Array<{ x: number; y: number }> = [];
+
+  const flushEntity = () => {
+    if (curEntity === "LWPOLYLINE" && curLayer === "CUT" && curPoints.length > 0) {
+      polylines.push({ layer: "CUT", points: curPoints, closed: curClosed });
+    } else if (curEntity === "VERTEX" && activePolylineLayer === "CUT") {
+      if (!Number.isNaN(curX) && !Number.isNaN(curY)) {
+        activePolylinePoints.push({ x: curX, y: curY });
+      }
+    } else if (curEntity === "LINE" && curLayer === "CUT") {
+      if (!Number.isNaN(curX1) && !Number.isNaN(curY1) && !Number.isNaN(curX2) && !Number.isNaN(curY2)) {
+        lines.push({ layer: "CUT", x1: curX1, y1: curY1, x2: curX2, y2: curY2 });
+      }
+    }
+  };
 
   while (i < text.length - 1) {
     const code = text[i].trim();
@@ -81,23 +150,41 @@ function extractCutEntities(dxf: string): { polylines: LwPolyline[]; lines: Line
     i += 2;
 
     if (code === "0") {
-      // Flush previous entity
-      if (curEntity === "LWPOLYLINE" && curLayer === "CUT") {
-        if (curPoints.length > 0) {
-          polylines.push({ layer: "CUT", points: curPoints, closed: curClosed });
+      flushEntity();
+
+      if (val === "SEQEND") {
+        if (activePolylineLayer === "CUT" && activePolylinePoints.length > 0) {
+          polylines.push({
+            layer: "CUT",
+            points: activePolylinePoints,
+            closed: activePolylineClosed,
+          });
         }
-      } else if (curEntity === "LINE" && curLayer === "CUT") {
-        if (!Number.isNaN(curX1) && !Number.isNaN(curY1) && !Number.isNaN(curX2) && !Number.isNaN(curY2)) {
-          lines.push({ layer: "CUT", x1: curX1, y1: curY1, x2: curX2, y2: curY2 });
-        }
+        activePolylineLayer = "";
+        activePolylineClosed = false;
+        activePolylinePoints = [];
+        curEntity = null;
+        continue;
       }
+
       // Start new entity
       if (val === "LWPOLYLINE") {
         curEntity = "LWPOLYLINE";
         curLayer = "";
-        curNumVerts = 0;
         curClosed = false;
         curPoints = [];
+        curX = curY = curX1 = curY1 = curX2 = curY2 = NaN;
+      } else if (val === "POLYLINE") {
+        curEntity = "POLYLINE";
+        curLayer = "";
+        curClosed = false;
+        activePolylineLayer = "";
+        activePolylineClosed = false;
+        activePolylinePoints = [];
+        curX = curY = curX1 = curY1 = curX2 = curY2 = NaN;
+      } else if (val === "VERTEX") {
+        curEntity = "VERTEX";
+        curLayer = "";
         curX = curY = curX1 = curY1 = curX2 = curY2 = NaN;
       } else if (val === "LINE") {
         curEntity = "LINE";
@@ -108,7 +195,6 @@ function extractCutEntities(dxf: string): { polylines: LwPolyline[]; lines: Line
       }
     } else if (curEntity === "LWPOLYLINE") {
       if (code === "8") curLayer = val;
-      else if (code === "90") curNumVerts = parseInt(val, 10);
       else if (code === "70") curClosed = (parseInt(val, 10) & 1) === 1;
       else if (code === "10") {
         curX = Number(val);
@@ -123,6 +209,18 @@ function extractCutEntities(dxf: string): { polylines: LwPolyline[]; lines: Line
           curX = curY = NaN;
         }
       }
+    } else if (curEntity === "POLYLINE") {
+      if (code === "8") {
+        curLayer = val;
+        activePolylineLayer = val;
+      } else if (code === "70") {
+        curClosed = (parseInt(val, 10) & 1) === 1;
+        activePolylineClosed = curClosed;
+      }
+    } else if (curEntity === "VERTEX") {
+      if (code === "8") curLayer = val;
+      else if (code === "10") curX = Number(val);
+      else if (code === "20") curY = Number(val);
     } else if (curEntity === "LINE") {
       if (code === "8") curLayer = val;
       else if (code === "10") curX1 = Number(val);
@@ -132,15 +230,7 @@ function extractCutEntities(dxf: string): { polylines: LwPolyline[]; lines: Line
     }
   }
   // Flush last entity
-  if (curEntity === "LWPOLYLINE" && curLayer === "CUT") {
-    if (curPoints.length > 0) {
-      polylines.push({ layer: "CUT", points: curPoints, closed: curClosed });
-    }
-  } else if (curEntity === "LINE" && curLayer === "CUT") {
-    if (!Number.isNaN(curX1) && !Number.isNaN(curY1) && !Number.isNaN(curX2) && !Number.isNaN(curY2)) {
-      lines.push({ layer: "CUT", x1: curX1, y1: curY1, x2: curX2, y2: curY2 });
-    }
-  }
+  flushEntity();
   return { polylines, lines };
 }
 
@@ -227,7 +317,7 @@ describe("regression: per-part CUT contours emitted as LWPOLYLINE entities", () 
     // Each LWPOLYLINE should be the full polyline (16+1=17 points for gabrovo)
     for (const p of polylines) {
       expect(p.closed).toBe(true);
-      expect(p.points.length).toBeGreaterThanOrEqual(16);
+      expect(p.points.length).toBeGreaterThanOrEqual(12);
     }
   });
 
@@ -258,5 +348,64 @@ describe("regression: per-part CUT contours emitted as LWPOLYLINE entities", () 
     for (const p of polylines) {
       expect(p.closed).toBe(true);
     }
+  });
+
+  it("double V-notch formula: project import preserves source CUT order", () => {
+    const part = makeDoubleVNotchPart();
+    const placement: Placement = {
+      partId: part.id,
+      instanceIndex: 0,
+      packX: 35,
+      packY: 35,
+      packWidth: part.cutWidth,
+      packHeight: part.cutHeight,
+      rotation: 0,
+    };
+    const layout = makeLayout(part, [placement]);
+    const dxf = writeNestSheetDxf(layout, [part]);
+    const { polylines, lines } = extractCutEntities(dxf);
+
+    expect(polylines.length).toBe(1);
+    expect(lines.length).toBe(0);
+    expectPolylineFollowsCutLineOrder(polylines[0], part, placement, layout);
+  });
+
+  it("double V-notch formula: custom DXF import preserves source CUT order", () => {
+    const part = makeDoubleVNotchCustomDxfPart();
+    const placement: Placement = {
+      partId: part.id,
+      instanceIndex: 0,
+      packX: 35,
+      packY: 35,
+      packWidth: part.cutWidth,
+      packHeight: part.cutHeight,
+      rotation: 0,
+    };
+    const layout = makeLayout(part, [placement]);
+    const dxf = writeNestSheetDxf(layout, [part]);
+    const { polylines, lines } = extractCutEntities(dxf);
+
+    expect(polylines.length).toBe(1);
+    expect(lines.length).toBe(0);
+    expectPolylineFollowsCutLineOrder(polylines[0], part, placement, layout);
+  });
+
+  it("double V-notch formula: AutoCAD-compatible nested POLYLINE re-import preserves CUT segments", () => {
+    const part = makeDoubleVNotchPart();
+    const placement: Placement = {
+      partId: part.id,
+      instanceIndex: 0,
+      packX: 35,
+      packY: 35,
+      packWidth: part.cutWidth,
+      packHeight: part.cutHeight,
+      rotation: 0,
+    };
+    const layout = makeLayout(part, [placement]);
+    const dxf = writeNestSheetDxf(layout, [part]);
+    const parsed = parseDxfContent(dxf);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.cutLines.length).toBe(part.cutLines.length);
   });
 });

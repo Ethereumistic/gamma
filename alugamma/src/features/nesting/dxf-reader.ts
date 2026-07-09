@@ -29,6 +29,12 @@ type DxfEntity = {
   firstValue: Map<number, string | number>;
 };
 
+type PolylineSequence = {
+  entity: DxfEntity;
+  vertices: Array<{ x: number; y: number; bulge: number }>;
+  closed: boolean;
+};
+
 // ── DXF Parser ─────────────────────────────────────────────────────────────
 
 function parseDxfEntities(dxfContent: string): DxfEntity[] {
@@ -108,6 +114,63 @@ function getAllValues(entity: DxfEntity, code: number): number[] {
     }
   }
   return values;
+}
+
+function getPolylineSequence(entities: DxfEntity[], startIndex: number): PolylineSequence {
+  const entity = entities[startIndex];
+  const vertices: Array<{ x: number; y: number; bulge: number }> = [];
+  const closed = ((Number(entity.firstValue.get(70)) || 0) & 1) === 1;
+
+  for (let i = startIndex + 1; i < entities.length; i++) {
+    const current = entities[i];
+    if (current.type === "SEQEND") break;
+    if (current.type !== "VERTEX") continue;
+
+    vertices.push({
+      x: Number(current.firstValue.get(10)) || 0,
+      y: Number(current.firstValue.get(20)) || 0,
+      bulge: Number(current.firstValue.get(42)) || 0,
+    });
+  }
+
+  return { entity, vertices, closed };
+}
+
+function extractSegmentsFromPolylineSequence(sequence: PolylineSequence): Segment[] {
+  const segments: Segment[] = [];
+  const { vertices, closed } = sequence;
+
+  for (let i = 0; i < vertices.length - 1; i++) {
+    segments.push({
+      x1: vertices[i].x,
+      y1: vertices[i].y,
+      x2: vertices[i + 1].x,
+      y2: vertices[i + 1].y,
+    });
+  }
+
+  if (closed && vertices.length > 1) {
+    segments.push({
+      x1: vertices[vertices.length - 1].x,
+      y1: vertices[vertices.length - 1].y,
+      x2: vertices[0].x,
+      y2: vertices[0].y,
+    });
+  }
+
+  return segments;
+}
+
+function extractBboxFromPolylineSequence(sequence: PolylineSequence): Rect | null {
+  if (sequence.vertices.length === 0) return null;
+  const xs = sequence.vertices.map((v) => v.x);
+  const ys = sequence.vertices.map((v) => v.y);
+  return {
+    x0: Math.min(...xs),
+    y0: Math.min(...ys),
+    x1: Math.max(...xs),
+    y1: Math.max(...ys),
+  };
 }
 
 // ── Extract segments from a DXF entity ─────────────────────────────────────
@@ -332,12 +395,28 @@ export function parseDxfContent(dxfContent: string): ParsedDxfPart | null {
     let l0Bbox: Rect | null = null;
     const cutLines: Segment[] = [];
 
-    for (const entity of entities) {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
       const layer = entity.layer;
 
       // Check if this entity belongs to Layer 0 or CUT
       const isL0 = layer === LAYER_ZERO || layer === "0";
       const isCUT = layer === LAYER_CUT;
+
+      if (entity.type === "POLYLINE") {
+        const sequence = getPolylineSequence(entities, i);
+        const bbox = extractBboxFromPolylineSequence(sequence);
+
+        if (isL0 && bbox) {
+          l0Bbox = l0Bbox ? mergeRect(l0Bbox, bbox) : bbox;
+        }
+
+        if (isCUT) {
+          cutLines.push(...extractSegmentsFromPolylineSequence(sequence));
+        }
+
+        continue;
+      }
 
       // Extract bounding box for Layer 0 entities
       if (isL0) {
@@ -356,7 +435,16 @@ export function parseDxfContent(dxfContent: string): ParsedDxfPart | null {
 
     // If no Layer 0 bbox found, try all entities to get overall bounds
     if (!l0Bbox) {
-      for (const entity of entities) {
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        if (entity.type === "POLYLINE") {
+          const bbox = extractBboxFromPolylineSequence(getPolylineSequence(entities, i));
+          if (bbox) {
+            l0Bbox = l0Bbox ? mergeRect(l0Bbox, bbox) : bbox;
+          }
+          continue;
+        }
+
         const bbox = extractBboxFromEntity(entity);
         if (bbox) {
           l0Bbox = l0Bbox ? mergeRect(l0Bbox, bbox) : bbox;
@@ -596,7 +684,8 @@ export function extractDxfModel(dxfContent: string): makerjs.IModel | null {
     let pathIndex = 0;
     const nextId = () => `p${pathIndex++}`;
 
-    for (const entity of entities) {
+    for (let entityIndex = 0; entityIndex < entities.length; entityIndex++) {
+      const entity = entities[entityIndex];
       const layer = String(entity.firstValue.get(8) ?? "").trim();
       // Skip entities without a usable layer or anything we don't want in the cut-program
       if (layer === LAYER_CUT || layer === "DEFPOINTS" || layer === "") continue;
@@ -652,6 +741,23 @@ export function extractDxfModel(dxfContent: string): makerjs.IModel | null {
           if (closed && count > 1) {
             addLwPolylineSegment(
               verts[count - 1], verts[0], layer, model, nextId
+            );
+          }
+          break;
+        }
+
+        case "POLYLINE": {
+          const sequence = getPolylineSequence(entities, entityIndex);
+          const verts = sequence.vertices;
+          if (verts.length < 2) break;
+          for (let i = 0; i < verts.length - 1; i++) {
+            addLwPolylineSegment(
+              verts[i], verts[i + 1], layer, model, nextId
+            );
+          }
+          if (sequence.closed && verts.length > 1) {
+            addLwPolylineSegment(
+              verts[verts.length - 1], verts[0], layer, model, nextId
             );
           }
           break;

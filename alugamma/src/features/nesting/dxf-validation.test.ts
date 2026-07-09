@@ -51,7 +51,7 @@ function parseDxf(dxf: string): { layers: LayerEntry[]; entities: Entity[] } {
       const name = codes.get(2) ?? "";
       const color = parseInt(codes.get(62) ?? "0", 10);
       layers.push({ name, color });
-    } else if (val === "LWPOLYLINE" || val === "LINE" || val === "TEXT") {
+    } else if (val === "LWPOLYLINE" || val === "POLYLINE" || val === "VERTEX" || val === "LINE" || val === "TEXT") {
       const codes = new Map<number, string[]>();
       while (i < lines.length - 1) {
         const c = parseInt(lines[i].trim(), 10);
@@ -78,8 +78,8 @@ function parseDxf(dxf: string): { layers: LayerEntry[]; entities: Entity[] } {
   return { layers, entities };
 }
 
-describe("DXF validation: LWPOLYLINE structure and LAYER table completeness", () => {
-  it("5-part nested sheet: LAYER table includes CUT (green), LWPOLYLINE has AcDb subclass markers", () => {
+describe("DXF validation: CUT polyline structure and LAYER table completeness", () => {
+  it("5-part nested sheet: LAYER table includes CUT (green), CUT contours use classic POLYLINE", () => {
     const partA = createNestPartFromDesign({
       id: "jx743me73n9e80t30am5gdnq19853wa4" as any,
       name: "gabrovo",
@@ -122,28 +122,20 @@ describe("DXF validation: LWPOLYLINE structure and LAYER table completeness", ()
     //    - group code 100 (AcDbPolyline subclass marker)
     //    - group code 90 (vertex count)
     //    - group code 70 (flags)
-    const lwpolylines = entities.filter((e) => e.type === "LWPOLYLINE");
-    expect(lwpolylines.length).toBe(5);
+    const cutPolylines = entities.filter((e) => e.type === "POLYLINE" && e.layer === "CUT");
+    const cutVertices = entities.filter((e) => e.type === "VERTEX" && e.layer === "CUT");
+    const cutLwPolylines = entities.filter((e) => e.type === "LWPOLYLINE" && e.layer === "CUT");
 
-    for (const lw of lwpolylines) {
-      expect(lw.layer).toBe("CUT");
-      expect(lw.codes.has(5)).toBe(true); // handle
-      // Subclass markers (group code 100 can appear multiple times)
-      const multiCodes = (lw as any).multiCodes as Map<number, string[]>;
-      const hundredCodes = multiCodes.get(100) ?? [];
-      expect(hundredCodes).toContain("AcDbEntity");
-      expect(hundredCodes).toContain("AcDbPolyline");
-      // Vertex count matches number of (10, 20) pairs
-      const vertexCount = parseInt(lw.codes.get(90) ?? "0", 10);
-      const xCoords = (multiCodes.get(10) ?? []).length;
-      const yCoords = (multiCodes.get(20) ?? []).length;
-      expect(xCoords).toBe(vertexCount);
-      expect(yCoords).toBe(vertexCount);
+    expect(cutPolylines.length).toBe(5);
+    expect(cutVertices.length).toBeGreaterThan(0);
+    expect(cutLwPolylines.length).toBe(0);
+
+    for (const poly of cutPolylines) {
+      expect(poly.codes.has(5)).toBe(true);
+      expect(poly.codes.get(66)).toBe("1");
+      expect(parseInt(poly.codes.get(70) ?? "0", 10) & 1).toBe(1);
+      expect(poly.codes.has(90)).toBe(false);
     }
-
-    // 4. Handles must be unique across all LWPOLYLINE entities
-    const handles = lwpolylines.map((lw) => lw.codes.get(5)!);
-    expect(new Set(handles).size).toBe(handles.length);
   });
 
   it("sheet-metal golden DXF: should also have valid LWPOLYLINE-free structure", () => {

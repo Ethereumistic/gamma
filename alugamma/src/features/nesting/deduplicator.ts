@@ -124,6 +124,43 @@ export function deduplicateCutSegments(segments: Segment[]): Segment[] {
   return result;
 }
 
+type OwnedSegment = Segment & { owner: number };
+
+function deduplicateOwnedCutSegments(segments: OwnedSegment[]): Segment[] {
+  if (segments.length === 0) return [];
+
+  const valid = segments.filter((s) => {
+    const dx = s.x2 - s.x1;
+    const dy = s.y2 - s.y1;
+    return Math.sqrt(dx * dx + dy * dy) > COINCIDENCE_TOL;
+  });
+
+  if (valid.length === 0) return [];
+
+  const consumed = new Set<number>();
+  const result: Segment[] = [];
+
+  for (let i = 0; i < valid.length; i++) {
+    if (consumed.has(i)) continue;
+
+    let current: Segment = valid[i];
+    const owners = new Set([valid[i].owner]);
+
+    for (let j = i + 1; j < valid.length; j++) {
+      if (consumed.has(j) || owners.has(valid[j].owner)) continue;
+      if (segmentsAreCoincident(current, valid[j])) {
+        current = mergeCollinearSegments(current, valid[j]);
+        owners.add(valid[j].owner);
+        consumed.add(j);
+      }
+    }
+
+    result.push(current);
+  }
+
+  return result;
+}
+
 // ── Transform Part CUT Lines to Sheet Space ────────────────────────────────
 
 function transformCutSegment(
@@ -217,9 +254,10 @@ export function collectAndDeduplicate(
   offsetY: number,
 ): Segment[] {
   const partMap = new Map(parts.map((p) => [p.id, p]));
-  const allSegments: Segment[] = [];
+  const allSegments: OwnedSegment[] = [];
 
-  for (const placement of placements) {
+  for (let owner = 0; owner < placements.length; owner++) {
+    const placement = placements[owner];
     const part = partMap.get(placement.partId);
     if (!part) continue;
 
@@ -227,9 +265,9 @@ export function collectAndDeduplicate(
 
     for (const localSeg of part.cutLines) {
       const sheetSeg = transformCutSegment(localSeg, insertX, insertY, placement.rotation);
-      allSegments.push(sheetSeg);
+      allSegments.push({ ...sheetSeg, owner });
     }
   }
 
-  return deduplicateCutSegments(allSegments);
+  return deduplicateOwnedCutSegments(allSegments);
 }
