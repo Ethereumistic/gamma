@@ -9,6 +9,8 @@ import { saveAs } from "file-saver"
 
 import { DXFDropZone } from "@/features/cnc-pipeline/components/DXFDropZone"
 import { BulkUploadPanel } from "@/features/cnc-pipeline/components/BulkUploadPanel"
+import { CutDedupSettingsCard, type CutDedupSettings } from "@/features/cnc-pipeline/components/CutDedupSettingsCard"
+import { CncToolPresetCard } from "@/features/cnc-pipeline/components/CncToolPresetCard"
 import { useBulkGenerate } from "@/features/cnc-pipeline/hooks/useBulkGenerate"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
@@ -35,6 +37,18 @@ export default function CNCPipelineDashboardPage() {
   const [algorithm, setAlgorithm] = useState(
     () => localStorage.getItem("cnc_default_algorithm") || "juggler_gemini",
   )
+  const [cutDedup, setCutDedup] = useState<CutDedupSettings>(() => {
+    try {
+      return {
+        enabled: false,
+        joinLines: true,
+        tolerance: 0.01,
+        ...JSON.parse(localStorage.getItem("cnc_cut_dedup_settings") || "{}"),
+      }
+    } catch {
+      return { enabled: false, joinLines: true, tolerance: 0.01 }
+    }
+  })
 
   // Fetch org tool overrides
   const cncSettings = useQuery(
@@ -54,9 +68,9 @@ export default function CNCPipelineDashboardPage() {
       !bulkState.isProcessing &&
       bulkState.items.some((i) => i.status === "pending")
     ) {
-      processQueue(algorithm, toolOverrides)
+      processQueue(algorithm, toolOverrides, cutDedup)
     }
-  }, [bulkState.items.length, bulkState.isProcessing, algorithm, toolOverrides, processQueue])
+  }, [bulkState.items.length, bulkState.isProcessing, algorithm, toolOverrides, cutDedup, processQueue])
 
   // Guard: warn before navigating away during processing
   useEffect(() => {
@@ -164,6 +178,11 @@ export default function CNCPipelineDashboardPage() {
     localStorage.setItem("cnc_default_algorithm", val)
   }
 
+  const handleCutDedupChange = (next: CutDedupSettings) => {
+    setCutDedup(next)
+    localStorage.setItem("cnc_cut_dedup_settings", JSON.stringify(next))
+  }
+
   if (!authenticated) {
     return (
       <div className="p-8">
@@ -213,6 +232,14 @@ export default function CNCPipelineDashboardPage() {
             </SelectContent>
           </Select>
         </div>
+
+        <CncToolPresetCard disabled={bulkState.isProcessing} />
+
+        <CutDedupSettingsCard
+          value={cutDedup}
+          onChange={handleCutDedupChange}
+          disabled={bulkState.isProcessing}
+        />
 
         {/* DXF Drop Zone (multi-file) */}
         <DXFDropZone onFiles={handleFiles} multiple disabled={bulkState.isProcessing} />

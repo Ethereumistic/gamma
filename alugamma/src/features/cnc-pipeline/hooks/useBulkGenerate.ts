@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react"
-import { uploadDXF, fetchNCText } from "../api"
+import { uploadDXF, fetchNCText, type CutDedupOptions } from "../api"
 import type { GenerateResponse, GeometryResponse } from "../types"
 
 export type BulkItemStatus =
@@ -69,7 +69,7 @@ export function useBulkGenerate() {
   }, [])
 
   const processQueue = useCallback(
-    async (algorithm: string, toolOverrides?: Record<string, any>) => {
+    async (algorithm: string, toolOverrides?: Record<string, any>, cutDedup?: CutDedupOptions) => {
       abortRef.current = false
       setState((prev) => ({ ...prev, isProcessing: true }))
 
@@ -103,6 +103,8 @@ export function useBulkGenerate() {
             item.file,
             algorithm,
             toolOverrides,
+            undefined,
+            cutDedup,
           )
 
           // Step 2: Fetch the generated NC text from the backend's in-memory store

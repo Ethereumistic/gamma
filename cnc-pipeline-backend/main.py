@@ -13,6 +13,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
 
 from cnc_pipeline.pipeline import run_pipeline, PipelineResult
+from cnc_pipeline.cut_overkill import process_file as overkill_cut_file
 
 app = FastAPI(title="AluGamma CNC Pipeline", version="1.0.0")
 
@@ -46,6 +47,9 @@ async def generate(
     algorithm: str = Form("juggler_gemini"),
     tool_overrides: Optional[str] = Form(None),
     custom_sequence: Optional[str] = Form(None),
+    dedupe_cut: bool = Form(False),
+    dedupe_cut_join: bool = Form(True),
+    dedupe_cut_tol: float = Form(0.01),
 ):
     if not file.filename.lower().endswith(".dxf"):
         raise HTTPException(status_code=400, detail="Only .dxf files are accepted")
@@ -73,7 +77,23 @@ async def generate(
     tmp.close()
 
     try:
-        result = run_pipeline(tmp.name, original_filename=file.filename, algorithm=algorithm, tool_overrides=overrides, custom_sequence=parsed_custom_sequence)
+        pipeline_path = tmp.name
+        overkill_tmp_name = None
+        if dedupe_cut:
+            overkill_tmp = tempfile.NamedTemporaryFile(suffix=".dxf", delete=False, mode="wb")
+            overkill_tmp.close()
+            overkill_tmp_name = overkill_tmp.name
+            report = overkill_cut_file(
+                tmp.name,
+                overkill_tmp_name,
+                layer="CUT",
+                tol=dedupe_cut_tol,
+                explode_lines=not dedupe_cut_join,
+            )
+            logger.info("CUT overkill applied:\n%s", report.format())
+            pipeline_path = overkill_tmp_name
+
+        result = run_pipeline(pipeline_path, original_filename=file.filename, algorithm=algorithm, tool_overrides=overrides, custom_sequence=parsed_custom_sequence)
         job_id = str(uuid.uuid4())
         _jobs[job_id] = result
         return {
@@ -100,6 +120,8 @@ async def generate(
         raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
     finally:
         os.unlink(tmp.name)
+        if 'overkill_tmp_name' in locals() and overkill_tmp_name and os.path.exists(overkill_tmp_name):
+            os.unlink(overkill_tmp_name)
 
 
 from pydantic import BaseModel

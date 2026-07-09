@@ -25,6 +25,8 @@ import { NCPreview } from "./components/NCPreview"
 import { PlaybackControls } from "./components/PlaybackControls"
 import { SequencePill } from "./components/SequencePill"
 import { AddLayerDropdown } from "./components/AddLayerDropdown"
+import { CutDedupSettingsCard, type CutDedupSettings } from "./components/CutDedupSettingsCard"
+import { CncToolPresetCard } from "./components/CncToolPresetCard"
 import { useGenerate } from "./hooks/useGenerate"
 import { usePlayback } from "./hooks/usePlayback"
 import {
@@ -103,6 +105,18 @@ export default function CNCPipelinePage() {
   })
 
   const [dxfDisplayName, setDxfDisplayName] = useState("Unknown")
+  const [cutDedup, setCutDedup] = useState<CutDedupSettings>(() => {
+    try {
+      return {
+        enabled: false,
+        joinLines: true,
+        tolerance: 0.01,
+        ...JSON.parse(localStorage.getItem("cnc_cut_dedup_settings") || "{}"),
+      }
+    } catch {
+      return { enabled: false, joinLines: true, tolerance: 0.01 }
+    }
+  })
   const [ncSettings, setNcSettings] = useState(() => {
     const defaultSettings = { algorithm: false, time: false, scenario: false, custom: false, customText: "" }
     try {
@@ -223,7 +237,7 @@ export default function CNCPipelinePage() {
     lastDxfFileRef.current = file
     setDxfDisplayName(file.name.replace(/\.dxf$/i, ""))
     resetPlayback()
-    await upload(file, algorithm, backendToolOverrides)
+    await upload(file, algorithm, backendToolOverrides, undefined, cutDedup)
   }
 
   const assembledFilename = useMemo(() => {
@@ -292,6 +306,11 @@ export default function CNCPipelinePage() {
     localStorage.setItem("cnc_default_algorithm", val)
   }
 
+  const updateCutDedup = (next: CutDedupSettings) => {
+    setCutDedup(next)
+    localStorage.setItem("cnc_cut_dedup_settings", JSON.stringify(next))
+  }
+
   // ── Re-upload when algorithm changes ──────────────────────────────────────
   useEffect(() => {
     if (prevAlgorithmRef.current !== algorithm) {
@@ -299,11 +318,11 @@ export default function CNCPipelinePage() {
       if ((state.status === "done" || state.status === "ready") && lastDxfFileRef.current) {
         resetPlayback()
         const customSeq = isCustomOrder ? layerSequence : undefined
-        upload(lastDxfFileRef.current, algorithm, backendToolOverrides, customSeq)
+        upload(lastDxfFileRef.current, algorithm, backendToolOverrides, customSeq, cutDedup)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [algorithm, state.status, upload, resetPlayback, isCustomOrder, layerSequence, backendToolOverrides])
+  }, [algorithm, state.status, upload, resetPlayback, isCustomOrder, layerSequence, backendToolOverrides, cutDedup])
 
   // ── Layer change handler ──────────────────────────────────────────────────
   const handleLayerSequenceChange = useCallback(async (newSequence: IdSequence) => {
@@ -314,9 +333,9 @@ export default function CNCPipelinePage() {
       const customSeq = JSON.stringify(newSequence) !== JSON.stringify(defaultSeq)
         ? newSequence
         : undefined
-      await upload(lastDxfFileRef.current, algorithm, backendToolOverrides, customSeq)
+      await upload(lastDxfFileRef.current, algorithm, backendToolOverrides, customSeq, cutDedup)
     }
-  }, [state, algorithm, backendToolOverrides, upload, resetPlayback, resolvedLayerToolMap, resolvedTools])
+  }, [state, algorithm, backendToolOverrides, upload, resetPlayback, resolvedLayerToolMap, resolvedTools, cutDedup])
 
   // ── Change tool for a specific layer in the sequence ──────────────────────
   const handleLayerToolChange = useCallback((index: number, newToolId: string) => {
@@ -714,7 +733,11 @@ export default function CNCPipelinePage() {
 
       {state.status === "idle" && (
         <div className="flex-1 flex items-center justify-center">
-          <DXFDropZone onFile={handleFile} />
+          <div className="w-full max-w-2xl flex flex-col gap-6">
+            <CncToolPresetCard />
+            <CutDedupSettingsCard value={cutDedup} onChange={updateCutDedup} />
+            <DXFDropZone onFile={handleFile} />
+          </div>
         </div>
       )}
 

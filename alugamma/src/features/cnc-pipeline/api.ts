@@ -16,7 +16,13 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 // Upload DXF → get job_id + analysis + geometry in one shot
-export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence | [string, string][]): Promise<{
+export interface CutDedupOptions {
+  enabled: boolean
+  joinLines?: boolean
+  tolerance?: number
+}
+
+export async function uploadDXF(file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence | [string, string][], cutDedup?: CutDedupOptions): Promise<{
   generate: GenerateResponse
   geometry: GeometryResponse
 }> {
@@ -28,6 +34,11 @@ export async function uploadDXF(file: File, algorithm: string = "raptor", toolOv
   }
   if (customSequence && customSequence.length > 0) {
     form.append("custom_sequence", JSON.stringify(customSequence))
+  }
+  if (cutDedup?.enabled) {
+    form.append("dedupe_cut", "true")
+    form.append("dedupe_cut_join", cutDedup.joinLines === false ? "false" : "true")
+    form.append("dedupe_cut_tol", String(cutDedup.tolerance ?? 0.01))
   }
   const res = await fetch(`${BASE}/api/generate`, { method: "POST", body: form })
   if (!res.ok) {

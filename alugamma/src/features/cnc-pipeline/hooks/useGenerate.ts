@@ -1,16 +1,16 @@
 // src/features/cnc-pipeline/hooks/useGenerate.ts
 
 import { useState, useCallback } from "react"
-import { uploadDXF, fetchNCText } from "../api"
+import { uploadDXF, fetchNCText, type CutDedupOptions } from "../api"
 import type { PageState, GenerateResponse, GeometryResponse, CustomSequence, IdSequence } from "../types"
 
 export function useGenerate() {
   const [state, setState] = useState<PageState>({ status: "idle" })
 
-  const upload = useCallback(async (file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence | IdSequence) => {
+  const upload = useCallback(async (file: File, algorithm: string = "raptor", toolOverrides?: Record<string, any>, customSequence?: CustomSequence | IdSequence, cutDedup?: CutDedupOptions) => {
     setState({ status: "uploading" })
     try {
-      const { generate, geometry } = await uploadDXF(file, algorithm, toolOverrides, customSequence)
+      const { generate, geometry } = await uploadDXF(file, algorithm, toolOverrides, customSequence, cutDedup)
       setState({ status: "generating", jobId: generate.job_id, generate, geometry })
       
       const ncText = await fetchNCText(generate.job_id)

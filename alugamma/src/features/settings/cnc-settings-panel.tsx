@@ -26,6 +26,8 @@ import { RotateCcw, Save, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+const EMPTY_OVERRIDES: Record<string, any> = {};
+
 /** A single editable numeric field with label, showing default vs. current */
 function ToolField({
   label,
@@ -38,7 +40,12 @@ function ToolField({
   defaultValue: number | undefined;
   onChange: (v: number) => void;
 }) {
+  const [draft, setDraft] = useState(String(value));
   const isDirty = defaultValue !== undefined ? value !== defaultValue : false;
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
 
   return (
     <div className="flex items-center gap-3 py-1.5">
@@ -48,11 +55,15 @@ function ToolField({
       <Input
         type="number"
         step="any"
-        value={value}
+        value={draft}
         onChange={(e) => {
-          const v = parseFloat(e.target.value);
+          const next = e.target.value;
+          setDraft(next);
+          if (next === "" || next === "-" || next === "." || next === "-.") return;
+          const v = parseFloat(next);
           if (!isNaN(v)) onChange(v);
         }}
+        onBlur={() => setDraft(String(value))}
         className={cn(
           "h-7 w-24 rounded-md border bg-background/50 px-2 text-xs font-mono text-right tabular-nums",
           isDirty
@@ -325,7 +336,7 @@ export function CNCSettingsPanel() {
   const resetSettings = useMutation(api.cnc_settings.resetToDefaults);
 
   // Build the resolved tools config (defaults + overrides + custom tools)
-  const storedOverrides = settingsDoc?.toolOverrides ?? {};
+  const storedOverrides = settingsDoc?.toolOverrides ?? EMPTY_OVERRIDES;
   const storedCustomTools = settingsDoc?.customTools ?? undefined;
   const storedLayerToolMap = settingsDoc?.layerToolMap ?? undefined;
 
